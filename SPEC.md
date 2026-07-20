@@ -199,6 +199,38 @@ stateless, self-hostable App. No browser extension.
   proxy required) — unacceptable reviewer friction. The stateless-renderer design from
   this option is retained inside the App.
 
+## 6.4 Roadmap — v2 (captured, not yet built)
+
+These are designed and agreed; they layer on the v0 core without changing its guarantees.
+
+### Cross-repo linking
+A single feature often spans several repos (each its own PR). Documents stay per-repo and
+per-PR (the validator/viewer invariant), with an additive `feature` block:
+`{ id, siblings: [{ repo, branch }] }`. The `id` is globally unique (slug + ULID) and the
+container-level MCP server stamps the same id into every sibling document in a session.
+The viewer resolves the *live* PR links at view time (by the time anyone views, the PRs
+exist) — so only the durable keys (`id`, repo, branch) are stored; volatile PR
+numbers/titles/state are resolved fresh via the GitHub API. Degrades gracefully when a
+sibling PR isn't open yet.
+
+### Rich, model-authored content
+The structured skeleton (anchors, `head_sha`, ids) stays — it powers the deterministic
+checks. On top of it, optional model-authored fields let expressiveness grow with the
+models: a markdown `body` on each section and tour stop, and `diagrams: [{ title, mermaid }]`.
+Added as explicit optional fields (not open-ended keys) so validation and redaction stay
+targeted; bump `schema_version` when introduced.
+
+### Safe rendering (required by the above)
+`.intent` files are untrusted repo content (a payload can arrive via a hand edit or a
+prompt-injected authoring agent). The viewer MUST sanitize markdown (no raw HTML
+passthrough) and sandbox mermaid before rendering. The redaction lint already walks every
+string, so secrets in a `body` are still caught.
+
+### Coverage excludes `.intent/`
+The document travels in its own PR diff; a document must not have to explain its own file.
+Both the validator and the viewer exclude `.intent/` paths from the coverage denominator.
+_(Shipped in this change.)_
+
 ## 7. Open design questions
 
 1. One document per PR with versions, or one per push? (Current lean: regenerate per

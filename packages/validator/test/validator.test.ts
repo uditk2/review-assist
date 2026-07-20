@@ -146,6 +146,20 @@ describe("validate — coverage", () => {
     expect(report.findings.some((f) => f.check === "coverage" && f.severity === "warning")).toBe(true);
   });
 
+  it("excludes .intent/ files from coverage (a document needn't explain itself)", () => {
+    const withDoc = matchingDiff + `diff --git a/.intent/feature-x.json b/.intent/feature-x.json
+--- /dev/null
++++ b/.intent/feature-x.json
+@@ -0,0 +1,3 @@
++{
++  "schema_version": "0.1"
++}
+`;
+    const report = validate(example, { diff: withDoc });
+    expect(report.ok).toBe(true);
+    expect(report.coverage?.unexplained.some((u) => u.path.startsWith(".intent/"))).toBe(false);
+  });
+
   it("ignores whitespace-only unexplained hunks unless --strict", () => {
     const wsExtra = matchingDiff + `diff --git a/format.go b/format.go
 --- a/format.go
