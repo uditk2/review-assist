@@ -132,6 +132,9 @@ function runCoverage(
   let totalHunks = 0;
 
   for (const file of diffFiles) {
+    // The intent document itself travels in the PR diff — a document must not have to
+    // "explain" its own file, so .intent/ changes are excluded from coverage.
+    if (isIntentPath(file.path)) continue;
     for (const hunk of file.hunks) {
       totalHunks++;
       const hunkRange = newRange(hunk);
@@ -258,6 +261,11 @@ function* walkStrings(obj: unknown, prefix = ""): Generator<{ field: string; val
       yield* walkStrings(v, prefix ? `${prefix}.${k}` : k);
     }
   }
+}
+
+/** Paths that are part of Review Assist's own bookkeeping, excluded from coverage. */
+function isIntentPath(path: string): boolean {
+  return path === ".intent" || path.startsWith(".intent/");
 }
 
 function shaMatches(a: string, b: string): boolean {
