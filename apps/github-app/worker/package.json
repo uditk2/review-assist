@@ -1,0 +1,17 @@
+{
+  "name": "@review-assist/github-app-worker",
+  "version": "0.1.0",
+  "description": "Cloudflare Worker: stateless auth broker + thin GitHub proxy for the Intent Document viewer.",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "wrangler": "^3.90.0"
+  }
+}

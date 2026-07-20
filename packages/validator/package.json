@@ -1,0 +1,28 @@
+{
+  "name": "@review-assist/validator",
+  "version": "0.1.0",
+  "description": "Deterministic validator for Intent Documents: schema, staleness, coverage, cross-refs, redaction.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "review-assist": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@review-assist/schema": "0.1.0",
+    "ajv": "^8.17.1"
+  }
+}

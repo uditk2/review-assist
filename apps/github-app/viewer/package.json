@@ -1,0 +1,14 @@
+{
+  "name": "@review-assist/viewer",
+  "version": "0.1.0",
+  "description": "Client-side guided-review viewer SPA for Intent Documents.",
+  "license": "Apache-2.0",
+  "private": true,
+  "scripts": {
+    "build": "tailwindcss -i ./src/theme.css -o ./styles.css --minify",
+    "dev": "tailwindcss -i ./src/theme.css -o ./styles.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.15"
+  }
+}

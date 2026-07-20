@@ -1,0 +1,56 @@
+# Manually publish the MCP server to npm.
+# Trigger: Actions tab → "Publish MCP server" → Run workflow.
+# Requires repo secret: NPM_TOKEN (an npm automation token with publish rights).
+name: Publish MCP server
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version bump (patch | minor | major) or an explicit x.y.z"
+        required: true
+        default: "patch"
+      dry_run:
+        description: "Build and pack only; do not publish"
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # to push the version-bump commit + tag
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx vitest run
+
+      - name: Bump version
+        working-directory: packages/mcp-server
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          npm version "${{ inputs.version }}" -m "release(mcp-server): %s"
+
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        working-directory: packages/mcp-server
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Pack only (dry run)
+        if: ${{ inputs.dry_run }}
+        working-directory: packages/mcp-server
+        run: npm pack
+
+      - name: Push version commit and tag
+        if: ${{ !inputs.dry_run }}
+        run: git push --follow-tags

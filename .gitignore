@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+.wrangler/
+scripts/out-*.png
+.intent/
+scripts/frames/

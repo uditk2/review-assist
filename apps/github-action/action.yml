@@ -1,0 +1,30 @@
+name: "Intent Document Check"
+description: "Validate the Intent Document for a PR (schema, staleness, coverage, redaction) and post a guided-review summary comment."
+author: "review-assist"
+branding:
+  icon: "compass"
+  color: "blue"
+inputs:
+  doc-path:
+    description: "Path to the intent document. Defaults to .intent/<branch>.json, falling back to a single .intent/*.json."
+    required: false
+    default: ""
+  viewer-url:
+    description: "Base URL of the guided-review viewer. If set, the comment links to it."
+    required: false
+    default: ""
+  strict:
+    description: "Fail coverage on any unexplained hunk, including whitespace-only."
+    required: false
+    default: "false"
+  comment:
+    description: "Post/update a sticky PR comment with the markdown fallback."
+    required: false
+    default: "true"
+  github-token:
+    description: "Token used to read the diff and post the comment."
+    required: false
+    default: ${{ github.token }}
+runs:
+  using: "node20"
+  main: "dist/main.cjs"

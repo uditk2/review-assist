@@ -1,0 +1,20 @@
+# Drop this in .github/workflows/review-assist.yml of a repo that uses Intent Documents.
+name: Intent Document
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read        # read the committed .intent/ document and the diff
+  pull-requests: write  # post the sticky guided-review comment
+
+jobs:
+  intent-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: uditk2/review-assist/apps/github-action@v0
+        with:
+          # Optional: link the sticky comment to your guided-review viewer.
+          viewer-url: https://your-review-assist-worker.workers.dev
+          # strict: "true"   # also fail on unexplained whitespace-only hunks

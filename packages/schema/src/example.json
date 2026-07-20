@@ -1,0 +1,155 @@
+{
+  "schema_version": "0.1",
+  "meta": {
+    "id": "01J9ZK3W8Q3F5N7X2C4V6B8M0T",
+    "repo": "acme/checkout-service",
+    "commit_range": {
+      "base_sha": "9f1c2e7",
+      "head_sha": "4b8d0a3"
+    },
+    "session": {
+      "agent": "claude-code",
+      "model": "claude-fable-5",
+      "session_ids": ["c0ffee-1"],
+      "started_at": "2026-07-18T09:12:00+05:30",
+      "ended_at": "2026-07-18T11:47:00+05:30"
+    },
+    "generated_by": { "pipeline": "review-assist", "version": "0.1.0" },
+    "generated_at": "2026-07-18T11:52:10+05:30",
+    "interview": { "rounds": 2, "questions_asked": 4, "unresolved": 1 }
+  },
+
+  "problem": {
+    "statement": "Checkout requests intermittently fail with 429s because every request re-validates the session against the auth service; validation must be cached without letting revoked sessions linger.",
+    "origin": "emerged_during_session",
+    "evolution": [
+      { "at": "msg-3", "formulation": "Checkout is slow, make it faster" },
+      { "at": "msg-41", "formulation": "Auth service rate-limits us; the real problem is per-request session revalidation" }
+    ],
+    "user_asks": [
+      "\"checkout keeps timing out under load, can you look at it\"",
+      "\"ok cache it, but a revoked session must not survive more than a minute\""
+    ],
+    "out_of_scope": [
+      "Moving auth to JWTs (user explicitly deferred: 'not this quarter')"
+    ]
+  },
+
+  "assumptions": [
+    {
+      "id": "A1",
+      "assumption": "A 60-second revocation lag is acceptable for all session types, including admin sessions.",
+      "impact_if_wrong": "Admin sessions would need a separate no-cache path; T2 and T3 would be redesigned.",
+      "depends": ["T2", "T3"],
+      "how_to_verify": "Confirm with security team that the 60s SLA covers privileged sessions.",
+      "confidence": "confirmed_by_user"
+    },
+    {
+      "id": "A2",
+      "assumption": "The auth service's /validate response is safe to cache keyed on session token alone (no per-device claims).",
+      "impact_if_wrong": "Cache key must include device fingerprint; T2 changes, cache hit rate drops.",
+      "depends": ["T2"],
+      "how_to_verify": "Check auth-service response schema for device-scoped fields.",
+      "confidence": "unverified"
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Should cache entries be invalidated on password change events, or is TTL expiry sufficient?",
+      "context": "Transcript shows the author considered subscribing to auth events and dropped it for scope; interview could not resolve whether TTL-only meets policy.",
+      "raised_by": "reviewer_agent"
+    }
+  ],
+
+  "approach": {
+    "requirements": [
+      { "text": "Revoked sessions must be unusable within 60s", "source": "user quote, msg-44" },
+      { "text": "No new infrastructure — use the existing Redis instance", "source": "user quote, msg-47" }
+    ],
+    "trials": [
+      {
+        "what": "In-process LRU cache in the auth middleware",
+        "outcome": "Worked in tests but each of the 12 pods held its own cache, so revocation lag became 60s × per-pod staleness",
+        "why_abandoned": "Violates the 60s revocation requirement under horizontal scaling"
+      }
+    ],
+    "adopted": {
+      "summary": "Shared Redis-backed validation cache with 60s TTL plus an explicit delete on the logout path.",
+      "rationale": "Satisfies the 60s bound globally (single shared cache), uses existing Redis (req 2), and the logout-path delete makes voluntary logout immediate rather than TTL-bound."
+    }
+  },
+
+  "tour": [
+    {
+      "id": "T1",
+      "title": "Introduce SessionCache interface",
+      "role": "supporting",
+      "what": "Defines get/set/delete for validation results with TTL.",
+      "why": "Isolates caching behind an interface so the in-process trial could be swapped for Redis without touching the middleware (see trials[0]).",
+      "anchors": [
+        { "path": "internal/auth/cache.go", "hunk": { "old_start": 0, "old_lines": 0, "new_start": 1, "new_lines": 38 } }
+      ],
+      "parent": null,
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T2",
+      "title": "Redis implementation with 60s TTL",
+      "role": "core",
+      "what": "Caches successful validations keyed by session token hash; failures are never cached.",
+      "why": "The shared store is what makes the 60s revocation bound hold across all pods (A1, A2).",
+      "anchors": [
+        { "path": "internal/auth/redis_cache.go", "hunk": { "old_start": 0, "old_lines": 0, "new_start": 1, "new_lines": 74 } }
+      ],
+      "parent": "T1",
+      "provenance": "confirmed_in_interview",
+      "attention": "Token is hashed before use as a cache key — review the hash choice; a reversible or truncated key would leak session material into Redis."
+    },
+    {
+      "id": "T3",
+      "title": "Explicit cache delete on logout",
+      "role": "core",
+      "what": "Logout handler deletes the cache entry before calling the auth service.",
+      "why": "Makes voluntary logout immediate instead of waiting out the TTL (user ask, msg-44).",
+      "anchors": [
+        { "path": "internal/handlers/logout.go", "hunk": { "old_start": 21, "old_lines": 4, "new_start": 21, "new_lines": 11 } }
+      ],
+      "parent": "T2",
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T4",
+      "title": "Incidental: rename validateSession → revalidateSession",
+      "role": "incidental",
+      "what": "Mechanical rename across call sites for accuracy; no behavior change.",
+      "why": "Consistency after the cache split the fast path from true revalidation.",
+      "anchors": [
+        { "path": "internal/auth/middleware.go", "hunk": { "old_start": 55, "old_lines": 9, "new_start": 55, "new_lines": 9 } },
+        { "path": "internal/handlers/checkout.go", "hunk": { "old_start": 102, "old_lines": 2, "new_start": 102, "new_lines": 2 } }
+      ],
+      "parent": null,
+      "provenance": "from_transcript"
+    }
+  ],
+
+  "verification": {
+    "performed": [
+      { "kind": "test", "description": "Unit tests for cache TTL expiry and logout delete", "result": "pass" },
+      { "kind": "test", "description": "Middleware integration test with Redis testcontainer", "result": "pass" },
+      { "kind": "typecheck", "description": "go vet + staticcheck", "result": "pass" }
+    ],
+    "added_tests": [
+      {
+        "covers": "TTL expiry forces revalidation after 60s",
+        "anchors": [
+          { "path": "internal/auth/redis_cache_test.go", "hunk": { "old_start": 0, "old_lines": 0, "new_start": 1, "new_lines": 61 } }
+        ]
+      }
+    ],
+    "not_verified": [
+      "Behavior when Redis is unreachable (code falls back to direct validation; no test exercises the fallback)",
+      "Load behavior — the original 429 symptom was not reproduced under load after the fix"
+    ]
+  }
+}

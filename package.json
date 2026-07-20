@@ -1,0 +1,25 @@
+{
+  "name": "review-assist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Intent Document — an open format for AI change-intent, with a validator, MCP server, GitHub Action, and guided-review viewer.",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "packages/*",
+    "apps/github-action",
+    "apps/github-app/worker",
+    "apps/github-app/viewer"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@types/node": "^22.20.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

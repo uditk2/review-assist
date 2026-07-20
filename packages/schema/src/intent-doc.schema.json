@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://review-assist.dev/schema/0.1/intent-doc.schema.json",
+  "title": "Intent Document",
+  "description": "An open format for AI change-intent, distilled from an agent coding session.",
+  "type": "object",
+  "required": ["schema_version", "meta", "problem", "assumptions", "approach", "tour", "verification"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "0.1" },
+
+    "meta": {
+      "type": "object",
+      "required": ["id", "repo", "commit_range", "session", "generated_by", "generated_at"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "repo": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "commit_range": {
+          "type": "object",
+          "required": ["base_sha", "head_sha"],
+          "additionalProperties": false,
+          "properties": {
+            "base_sha": { "type": "string", "minLength": 7 },
+            "head_sha": { "type": "string", "minLength": 7 }
+          }
+        },
+        "session": {
+          "type": "object",
+          "required": ["agent", "model"],
+          "additionalProperties": false,
+          "properties": {
+            "agent": { "type": "string" },
+            "model": { "type": "string" },
+            "session_ids": { "type": "array", "items": { "type": "string" } },
+            "started_at": { "type": "string" },
+            "ended_at": { "type": "string" }
+          }
+        },
+        "generated_by": {
+          "type": "object",
+          "required": ["pipeline", "version"],
+          "additionalProperties": false,
+          "properties": {
+            "pipeline": { "type": "string" },
+            "version": { "type": "string" }
+          }
+        },
+        "generated_at": { "type": "string" },
+        "interview": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rounds": { "type": "integer", "minimum": 0 },
+            "questions_asked": { "type": "integer", "minimum": 0 },
+            "unresolved": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+
+    "problem": {
+      "type": "object",
+      "required": ["statement", "origin", "user_asks"],
+      "additionalProperties": false,
+      "properties": {
+        "statement": { "type": "string", "minLength": 1 },
+        "origin": { "enum": ["stated_upfront", "emerged_during_session"] },
+        "evolution": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["at", "formulation"],
+            "additionalProperties": false,
+            "properties": {
+              "at": { "type": "string" },
+              "formulation": { "type": "string" }
+            }
+          }
+        },
+        "user_asks": { "type": "array", "items": { "type": "string" } },
+        "out_of_scope": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "assumption", "impact_if_wrong", "confidence"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^A[0-9]+$" },
+          "assumption": { "type": "string", "minLength": 1 },
+          "impact_if_wrong": { "type": "string", "minLength": 1 },
+          "depends": { "type": "array", "items": { "type": "string" } },
+          "how_to_verify": { "type": "string" },
+          "confidence": { "enum": ["confirmed_by_user", "grounded_in_code", "unverified"] }
+        }
+      }
+    },
+
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "question"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^Q[0-9]+$" },
+          "question": { "type": "string", "minLength": 1 },
+          "context": { "type": "string" },
+          "raised_by": { "enum": ["reviewer_agent", "author_agent", "user"] }
+        }
+      }
+    },
+
+    "approach": {
+      "type": "object",
+      "required": ["requirements", "adopted"],
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "additionalProperties": false,
+            "properties": {
+              "text": { "type": "string" },
+              "source": { "type": "string" }
+            }
+          }
+        },
+        "trials": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["what", "outcome", "why_abandoned"],
+            "additionalProperties": false,
+            "properties": {
+              "what": { "type": "string" },
+              "outcome": { "type": "string" },
+              "why_abandoned": { "type": "string" }
+            }
+          }
+        },
+        "adopted": {
+          "type": "object",
+          "required": ["summary", "rationale"],
+          "additionalProperties": false,
+          "properties": {
+            "summary": { "type": "string" },
+            "rationale": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "tour": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "role", "what", "why", "anchors", "provenance"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^T[0-9]+$" },
+          "title": { "type": "string", "minLength": 1 },
+          "role": { "enum": ["core", "supporting", "incidental"] },
+          "what": { "type": "string" },
+          "why": { "type": "string" },
+          "anchors": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/anchor" }
+          },
+          "parent": { "type": ["string", "null"] },
+          "provenance": { "enum": ["from_transcript", "confirmed_in_interview", "inferred_from_code"] },
+          "attention": { "type": "string" }
+        }
+      }
+    },
+
+    "verification": {
+      "type": "object",
+      "required": ["performed"],
+      "additionalProperties": false,
+      "properties": {
+        "performed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "description", "result"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "enum": ["test", "manual", "build", "lint", "typecheck"] },
+              "description": { "type": "string" },
+              "result": { "type": "string" },
+              "evidence": { "type": "string" }
+            }
+          }
+        },
+        "added_tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["covers", "anchors"],
+            "additionalProperties": false,
+            "properties": {
+              "covers": { "type": "string" },
+              "anchors": { "type": "array", "items": { "$ref": "#/$defs/anchor" } }
+            }
+          }
+        },
+        "not_verified": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+
+  "$defs": {
+    "anchor": {
+      "type": "object",
+      "required": ["path", "hunk"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "hunk": {
+          "type": "object",
+          "required": ["old_start", "old_lines", "new_start", "new_lines"],
+          "additionalProperties": false,
+          "properties": {
+            "old_start": { "type": "integer", "minimum": 0 },
+            "old_lines": { "type": "integer", "minimum": 0 },
+            "new_start": { "type": "integer", "minimum": 0 },
+            "new_lines": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  }
+}

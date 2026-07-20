@@ -1,0 +1,22 @@
+{
+  "name": "@review-assist/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server that drives the two-agent distillation of an Intent Document and gatekeeps it with the validator.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "review-assist-mcp": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@review-assist/schema": "0.1.0",
+    "@review-assist/validator": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  }
+}

@@ -1,0 +1,36 @@
+# Manually deploy the GitHub App (Cloudflare Worker + static viewer).
+# Trigger: Actions tab → "Deploy review app" → Run workflow.
+# Requires repo secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
+name: Deploy review app
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        type: choice
+        options: [production, staging]
+        default: production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Build viewer stylesheet
+        run: npm run build --workspace @review-assist/viewer
+
+      - name: Typecheck worker
+        run: npm run typecheck --workspace @review-assist/github-app-worker
+
+      - name: Deploy Worker + assets
+        working-directory: apps/github-app/worker
+        run: npx wrangler deploy ${{ inputs.environment == 'staging' && '--env staging' || '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

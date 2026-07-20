@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Intent Document</title>
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<div id="app" class="min-h-screen">
+  <div class="mx-auto flex min-h-screen max-w-prose flex-col items-start justify-center gap-3 px-6">
+    <p class="text-ink-500">Loading…</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+// ---------- diff parser + coverage (ported from @intentdoc/validator) ----------
+function parseUnifiedDiff(diff) {
+  const lines = diff.split("\n");
+  const files = []; let cur = null, hunk = null, renameFrom = null;
+  const FILE = /^diff --git a\/(.+?) b\/(.+)$/;
+  const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/;
+  const flush = () => { if (cur && hunk) cur.hunks.push(hunk); hunk = null; };
+  const strip = p => { p = p.trim(); if (p === "/dev/null") return p; return (p.startsWith("a/")||p.startsWith("b/")) ? p.slice(2) : p; };
+  for (const line of lines) {
+    const fm = FILE.exec(line);
+    if (fm) { flush(); cur = { path: fm[2], hunks: [] }; files.push(cur); renameFrom = null; continue; }
+    if (!cur) continue;
+    if (line.startsWith("--- ")) { renameFrom = strip(line.slice(4)); continue; }
+    if (line.startsWith("+++ ")) { const to = strip(line.slice(4));
+      if (to === "/dev/null" && renameFrom && renameFrom !== "/dev/null") cur.path = renameFrom;
+      else if (to !== "/dev/null") cur.path = to; continue; }
+    const hm = HUNK.exec(line);
+    if (hm) { flush(); hunk = { old_start:+hm[1], old_lines:hm[2]===undefined?1:+hm[2],
+      new_start:+hm[3], new_lines:hm[4]===undefined?1:+hm[4], header: hm[5]||"", lines: [], substantive:false }; continue; }
+    if (hunk && (line.startsWith("+")||line.startsWith("-")||line.startsWith(" "))) {
+      hunk.lines.push(line);
+      if ((line[0]==="+"||line[0]==="-") && line.slice(1).trim().length) hunk.substantive = true;
+    }
+  }
+  flush(); return files;
+}
+const newRange = h => h.new_lines===0 ? [h.new_start,h.new_start] : [h.new_start, h.new_start+h.new_lines-1];
+const overlap = (a,b) => a[0]<=b[1] && b[0]<=a[1];
+
+function orderTour(tour) {
+  const byParent = new Map();
+  for (const s of tour) { const k = s.parent ?? null; if (!byParent.has(k)) byParent.set(k, []); byParent.get(k).push(s); }
+  const out = []; const visit = p => { for (const s of (byParent.get(p)||[])) { out.push(s); visit(s.id); } };
+  visit(null);
+  for (const s of tour) if (!out.includes(s)) out.push(s);
+  return out;
+}
+function computeCoverage(tour, diffFiles) {
+  const anchors = [];
+  tour.forEach(s => (s.anchors||[]).forEach(a => anchors.push({ path:a.path, range:newRange(a.hunk) })));
+  const unexplained = []; let total = 0;
+  for (const f of diffFiles) for (const h of f.hunks) {
+    total++; const hr = newRange(h);
+    const cov = anchors.some(an => an.path===f.path && overlap(an.range,hr));
+    if (!cov && h.substantive) unexplained.push({ path:f.path, hunk:h });
+  }
+  return { total, unexplained, explained: total - unexplained.length };
+}
+function hunksForStop(stop, diffFiles) {
+  const res = [];
+  for (const a of (stop.anchors||[])) {
+    const file = diffFiles.find(f => f.path === a.path);
+    const ar = newRange(a.hunk);
+    if (!file || !file.hunks.some(h => overlap(newRange(h), ar))) { res.push({ path:a.path, missing:true }); continue; }
+    for (const h of file.hunks) if (overlap(newRange(h), ar)) res.push({ path:a.path, hunk:h });
+  }
+  return res;
+}
+
+// ---------- dom helper ----------
+const el = (t, props={}, ...kids) => {
+  const n = document.createElement(t);
+  for (const [k,v] of Object.entries(props)) {
+    if (v == null) continue;
+    if (k === "class") n.className = v; else if (k === "html") n.innerHTML = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) n.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return n;
+};
+
+const CONF = {
+  confirmed_by_user: { cls: "tag tag-ok", label: "confirmed by user" },
+  grounded_in_code:  { cls: "tag",        label: "grounded in code" },
+  unverified:        { cls: "tag tag-warn", label: "unverified" },
+};
+const titleCase = s => String(s||"").replace(/_/g," ");
+
+let STATE = { data:null, files:[], coverage:null, ordered:[], view:"overview", stopIndex:0, acks:{}, me:null };
+
+function parseHash() {
+  const m = /#([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(location.hash);
+  return m ? { owner:m[1], repo:m[2], pull:m[3] } : null;
+}
+
+async function boot() {
+  const ref = parseHash();
+  const app = document.getElementById("app");
+  if (!ref) return app.replaceChildren(centered(
+    el("h1",{},"Intent Document"),
+    el("p",{class:"text-ink-500"},"Open a pull request walkthrough with a URL like"),
+    el("code",{class:"font-mono text-sm text-ink-700"}, location.origin + "/#owner/repo/pull/123")));
+
+  try { STATE.me = (await (await fetch("/api/me")).json()).login; } catch {}
+  const res = await fetch(`/api/document?owner=${encodeURIComponent(ref.owner)}&repo=${encodeURIComponent(ref.repo)}&pull=${ref.pull}`);
+  if (res.status === 401) return renderLogin(ref);
+  const data = await res.json();
+  if (data.error) return app.replaceChildren(centered(el("h1",{},"Couldn’t load this PR"), el("p",{class:"text-ink-500"}, data.error)));
+  if (data.document_missing || !data.document) return app.replaceChildren(centered(
+    el("h1",{},"No Intent Document"),
+    el("p",{class:"max-w-prose text-ink-500"},"This pull request has no .intent document on its head commit. The authoring agent should generate one before review.")));
+
+  STATE.data = data;
+  STATE.files = parseUnifiedDiff(data.diff || "");
+  STATE.ordered = orderTour(data.document.tour || []);
+  STATE.coverage = computeCoverage(data.document.tour || [], STATE.files);
+  STATE.view = "overview"; STATE.stopIndex = 0;
+  render();
+}
+
+function centered(...kids){ return el("div",{class:"mx-auto flex min-h-screen max-w-prose flex-col items-start justify-center gap-3 px-6"}, ...kids); }
+
+function renderLogin(ref){
+  const back = encodeURIComponent(location.pathname + location.hash);
+  document.getElementById("app").replaceChildren(centered(
+    el("h1",{},"Sign in to review"),
+    el("p",{class:"text-ink-600"}, `${ref.owner}/${ref.repo} #${ref.pull} — sign in with GitHub to load this walkthrough.`),
+    el("a",{class:"btn-primary mt-2", href:`/api/login?return=${back}`}, "Sign in with GitHub")));
+}
+
+function render(){
+  const doc = STATE.data.document, m = STATE.data.meta, cov = STATE.coverage;
+  const covOk = cov.unexplained.length === 0;
+  const covTag = el("span",{class: covOk ? "tag tag-ok" : "tag tag-warn"},
+    covOk ? `${cov.explained} of ${cov.total} changes explained`
+          : `${cov.unexplained.length} change${cov.unexplained.length>1?"s":""} uncovered`);
+
+  const header = el("header",{class:"sticky top-0 z-10 border-b border-ink-200 bg-canvas/90 backdrop-blur"},
+    el("div",{class:"flex items-center gap-3 px-6 py-3"},
+      el("span",{class:"font-mono text-sm text-ink-700"}, `${m.owner}/${m.repo}`),
+      el("span",{class:"id-chip"}, `#${m.pull}`),
+      el("span",{class:"truncate text-ink-500"}, m.title || ""),
+      el("span",{class:"flex-1"}),
+      covTag,
+      STATE.me ? el("span",{class:"tag"}, "@"+STATE.me) : null));
+
+  const link = (view, label, badge) => el("button",
+    {class:"nav-link"+(STATE.view===view?" is-active":""), onclick:()=>{STATE.view=view;render();}},
+    el("span",{}, label), badge);
+
+  const nav = el("nav",{class:"sticky top-[57px] hidden h-[calc(100vh-57px)] w-72 shrink-0 overflow-y-auto border-r border-ink-200 px-3 py-5 md:block"},
+    el("p",{class:"eyebrow px-2.5 pb-2"},"Review"),
+    link("overview","Overview"),
+    link("verify","Verification"),
+    cov.unexplained.length ? link("coverage","Uncovered changes", el("span",{class:"ml-auto tag tag-warn"}, cov.unexplained.length)) : null,
+    el("p",{class:"eyebrow px-2.5 pb-2 pt-5"},"Walkthrough"),
+    ...STATE.ordered.map((s,i)=>el("button",
+      {class:"nav-link"+(STATE.view==="tour"&&STATE.stopIndex===i?" is-active":""), onclick:()=>{STATE.view="tour";STATE.stopIndex=i;render();}},
+      el("span",{class:"id-chip"}, s.id), el("span",{class:"truncate"}, s.title))));
+
+  const main = el("main",{class:"min-w-0 flex-1 px-6 py-8 md:px-10"},
+    el("div",{class:"max-w-prose"},
+      STATE.view==="overview" ? renderOverview(doc)
+      : STATE.view==="verify" ? renderVerify(doc)
+      : STATE.view==="coverage" ? renderCoverage()
+      : renderStop()));
+
+  document.getElementById("app").replaceChildren(header, el("div",{class:"flex"}, nav, main));
+}
+
+function labeled(label, ...body){
+  return el("p",{class:"mt-3"}, el("span",{class:"font-medium text-ink-900"}, label+" "), ...body);
+}
+
+function renderOverview(doc){
+  const p = doc.problem;
+  const f = document.createDocumentFragment();
+  f.append(el("section",{class:"mb-8"},
+    el("p",{class:"eyebrow mb-1"}, p.origin==="emerged_during_session" ? "The problem was defined over the course of the session" : "Problem stated up front"),
+    el("h1",{class:"mb-3"},"Overview"),
+    el("blockquote",{class:"border-l-2 border-ink-300 pl-4 text-[1.05rem] leading-relaxed text-ink-800"}, p.statement)));
+
+  if (p.evolution?.length) f.append(section("How the ask evolved",
+    el("ol",{class:"space-y-1"}, ...p.evolution.map(e=>el("li",{class:"flex gap-3"},
+      el("span",{class:"id-chip shrink-0 pt-0.5"}, e.at), el("span",{}, e.formulation))))));
+
+  if (p.out_of_scope?.length) f.append(section("Out of scope",
+    el("ul",{class:"list-disc space-y-1 pl-5 text-ink-700"}, ...p.out_of_scope.map(x=>el("li",{},x)))));
+
+  if (doc.assumptions?.length){
+    const sec = section("Assumptions");
+    sec.append(el("p",{class:"-mt-2 mb-3 text-sm text-ink-500"},"If any of these is wrong, the change likely needs rework — check them before reading the diff."));
+    for (const a of doc.assumptions){
+      const conf = CONF[a.confidence] || CONF.unverified;
+      const state = STATE.acks[a.id];
+      sec.append(el("div",{class:"card mb-3"},
+        el("div",{class:"flex items-start justify-between gap-3"},
+          el("div",{}, el("span",{class:"id-chip mr-2"},a.id), el("span",{class:"font-medium"}, a.assumption)),
+          el("span",{class:conf.cls}, conf.label)),
+        el("dl",{class:"mt-2 space-y-1 text-sm text-ink-600"},
+          row("If wrong", a.impact_if_wrong),
+          a.how_to_verify ? row("How to verify", a.how_to_verify) : null),
+        el("div",{class:"mt-3 flex gap-2"},
+          ackBtn(a.id,"accept","Accept",state), ackBtn(a.id,"flag","Flag for discussion",state))));
+    }
+    f.append(sec);
+  }
+
+  if (doc.open_questions?.length){
+    const sec = section("Open questions");
+    for (const q of doc.open_questions) sec.append(el("div",{class:"card mb-3"},
+      el("div",{}, el("span",{class:"id-chip mr-2"},q.id), el("span",{class:"font-medium"}, q.question)),
+      q.context ? el("p",{class:"mt-1.5 text-sm text-ink-600"}, q.context) : null));
+    f.append(sec);
+  }
+
+  const ap = doc.approach;
+  const asec = section("Approach");
+  asec.append(el("p",{class:"text-ink-800"}, ap.adopted.summary));
+  asec.append(labeled("Rationale.", el("span",{class:"text-ink-700"}, ap.adopted.rationale)));
+  if (ap.requirements?.length) asec.append(disclosure(`Requirements (${ap.requirements.length})`,
+    el("ul",{class:"mt-2 list-disc space-y-1 pl-5 text-ink-700"}, ...ap.requirements.map(r=>
+      el("li",{}, r.text, r.source ? el("span",{class:"text-ink-400"}, " — "+r.source) : null)))));
+  if (ap.trials?.length) asec.append(disclosure(`Rejected alternatives (${ap.trials.length})`,
+    el("div",{class:"mt-2 space-y-3"}, ...ap.trials.map(t=>el("div",{class:"border-l-2 border-ink-200 pl-3"},
+      el("p",{}, el("span",{class:"font-medium"},"Tried. "), t.what),
+      el("p",{class:"text-sm text-ink-600"}, "Outcome — "+t.outcome),
+      el("p",{class:"text-sm text-ink-600"}, "Abandoned — "+t.why_abandoned))))));
+  f.append(asec);
+
+  f.append(el("div",{class:"mt-8 flex items-center gap-3 border-t border-ink-200 pt-6"},
+    el("button",{class:"btn-primary", onclick:()=>{STATE.view="tour";STATE.stopIndex=0;render();}}, "Start walkthrough"),
+    el("span",{class:"text-sm text-ink-500"}, `${STATE.ordered.length} stops`)));
+  return f;
+}
+
+function section(title, ...body){ return el("section",{class:"mb-8"}, el("h2",{class:"mb-3 border-b border-ink-200 pb-1.5"}, title), ...body); }
+function row(k,v){ return el("div",{class:"flex gap-2"}, el("dt",{class:"shrink-0 text-ink-500"}, k+":"), el("dd",{}, v)); }
+function disclosure(summary, body){ return el("details",{class:"mt-3 border-t border-ink-200 pt-3"}, el("summary",{class:"cursor-pointer text-sm font-medium text-ink-600"}, summary), body); }
+function ackBtn(id,kind,label,state){ return el("button",{class:"btn-ghost"+(state===kind?" is-on":""), onclick:()=>{STATE.acks[id]= state===kind?null:kind; render();}}, label); }
+
+function renderStop(){
+  const s = STATE.ordered[STATE.stopIndex];
+  const total = STATE.ordered.length;
+  const f = document.createDocumentFragment();
+  f.append(el("section",{},
+    el("div",{class:"mb-2 flex items-center gap-2 text-sm text-ink-500"},
+      el("span",{}, `Stop ${STATE.stopIndex+1} of ${total}`),
+      el("span",{class:"tag"}, s.role),
+      s.parent ? el("span",{}, `follows ${s.parent}`) : null,
+      el("span",{class:"ml-auto"}, titleCase(s.provenance))),
+    el("h1",{class:"mb-4"}, el("span",{class:"id-chip mr-2 text-ink-400"}, s.id), s.title),
+    labeled("What.", el("span",{class:"text-ink-800"}, s.what)),
+    labeled("Why.", el("span",{class:"text-ink-800"}, s.why)),
+    s.attention ? el("div",{class:"note mt-4"}, el("p",{class:"mb-0.5 text-sm font-semibold text-warn-fg"},"Reviewer note"), el("p",{class:"text-ink-800"}, s.attention)) : null));
+
+  const wrap = el("div",{class:"mt-5 space-y-3"});
+  for (const hp of hunksForStop(s, STATE.files)){
+    if (hp.missing){ wrap.append(el("div",{class:"diff"}, el("div",{class:"diff-file"}, hp.path, el("span",{class:"tag tag-warn"},"no matching hunk")))); continue; }
+    wrap.append(renderHunk(hp.path, hp.hunk));
+  }
+  f.append(wrap);
+
+  f.append(el("div",{class:"mt-8 flex justify-between border-t border-ink-200 pt-6"},
+    el("button",{class:"btn-ghost", disabled: STATE.stopIndex===0?"":null, onclick:()=>{if(STATE.stopIndex>0){STATE.stopIndex--;render();}}}, "Previous"),
+    el("button",{class:"btn-ghost", disabled: STATE.stopIndex===total-1?"":null, onclick:()=>{if(STATE.stopIndex<total-1){STATE.stopIndex++;render();}}}, "Next")));
+  return f;
+}
+
+function renderHunk(path, h){
+  const body = el("div",{class:"diff-body"});
+  body.append(el("code",{class:"diff-line is-hunk"}, `@@ -${h.old_start},${h.old_lines} +${h.new_start},${h.new_lines} @@${h.header||""}`));
+  for (const line of h.lines){
+    const cls = line[0]==="+" ? "is-add" : line[0]==="-" ? "is-del" : "is-ctx";
+    body.append(el("code",{class:"diff-line "+cls}, line));
+  }
+  return el("div",{class:"diff"}, el("div",{class:"diff-file"}, el("span",{}, path)), body);
+}
+
+function renderCoverage(){
+  const f = document.createDocumentFragment();
+  f.append(el("h1",{class:"mb-1"},"Uncovered changes"));
+  f.append(el("p",{class:"mb-5 text-ink-500"},"These diff hunks aren’t accounted for by any walkthrough stop. A complete review explains every change."));
+  const wrap = el("div",{class:"space-y-3"});
+  if (!STATE.coverage.unexplained.length) wrap.append(el("p",{class:"text-ink-500"},"Everything is accounted for."));
+  for (const u of STATE.coverage.unexplained) wrap.append(renderHunk(u.path, u.hunk));
+  f.append(wrap);
+  return f;
+}
+
+function renderVerify(doc){
+  const v = doc.verification;
+  const f = document.createDocumentFragment();
+  f.append(el("h1",{class:"mb-5"},"Verification"));
+  f.append(section("Checks performed",
+    el("ul",{class:"space-y-2"}, ...v.performed.map(p=>el("li",{class:"flex items-baseline gap-2"},
+      el("span",{class:"tag"}, p.kind),
+      el("span",{class:"text-ink-800"}, p.description),
+      el("span",{class:"text-ink-400"}, "— "+p.result))))));
+  if (v.not_verified?.length) f.append(section("Not verified",
+    el("ul",{class:"space-y-1.5"}, ...v.not_verified.map(n=>el("li",{class:"flex gap-2 text-ink-700"},
+      el("span",{class:"select-none text-warn-fg"},"—"), el("span",{}, n))))));
+  return f;
+}
+
+window.addEventListener("keydown",(e)=>{
+  if (STATE.view!=="tour") return;
+  if ((e.key==="j"||e.key==="ArrowRight") && STATE.stopIndex<STATE.ordered.length-1){STATE.stopIndex++;render();}
+  if ((e.key==="k"||e.key==="ArrowLeft") && STATE.stopIndex>0){STATE.stopIndex--;render();}
+});
+window.addEventListener("hashchange", boot);
+boot();
+</script>
+</body>
+</html>

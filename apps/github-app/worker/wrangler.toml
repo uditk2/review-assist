@@ -1,0 +1,18 @@
+name = "review-assist-viewer"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# The static viewer SPA is served directly from the edge; the Worker only handles /api/*.
+# Private-repo content flows browser <-> GitHub through /api/document and is never cached.
+[assets]
+directory = "../viewer"
+binding = "ASSETS"
+
+# Required secrets (set via `wrangler secret put <NAME>`), never committed:
+#   GITHUB_CLIENT_ID      — OAuth client id of your GitHub App
+#   GITHUB_CLIENT_SECRET  — OAuth client secret
+#   SESSION_SECRET        — random 32+ byte string; derives the AES-GCM session key
+#
+# No KV, no D1, no R2, no Durable Objects: the Worker is stateless by construction.
+[vars]
+APP_NAME = "Intent Document Viewer"
