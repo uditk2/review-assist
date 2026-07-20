@@ -101,16 +101,6 @@ node scripts/mockserver.mjs
 
 Run the tests: `npx vitest run`.
 
-## Automated pipelines
-
-Three workflows in [`.github/workflows`](.github/workflows) — CI runs on every push;
-the other two are **manual** (`workflow_dispatch`, run from the **Actions** tab):
-
-| Workflow | Trigger | Does | Secrets |
-|---|---|---|---|
-| **CI** | push / PR | build · typecheck · test · validate example | — |
-| **Publish MCP server** | manual | version-bump + `npm publish` the MCP server | `NPM_TOKEN` |
-| **Deploy review app** | manual | build viewer + `wrangler deploy` the Worker | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
 
 ## Deployment
 
