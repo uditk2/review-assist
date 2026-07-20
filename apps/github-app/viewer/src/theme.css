@@ -1,3 +1,5 @@
+@import "./brand.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -26,22 +28,22 @@
   /* Section label: sentence case, medium weight, muted — NOT an all-caps overline. */
   .eyebrow { @apply text-sm font-medium text-ink-500; }
 
-  .card { @apply rounded-md border border-ink-200 bg-white p-4; }
+  .card { @apply rounded-md border border-ink-200 bg-surface p-4; }
 
   .btn { @apply inline-flex items-center gap-2 rounded-md border px-3.5 py-2 text-sm font-medium transition-colors; }
   .btn-primary { @apply btn border-accent-600 bg-accent-600 text-white hover:bg-accent-700 hover:border-accent-700; }
-  .btn-ghost { @apply btn border-ink-200 bg-white text-ink-700 hover:bg-ink-50; }
+  .btn-ghost { @apply btn border-ink-200 bg-surface text-ink-700 hover:bg-ink-50; }
   .btn-ghost.is-on { @apply border-accent-600 text-accent-700 bg-accent-50; }
   .btn:disabled { @apply opacity-40 pointer-events-none; }
 
   .tag { @apply inline-flex items-center rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 text-micro font-medium text-ink-600; }
-  .tag-ok { @apply border-ok-fg/25 bg-ok-bg text-ok-strong; }
+  .tag-ok { @apply border-ok-border bg-ok-bg text-ok-strong; }
   .tag-warn { @apply border-warn-border bg-warn-bg text-warn-fg; }
   .id-chip { @apply font-mono text-micro text-ink-500; }
 
   /* Left rail */
   .nav-link { @apply flex w-full items-baseline gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-ink-700 hover:bg-ink-100; }
-  .nav-link.is-active { @apply bg-white font-medium text-ink-900 shadow-none ring-1 ring-ink-200; }
+  .nav-link.is-active { @apply bg-surface font-medium text-ink-900 shadow-none ring-1 ring-ink-200; }
 
   /* Diff */
   .diff { @apply overflow-hidden rounded-md border border-ink-200; }

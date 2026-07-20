@@ -1,34 +1,51 @@
 /** @type {import('tailwindcss').Config} */
+// Colors are driven by CSS variables defined in src/brand.css (light + dark).
+// Keep values as var() references so every utility follows the active theme.
 export default {
   content: ["./index.html"],
   theme: {
-    // Warm-neutral base (stone) + a single considered blue accent. No purple anywhere.
     colors: {
       transparent: "transparent",
       current: "currentColor",
       white: "#ffffff",
-      canvas: "#fbfaf9",
+      canvas: "var(--canvas)",
+      surface: "var(--surface)",
       ink: {
-        50: "#f7f6f5",
-        100: "#efedeb",
-        200: "#e4e1de",
-        300: "#d3cfcb",
-        400: "#a8a29e",
-        500: "#78716c",
-        600: "#57534e",
-        700: "#44403c",
-        800: "#292524",
-        900: "#1c1917",
+        50: "var(--ink-50)",
+        100: "var(--ink-100)",
+        200: "var(--ink-200)",
+        300: "var(--ink-300)",
+        400: "var(--ink-400)",
+        500: "var(--ink-500)",
+        600: "var(--ink-600)",
+        700: "var(--ink-700)",
+        800: "var(--ink-800)",
+        900: "var(--ink-900)",
       },
       accent: {
-        50: "#eff5fd",
-        100: "#dbe8fb",
-        600: "#0a6ae0",
-        700: "#0857b8",
+        50: "var(--accent-50)",
+        100: "var(--accent-100)",
+        600: "var(--accent-600)",
+        700: "var(--accent-700)",
+        fg: "var(--accent-fg)",
       },
-      ok: { fg: "#1a7f37", bg: "#e6f4ea", line: "#e6ffec", strong: "#116329" },
-      danger: { fg: "#cf222e", bg: "#ffebe9", line: "#ffdcd7" },
-      warn: { fg: "#8a6100", bg: "#fff8c5", border: "#e6c34a" },
+      ok: {
+        fg: "var(--ok-fg)",
+        bg: "var(--ok-bg)",
+        line: "var(--ok-line)",
+        border: "var(--ok-border)",
+        strong: "var(--ok-strong)",
+      },
+      danger: {
+        fg: "var(--danger-fg)",
+        bg: "var(--danger-bg)",
+        line: "var(--danger-line)",
+      },
+      warn: {
+        fg: "var(--warn-fg)",
+        bg: "var(--warn-bg)",
+        border: "var(--warn-border)",
+      },
     },
     fontFamily: {
       sans: ['"IBM Plex Sans"', "system-ui", "sans-serif"],

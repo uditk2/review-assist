@@ -48,3 +48,7 @@ Layout & components
 - **Vary anatomy**: the overview, a walkthrough stop, and the verification page are laid
   out differently on purpose; nothing is a repeated identical module.
 - Styling comes from a Tailwind theme (tokens in `tailwind.config.js`), not ad-hoc CSS.
+- **Theme tokens live in `src/brand.css`** as CSS variables, with a light and a dark
+  palette. Dark follows the OS `prefers-color-scheme` and can be overridden by the header
+  toggle (`data-theme`). Tailwind color names map to these variables, so both modes stay
+  in sync from one source. Semantic colors (add/remove/caution) keep their meaning in dark.

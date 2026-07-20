@@ -111,7 +111,6 @@ the other two are **manual** (`workflow_dispatch`, run from the **Actions** tab)
 | **CI** | push / PR | build · typecheck · test · validate example | — |
 | **Publish MCP server** | manual | version-bump + `npm publish` the MCP server | `NPM_TOKEN` |
 | **Deploy review app** | manual | build viewer + `wrangler deploy` the Worker | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
-| **Release GitHub Action** | manual | bundle + tag so consumers on `@v0` update | — |
 
 ## Deployment
 

@@ -142,14 +142,15 @@ function render(){
     covOk ? `${cov.explained} of ${cov.total} changes explained`
           : `${cov.unexplained.length} change${cov.unexplained.length>1?"s":""} uncovered`);
 
-  const header = el("header",{class:"sticky top-0 z-10 border-b border-ink-200 bg-canvas/90 backdrop-blur"},
+  const header = el("header",{class:"sticky top-0 z-10 border-b border-ink-200 bg-canvas"},
     el("div",{class:"flex items-center gap-3 px-6 py-3"},
       el("span",{class:"font-mono text-sm text-ink-700"}, `${m.owner}/${m.repo}`),
       el("span",{class:"id-chip"}, `#${m.pull}`),
       el("span",{class:"truncate text-ink-500"}, m.title || ""),
       el("span",{class:"flex-1"}),
       covTag,
-      STATE.me ? el("span",{class:"tag"}, "@"+STATE.me) : null));
+      STATE.me ? el("span",{class:"tag"}, "@"+STATE.me) : null,
+      themeToggle()));
 
   const link = (view, label, badge) => el("button",
     {class:"nav-link"+(STATE.view===view?" is-active":""), onclick:()=>{STATE.view=view;render();}},
@@ -173,6 +174,19 @@ function render(){
       : renderStop()));
 
   document.getElementById("app").replaceChildren(header, el("div",{class:"flex"}, nav, main));
+}
+
+function currentTheme() {
+  const attr = document.documentElement.getAttribute("data-theme");
+  if (attr) return attr;
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+function themeToggle() {
+  const dark = currentTheme() === "dark";
+  return el("button",{
+    class:"btn-ghost !px-2.5 !py-1", title:"Toggle light / dark",
+    onclick:()=>{ document.documentElement.setAttribute("data-theme", dark ? "light" : "dark"); render(); }
+  }, dark ? "Light" : "Dark");
 }
 
 function labeled(label, ...body){
