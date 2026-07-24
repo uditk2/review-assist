@@ -56,11 +56,13 @@ function computeCoverage(tour, diffFiles) {
   const anchors = [];
   tour.forEach(s => (s.anchors||[]).forEach(a => anchors.push({ path:a.path, range:newRange(a.hunk) })));
   const unexplained = []; let total = 0;
-  for (const f of diffFiles) for (const h of f.hunks) {
+  for (const f of diffFiles) {
+    if (f.path === ".intent" || f.path.startsWith(".intent/")) continue; // a doc needn't explain itself
+    for (const h of f.hunks) {
     total++; const hr = newRange(h);
     const cov = anchors.some(an => an.path===f.path && overlap(an.range,hr));
     if (!cov && h.substantive) unexplained.push({ path:f.path, hunk:h });
-  }
+  } }
   return { total, unexplained, explained: total - unexplained.length };
 }
 function hunksForStop(stop, diffFiles) {

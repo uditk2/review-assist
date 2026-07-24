@@ -1,0 +1,137 @@
+{
+  "schema_version": "0.1",
+  "meta": {
+    "id": "01J9ZR8Q2M4V6B8N0T2C4E6H8K",
+    "repo": "uditk2/review-assist",
+    "commit_range": { "base_sha": "cd772a6", "head_sha": "43f7b0a" },
+    "session": {
+      "agent": "claude-code",
+      "model": "claude-opus-4-8",
+      "started_at": "2026-07-20T16:20:00+05:30",
+      "ended_at": "2026-07-20T16:49:00+05:30"
+    },
+    "generated_by": { "pipeline": "review-assist", "version": "0.1.0" },
+    "generated_at": "2026-07-20T16:49:00+05:30",
+    "interview": { "rounds": 1, "questions_asked": 2, "unresolved": 0 }
+  },
+  "problem": {
+    "statement": "The Intent Document is committed into the same PR as the code it describes, so its own file (.intent/<branch>.json) shows up in the PR diff — and the coverage check counted it as an unexplained change, forcing a document to account for itself.",
+    "origin": "emerged_during_session",
+    "evolution": [
+      { "at": "dogfooding", "formulation": "Generate a real Intent Document for a review-assist change and open a PR." },
+      { "at": "on first generation", "formulation": "The .intent file itself appears as an uncovered hunk — a document shouldn't have to explain its own file." }
+    ],
+    "user_asks": [
+      "\"raise a pr for this repo and check what the generation looks like\"",
+      "\"generate the required intent document for the change\""
+    ],
+    "out_of_scope": [
+      "The v2 items (cross-repo linking, rich markdown/mermaid content, safe rendering) are recorded in SPEC but not implemented in this change."
+    ]
+  },
+  "assumptions": [
+    {
+      "id": "A1",
+      "assumption": "`.intent/` is the only path used for Review Assist's own bookkeeping inside a target repo.",
+      "impact_if_wrong": "If documents were ever stored elsewhere, that path would still be miscounted against coverage.",
+      "depends": ["T1", "T2"],
+      "how_to_verify": "Confirm submit_document only ever writes under .intent/ (see packages/mcp-server).",
+      "confidence": "grounded_in_code"
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Should staleness ignore doc-only commits, so committing the document (which advances HEAD past the recorded head_sha) doesn't read as stale?",
+      "context": "The document records the code head; committing it as a second commit moves HEAD. The viewer doesn't enforce staleness, but the Action would.",
+      "raised_by": "author_agent"
+    }
+  ],
+  "approach": {
+    "requirements": [
+      { "text": "A document must not have to explain its own file", "source": "dogfooding observation" },
+      { "text": "Validator and viewer must agree on coverage, so CI and the UI never disagree", "source": "design invariant" }
+    ],
+    "trials": [
+      {
+        "what": "Anchor the .intent file with an incidental tour stop so it counts as covered",
+        "outcome": "Works, but is self-referential and pushes the mechanism into every document",
+        "why_abandoned": "Excluding .intent/ from the denominator is cleaner and needs no per-document effort"
+      }
+    ],
+    "adopted": {
+      "summary": "Exclude .intent/ paths from the coverage denominator in both the validator and the viewer, cover it with a test, and record the v2 roadmap in SPEC.",
+      "rationale": "Keeps the every-change-explained guarantee for real code without forcing the document to account for itself; applying it in both the validator and the viewer keeps CI and the UI consistent (req 2)."
+    }
+  },
+  "tour": [
+    {
+      "id": "T1",
+      "title": "Validator: skip .intent/ in coverage",
+      "role": "core",
+      "what": "runCoverage() now continues past any diff file under .intent/, via a new isIntentPath() helper.",
+      "why": "This is the authoritative check CI runs, so excluding the document's own file here is what actually lets the PR pass (req 1).",
+      "anchors": [
+        { "path": "packages/validator/src/index.ts", "hunk": { "old_start": 132, "old_lines": 6, "new_start": 132, "new_lines": 9 } },
+        { "path": "packages/validator/src/index.ts", "hunk": { "old_start": 260, "old_lines": 6, "new_start": 263, "new_lines": 11 } }
+      ],
+      "parent": null,
+      "provenance": "from_transcript",
+      "attention": "The helper matches both the exact path `.intent` and the `.intent/` prefix — check it can't accidentally match a real source dir like `.intentional/`."
+    },
+    {
+      "id": "T2",
+      "title": "Viewer: the same exclusion, client-side",
+      "role": "core",
+      "what": "computeCoverage() skips .intent/ files so the rendered coverage badge matches the validator.",
+      "why": "CI and the UI must agree (req 2); otherwise a PR could pass CI yet show an uncovered change in the viewer.",
+      "anchors": [
+        { "path": "apps/github-app/viewer/index.html", "hunk": { "old_start": 56, "old_lines": 11, "new_start": 56, "new_lines": 13 } }
+      ],
+      "parent": "T1",
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T3",
+      "title": "Test the exclusion",
+      "role": "supporting",
+      "what": "Adds a validator test: a diff that includes a .intent/ file still reports full coverage.",
+      "why": "Locks the behavior so a future refactor can't silently reintroduce self-counting.",
+      "anchors": [
+        { "path": "packages/validator/test/validator.test.ts", "hunk": { "old_start": 146, "old_lines": 6, "new_start": 146, "new_lines": 20 } }
+      ],
+      "parent": "T1",
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T4",
+      "title": "Record the v2 roadmap",
+      "role": "supporting",
+      "what": "SPEC gains a v2 section: cross-repo linking, rich markdown/mermaid content, safe rendering, and this coverage exclusion.",
+      "why": "Captures the decisions taken this session so they are not relitigated; the exclusion is noted there as shipped in this change.",
+      "anchors": [
+        { "path": "SPEC.md", "hunk": { "old_start": 199, "old_lines": 6, "new_start": 199, "new_lines": 38 } }
+      ],
+      "parent": null,
+      "provenance": "from_transcript"
+    }
+  ],
+  "verification": {
+    "performed": [
+      { "kind": "test", "description": "vitest suite including the new .intent exclusion test", "result": "20 passed" },
+      { "kind": "build", "description": "tsc build of schema + validator", "result": "pass" }
+    ],
+    "added_tests": [
+      {
+        "covers": ".intent/ files are excluded from the coverage denominator",
+        "anchors": [
+          { "path": "packages/validator/test/validator.test.ts", "hunk": { "old_start": 146, "old_lines": 6, "new_start": 146, "new_lines": 20 } }
+        ]
+      }
+    ],
+    "not_verified": [
+      "The live viewer reflects the exclusion only after a redeploy (done separately from this commit).",
+      "Staleness when the doc-only commit advances HEAD past the recorded head_sha — raised as Q1, not addressed here."
+    ]
+  }
+}
