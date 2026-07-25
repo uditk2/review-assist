@@ -8,7 +8,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
 
 const exec = promisify(execFile);
 
@@ -34,23 +34,118 @@ export async function computeDiff(
 }
 
 /**
- * Locate the Claude Code JSONL transcript(s) for a repo. Claude Code stores sessions
- * under ~/.claude/projects/<encoded-cwd>/<session>.jsonl. We encode the repo path the
- * same way (path separators → dashes) and return matching files newest-first.
+ * Locate session transcript(s) for a repo across supported agents, newest-first.
+ * Works with BOTH:
+ *   - Claude Code: ~/.claude/projects/<encoded-cwd>/<session>.jsonl  (one dir per cwd)
+ *   - Codex:       ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl       (global; cwd is
+ *                  recorded in the session's meta head)
+ *
+ * In multi-repo/container setups the agent runs at a directory ABOVE the changed repo
+ * (e.g. a container holding several repos), so a session is accepted when its recorded
+ * cwd is the repo OR any ancestor of it. The transcript parser is format-agnostic, so a
+ * distiller can hydrate from either agent's log.
  */
 export function findTranscripts(repoDir: string, override?: string): string[] {
   if (override) {
     return existsSync(override) ? [override] : [];
   }
-  const base = join(homedir(), ".claude", "projects");
-  if (!existsSync(base)) return [];
-  const encoded = resolve(repoDir).replace(/[/\\]/g, "-");
-  const dir = join(base, encoded);
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => f.endsWith(".jsonl"))
-    .map((f) => join(dir, f))
-    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+  const repo = resolve(repoDir);
+  const candidates = new Set(ancestorsInclusive(repo, 4)); // repo + up to 4 parents
+  const found: { path: string; mtime: number }[] = [];
+
+  // Claude Code — one directory per cwd-encoded path.
+  const projects = join(homedir(), ".claude", "projects");
+  if (existsSync(projects)) {
+    for (const c of candidates) {
+      const dir = join(projects, c.replace(/[/\\]/g, "-"));
+      if (existsSync(dir)) {
+        for (const f of readdirSync(dir)) {
+          if (f.endsWith(".jsonl")) {
+            const p = join(dir, f);
+            found.push({ path: p, mtime: safeMtime(p) });
+          }
+        }
+      }
+    }
+  }
+
+  // Codex — sessions are global; match the cwd recorded in each session's head against
+  // repo-or-ancestor. Bound the content scan to the most-recent files for speed.
+  const codexRoot = join(homedir(), ".codex", "sessions");
+  if (existsSync(codexRoot)) {
+    const recent = walkJsonl(codexRoot, 4)
+      .map((p) => ({ p, m: safeMtime(p) }))
+      .sort((a, b) => b.m - a.m)
+      .slice(0, 120);
+    for (const { p } of recent) {
+      const cwd = sessionCwd(p);
+      if (cwd && candidates.has(resolve(cwd))) found.push({ path: p, mtime: safeMtime(p) });
+    }
+  }
+
+  return found.sort((a, b) => b.mtime - a.mtime).map((x) => x.path);
+}
+
+/** [dir, parent, grandparent, …] up to `levels` above `dir` (inclusive of dir). */
+function ancestorsInclusive(dir: string, levels: number): string[] {
+  const out = [dir];
+  let cur = dir;
+  for (let i = 0; i < levels; i++) {
+    const parent = dirname(cur);
+    if (parent === cur) break;
+    out.push(parent);
+    cur = parent;
+  }
+  return out;
+}
+
+function safeMtime(p: string): number {
+  try {
+    return statSync(p).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+/** Recursively collect *.jsonl paths up to `depth` directory levels under `root`. */
+function walkJsonl(root: string, depth: number): string[] {
+  const out: string[] = [];
+  const walk = (dir: string, d: number): void => {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      const full = join(dir, name);
+      let isDir = false;
+      try {
+        isDir = statSync(full).isDirectory();
+      } catch {
+        continue;
+      }
+      if (isDir) {
+        if (d > 0) walk(full, d - 1);
+      } else if (name.endsWith(".jsonl")) {
+        out.push(full);
+      }
+    }
+  };
+  walk(root, depth);
+  return out;
+}
+
+/** Extract the working directory a Codex session recorded in its meta head, if present. */
+function sessionCwd(path: string): string | null {
+  try {
+    const head = readFileSync(path, "utf8").slice(0, 8192);
+    const m = head.match(/"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (!m) return null;
+    return m[1].replace(/\\\\/g, "\\").replace(/\\"/g, '"');
+  } catch {
+    return null;
+  }
 }
 
 export interface TranscriptEntry {
@@ -62,7 +157,8 @@ export interface TranscriptEntry {
 
 /**
  * Read a window of a JSONL transcript as lightweight entries. Paging keeps very long
- * transcripts within a fresh distiller agent's budget.
+ * transcripts within a fresh distiller agent's budget. Format-agnostic: handles both
+ * Claude Code entries and Codex's `{type, timestamp, payload}` wrapper.
  */
 export function readTranscriptWindow(
   path: string,
@@ -76,7 +172,13 @@ export function readTranscriptWindow(
     let text = "";
     try {
       const obj = JSON.parse(line);
-      role = obj.type ?? obj.role ?? obj.message?.role ?? "unknown";
+      role =
+        obj.payload?.role ??
+        obj.message?.role ??
+        obj.role ??
+        obj.payload?.type ??
+        obj.type ??
+        "unknown";
       text = flattenText(obj);
     } catch {
       text = line.slice(0, 500);
@@ -96,6 +198,7 @@ function flattenText(obj: unknown): string {
       if (typeof o.text === "string") parts.push(o.text);
       if (o.content) walk(o.content);
       if (o.message) walk(o.message);
+      if (o.payload) walk(o.payload); // Codex wraps each entry under `payload`.
     }
   };
   walk(obj);
