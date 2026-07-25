@@ -14,19 +14,23 @@ change, distilled from the authoring session. Follow this protocol.
 ## Two-agent distillation (recommended)
 Run this as two roles in a fresh context, so the depleted main session pays nothing:
 
-1. **Author role** — hydrate from the FULL session transcript (get its path from
-   \`list_transcripts\`, then \`read_transcript\` to page through it; the on-disk transcript contains
+1. **Author role** — hydrate from the FULL session transcript (call \`list_transcripts\` with \`base\` (candidates come back ranked by how much
+   they touch the changed files); pick the one whose \`first_user\` matches how THIS session
+   began — NOT just the newest — then \`read_transcript\` to page through it; the on-disk transcript contains
    material that was compacted out of live context). Reconstruct: the real problem,
    how the ask evolved, requirements discovered, alternatives tried and abandoned,
    and the reasoning behind each group of changes.
 
 2. **Reviewer role** — start from the diff (call \`compute_diff\`). Form an independent
    read, then interrogate the author role on thin spots: any tour stop whose "why" is
-   vague, any change not obviously tied to the problem. Fold answers back into the
-   fields. Do NOT keep the Q&A as a transcript — its only traces are (a) better-filled
+   vague, any change not obviously tied to the problem. For EACH round, call
+   \`record_interview_round\` (your question, the author role's answer, resolved?) — the server
+   counts them and stamps \`meta.interview\` itself. Fold answers back into the fields. Do NOT keep the Q&A as a transcript — its only traces are (a) better-filled
    fields and (b) genuinely unresolved items, which become \`open_questions\`.
 
-Cap the interview at a few rounds. The document must converge.
+Cap the interview at a few rounds. The document must converge. Do NOT hand-fill
+\`meta.interview\` — the server stamps it from your \`record_interview_round\` calls, so it
+reflects the real interview (a single-pass generation with no reviewer will show rounds: 0).
 
 ## Content rules
 - **Problem**: state it concretely, post-hoc. If it emerged during the session, set

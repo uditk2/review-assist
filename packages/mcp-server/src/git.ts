@@ -8,7 +8,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve, dirname } from "node:path";
+import { join, resolve, dirname, sep } from "node:path";
 
 const exec = promisify(execFile);
 
@@ -203,4 +203,92 @@ function flattenText(obj: unknown): string {
   };
   walk(obj);
   return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+
+export interface TranscriptCandidate {
+  path: string;
+  agent: "claude-code" | "codex" | "unknown";
+  mtime: number;
+  cwd: string | null;
+  lines: number;
+  /** Preview of the first user message — use this to recognize THIS session. */
+  first_user: string;
+  /** Preview of the last activity in the session. */
+  last_activity: string;
+  /** How much this session references the changed files/branch (higher = more likely). */
+  relevance: number;
+}
+
+/**
+ * Rank candidate transcripts so the driving agent can pick its OWN session even when
+ * several are close in time. Scores each by how much it references the changed files and
+ * branch (from compute_diff), then recency, and returns the top `limit` with previews —
+ * so the agent confirms the match from `first_user` without reading every candidate.
+ */
+export function listTranscriptCandidates(
+  repoDir: string,
+  opts: { override?: string; changedBasenames?: string[]; branch?: string; limit?: number } = {}
+): TranscriptCandidate[] {
+  const paths = findTranscripts(repoDir, opts.override).slice(0, 30); // recency-bounded scan
+  const basenames = Array.from(new Set((opts.changedBasenames ?? []).filter((b) => b && b.length > 2)));
+  const branch = opts.branch?.trim();
+  const cands: TranscriptCandidate[] = paths.map((p) => {
+    let content = "";
+    try {
+      content = readFileSync(p, "utf8");
+    } catch {
+      /* unreadable — skip content-based signals */
+    }
+    if (content.length > 1_000_000) content = content.slice(0, 500_000) + content.slice(-500_000);
+    const lines = content.split("\n").filter((l) => l.trim().length > 0);
+    const agent: TranscriptCandidate["agent"] = p.includes(`${sep}.claude${sep}`)
+      ? "claude-code"
+      : p.includes(`${sep}.codex${sep}`)
+      ? "codex"
+      : "unknown";
+    let relevance = 0;
+    for (const b of basenames) if (content.includes(b)) relevance += 1;
+    if (branch && branch.length > 1 && content.includes(branch)) relevance += 2;
+    return {
+      path: p,
+      agent,
+      mtime: safeMtime(p),
+      cwd: sessionCwd(p),
+      lines: lines.length,
+      first_user: previewFirstUser(lines),
+      last_activity: previewLast(lines),
+      relevance,
+    };
+  });
+  cands.sort((a, b) => b.relevance - a.relevance || b.mtime - a.mtime);
+  return cands.slice(0, opts.limit ?? 8);
+}
+
+function previewFirstUser(lines: string[]): string {
+  for (const line of lines) {
+    try {
+      const obj = JSON.parse(line);
+      const role = obj.payload?.role ?? obj.message?.role ?? obj.role ?? obj.type;
+      if (role === "user") {
+        const t = flattenText(obj);
+        if (t) return t.slice(0, 240);
+      }
+    } catch {
+      /* ignore non-JSON line */
+    }
+  }
+  return "";
+}
+
+function previewLast(lines: string[]): string {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const t = flattenText(JSON.parse(lines[i]));
+      if (t) return t.slice(0, 240);
+    } catch {
+      /* ignore */
+    }
+  }
+  return "";
 }
