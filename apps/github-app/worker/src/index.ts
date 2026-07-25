@@ -14,6 +14,7 @@
  *   - static assets (the SPA) MAY be edge-cached; they contain no repo content
  */
 
+import { handleWebhook } from "./webhook.js";
 import {
   sealSession,
   openSession,
@@ -28,6 +29,10 @@ interface Env {
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
   SESSION_SECRET: string;
+  // GitHub App (webhook path): mint installation tokens + verify webhook signatures.
+  GITHUB_APP_ID: string;
+  GITHUB_APP_PRIVATE_KEY: string;
+  GITHUB_WEBHOOK_SECRET: string;
   APP_NAME?: string;
 }
 
@@ -35,11 +40,12 @@ const GH_API = "https://api.github.com";
 const UA = "review-assist-viewer";
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
     try {
+      if (path === "/api/webhook") return handleWebhook(request, url.origin, env, ctx);
       if (path === "/api/login") return handleLogin(url, env);
       if (path === "/api/callback") return handleCallback(url, env);
       if (path === "/api/logout") return handleLogout();
