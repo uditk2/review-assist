@@ -14,8 +14,8 @@ change, distilled from the authoring session. Follow this protocol.
 ## Two-agent distillation (recommended)
 Run this as two roles in a fresh context, so the depleted main session pays nothing:
 
-1. **Author role** — hydrate from the FULL session transcript (use
-   \`read_transcript_window\` to page through it; the on-disk transcript contains
+1. **Author role** — hydrate from the FULL session transcript (get its path from
+   \`list_transcripts\`, then \`read_transcript\` to page through it; the on-disk transcript contains
    material that was compacted out of live context). Reconstruct: the real problem,
    how the ask evolved, requirements discovered, alternatives tried and abandoned,
    and the reasoning behind each group of changes.
@@ -42,6 +42,11 @@ Cap the interview at a few rounds. The document must converge.
 - **Verification**: record what was actually run, and be honest in \`not_verified\`.
 - **Redaction**: never put secrets, tokens, internal credentials, or raw keys in any
   field. The validator will hard-fail them, but do not rely on it.
+
+## Which repository
+If the server runs at a container level spanning multiple repos, pass \`repo\` (the
+absolute path of the git repository you changed) to EVERY tool call — \`compute_diff\`
+and \`submit_document\`. The document is written to \`<repo>/.intent/<branch>.json\`.
 
 ## Anchoring
 Each anchor is { path, hunk: { old_start, old_lines, new_start, new_lines } } on the
