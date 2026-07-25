@@ -61,7 +61,9 @@ function handleLogin(url: URL, env: Env): Response {
   const authorize = new URL("https://github.com/login/oauth/authorize");
   authorize.searchParams.set("client_id", env.GITHUB_CLIENT_ID);
   authorize.searchParams.set("redirect_uri", redirectUri);
-  authorize.searchParams.set("scope", "repo read:user");
+  // GitHub App user-to-server flow: NO scope param. Access is fine-grained (set on the
+  // App: Contents:read, Pull requests:read+write) and gated to repos where the App is
+  // installed AND the user has access. This replaces the OAuth App's coarse `repo` scope.
   authorize.searchParams.set("state", state);
   // state is echoed back and validated in the callback (CSRF guard).
   return new Response(null, {
