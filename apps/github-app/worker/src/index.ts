@@ -51,6 +51,10 @@ export default {
       if (path === "/api/logout") return handleLogout();
       if (path === "/api/me") return handleMe(request, env);
       if (path === "/api/document") return handleDocument(request, url, env);
+      if (path === "/api/comments" && request.method === "GET") return handleListComments(request, url, env);
+      if (path === "/api/comments" && request.method === "POST") return handleCreateComment(request, env);
+      if (path === "/api/comments/reply" && request.method === "POST") return handleReplyComment(request, env);
+      if (path === "/api/issue-comment" && request.method === "POST") return handleIssueComment(request, env);
     } catch (e) {
       return json({ error: (e as Error).message }, 500, true);
     }
@@ -197,6 +201,119 @@ async function handleDocument(request: Request, url: URL, env: Env): Promise<Res
     200,
     true // no-store: this carries private repo content
   );
+}
+
+// ---- Stage C: inline PR review comments (GitHub-backed; user's fine-grained token) ----
+
+/** Authenticated GitHub request as the signed-in reviewer. */
+function ghUser(token: string, path: string, init?: RequestInit): Promise<Response> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+    "User-Agent": UA,
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  if (init && init.method === "POST") headers["Content-Type"] = "application/json";
+  return fetch(`${GH_API}${path}`, { ...init, headers });
+}
+
+/** GET the PR's line-anchored review comments (with replies), flattened to what the viewer needs. */
+async function handleListComments(request: Request, url: URL, env: Env): Promise<Response> {
+  const session = await currentSession(request, env);
+  if (!session) return json({ error: "unauthenticated" }, 401, true);
+  const owner = url.searchParams.get("owner");
+  const repo = url.searchParams.get("repo");
+  const pull = url.searchParams.get("pull");
+  if (!owner || !repo || !pull) return json({ error: "owner, repo, pull required" }, 400, true);
+  const res = await ghUser(session.token, `/repos/${owner}/${repo}/pulls/${pull}/comments?per_page=100`);
+  if (!res.ok) return json({ error: `comments fetch failed (${res.status})` }, res.status, true);
+  const raw = (await res.json()) as GhReviewComment[];
+  const comments = raw.map((c) => ({
+    id: c.id,
+    path: c.path,
+    line: c.line ?? c.original_line ?? null,
+    side: c.side,
+    in_reply_to_id: c.in_reply_to_id ?? null,
+    body: c.body,
+    user: c.user?.login ?? "unknown",
+    created_at: c.created_at,
+    html_url: c.html_url,
+    outdated: c.line == null,
+  }));
+  return json({ comments }, 200, true);
+}
+
+/** POST a new line-anchored review comment as the signed-in reviewer. */
+async function handleCreateComment(request: Request, env: Env): Promise<Response> {
+  const session = await currentSession(request, env);
+  if (!session) return json({ error: "unauthenticated" }, 401, true);
+  const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const { owner, repo, pull, commit_id, path, line, body } = b as {
+    owner?: string; repo?: string; pull?: string | number; commit_id?: string; path?: string; line?: number; body?: string;
+  };
+  const side = (b.side as string) || "RIGHT";
+  if (!owner || !repo || !pull || !commit_id || !path || !line || !body) {
+    return json({ error: "owner, repo, pull, commit_id, path, line, body required" }, 400, true);
+  }
+  const res = await ghUser(session.token, `/repos/${owner}/${repo}/pulls/${pull}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body, commit_id, path, line, side }),
+  });
+  const data = await res.json();
+  if (!res.ok) return json({ error: (data as { message?: string }).message ?? `create failed (${res.status})` }, res.status, true);
+  return json({ comment: data }, 201, true);
+}
+
+/** Reply to an existing review-comment thread. */
+async function handleReplyComment(request: Request, env: Env): Promise<Response> {
+  const session = await currentSession(request, env);
+  if (!session) return json({ error: "unauthenticated" }, 401, true);
+  const b = (await request.json().catch(() => ({}))) as {
+    owner?: string; repo?: string; pull?: string | number; comment_id?: number; body?: string;
+  };
+  const { owner, repo, pull, comment_id, body } = b;
+  if (!owner || !repo || !pull || !comment_id || !body) {
+    return json({ error: "owner, repo, pull, comment_id, body required" }, 400, true);
+  }
+  const res = await ghUser(session.token, `/repos/${owner}/${repo}/pulls/${pull}/comments/${comment_id}/replies`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+  const data = await res.json();
+  if (!res.ok) return json({ error: (data as { message?: string }).message ?? `reply failed (${res.status})` }, res.status, true);
+  return json({ comment: data }, 201, true);
+}
+
+/** POST a PR-level (issue) comment — the "global" discussion channel for non-line items
+ *  (assumptions, approach, open questions), which aren't anchored to a diff line. */
+async function handleIssueComment(request: Request, env: Env): Promise<Response> {
+  const session = await currentSession(request, env);
+  if (!session) return json({ error: "unauthenticated" }, 401, true);
+  const b = (await request.json().catch(() => ({}))) as {
+    owner?: string; repo?: string; pull?: string | number; body?: string;
+  };
+  const { owner, repo, pull, body } = b;
+  if (!owner || !repo || !pull || !body) return json({ error: "owner, repo, pull, body required" }, 400, true);
+  const res = await ghUser(session.token, `/repos/${owner}/${repo}/issues/${pull}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+  const data = await res.json();
+  if (!res.ok) return json({ error: (data as { message?: string }).message ?? `create failed (${res.status})` }, res.status, true);
+  return json({ comment: data }, 201, true);
+}
+
+interface GhReviewComment {
+  id: number;
+  path: string;
+  line: number | null;
+  original_line: number | null;
+  side: string;
+  in_reply_to_id?: number;
+  body: string;
+  user?: { login: string };
+  created_at: string;
+  html_url: string;
 }
 
 async function currentSession(request: Request, env: Env): Promise<Session | null> {

@@ -5,6 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Review Assist — guided review for AI-written code</title>
 <link rel="stylesheet" href="./styles.css" />
+<style>
+.rev-line{position:relative}
+.rev-add{position:absolute;top:0;right:.25rem;height:100%;display:flex;align-items:center;padding:0 .45rem;border:0;background:none;color:var(--ink-400);font-weight:700;cursor:pointer;opacity:0;transition:opacity .1s}
+.rev-line:hover .rev-add{opacity:1}
+.rev-add:hover{color:var(--accent-600)}
+.rev-thread{margin:.4rem 0 .6rem;border:1px solid var(--ink-200);border-radius:8px;background:var(--ink-50);padding:.45rem .7rem}
+.rev-comment{padding:.4rem 0;border-bottom:1px solid var(--ink-200)}
+.rev-comment:last-of-type{border-bottom:0}
+.rev-meta{display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:var(--ink-500);margin-bottom:.15rem}
+.rev-author{font-weight:600;color:var(--ink-700)}
+.rev-link{margin-left:auto;color:var(--ink-400);text-decoration:none}
+.rev-link:hover{color:var(--accent-600)}
+.rev-body{white-space:pre-wrap;color:var(--ink-800);font-size:.9rem;line-height:1.45}
+.rev-reply-toggle{margin-top:.35rem;border:0;background:none;color:var(--ink-500);font-size:.8rem;cursor:pointer;padding:0}
+.rev-reply-toggle:hover{color:var(--accent-600)}
+.rev-composer{margin:.4rem 0 .6rem}
+.rev-textarea{width:100%;box-sizing:border-box;border:1px solid var(--ink-300);border-radius:8px;background:var(--canvas);color:var(--ink-800);padding:.5rem .6rem;font:inherit;font-size:.9rem;resize:vertical}
+.rev-actions{display:flex;align-items:center;gap:.5rem;margin-top:.4rem}
+.rev-status{font-size:.8rem;color:var(--ink-500)}
+</style>
 </head>
 <body>
 <div id="app" class="min-h-screen">
@@ -95,7 +115,7 @@ const CONF = {
 };
 const titleCase = s => String(s||"").replace(/_/g," ");
 
-let STATE = { data:null, files:[], coverage:null, ordered:[], view:"overview", stopIndex:0, acks:{}, me:null };
+let STATE = { data:null, files:[], coverage:null, ordered:[], view:"overview", stopIndex:0, acks:{}, me:null, comments:[], composer:null, composerSeed:"", posted:{} };
 
 function parseHash() {
   const m = /#([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(location.hash);
@@ -121,7 +141,9 @@ async function boot() {
   STATE.ordered = orderTour(data.document.tour || []);
   STATE.coverage = computeCoverage(data.document.tour || [], STATE.files);
   STATE.view = "overview"; STATE.stopIndex = 0;
+  STATE.comments = []; STATE.composer = null;
   render();
+  loadComments().then(render); // overlay PR review comments once fetched
 }
 
 function centered(...kids){ return el("div",{class:"mx-auto flex min-h-screen max-w-prose flex-col items-start justify-center gap-3 px-6"}, ...kids); }
@@ -259,7 +281,10 @@ function renderOverview(doc){
           row("If wrong", a.impact_if_wrong),
           a.how_to_verify ? row("How to verify", a.how_to_verify) : null),
         el("div",{class:"mt-3 flex gap-2"},
-          ackBtn(a.id,"accept","Accept",state), ackBtn(a.id,"flag","Flag for discussion",state))));
+          el("button",{class:"btn-ghost"+(state==="accept"?" is-on":""), onclick:()=>assumeAction(a,"accept")}, "Accept"),
+          el("button",{class:"btn-ghost"+(state==="flag"?" is-on":""), onclick:()=>assumeAction(a,"flag")}, "Flag for discussion")),
+        STATE.composer==="assume:"+a.id ? renderGlobalComposer("assume:"+a.id, STATE.composerSeed) : null,
+        STATE.posted["assume:"+a.id] ? el("p",{class:"mt-2 text-sm text-ink-500"}, "\u2713 Posted to the PR discussion.") : null));
     }
     f.append(sec);
   }
@@ -328,11 +353,129 @@ function renderStop(){
 function renderHunk(path, h){
   const body = el("div",{class:"diff-body"});
   body.append(el("code",{class:"diff-line is-hunk"}, `@@ -${h.old_start},${h.old_lines} +${h.new_start},${h.new_lines} @@${h.header||""}`));
+  let newLine = h.new_start;
   for (const line of h.lines){
-    const cls = line[0]==="+" ? "is-add" : line[0]==="-" ? "is-del" : "is-ctx";
-    body.append(el("code",{class:"diff-line "+cls}, line));
+    const t = line[0];
+    const cls = t==="+" ? "is-add" : t==="-" ? "is-del" : "is-ctx";
+    const onRight = (t==="+" || t===" " || t===undefined || t==="");
+    const lineNo = onRight ? newLine : null;
+    const code = el("code",{class:"diff-line "+cls}, line);
+    if (onRight && STATE.me){
+      const key = path+":"+lineNo;
+      const addBtn = el("button",{class:"rev-add", title:"Comment on line "+lineNo,
+        onclick:()=>{ STATE.composer = STATE.composer===key ? null : key; render(); }}, "+");
+      body.append(el("div",{class:"rev-line"}, code, addBtn));
+      for (const root of STATE.comments.filter(c => c.path===path && c.line===lineNo && !c.in_reply_to_id)) body.append(renderThread(root));
+      if (STATE.composer===key) body.append(renderComposer(path, lineNo, null));
+    } else {
+      body.append(code);
+    }
+    if (onRight) newLine++;
   }
   return el("div",{class:"diff"}, el("div",{class:"diff-file"}, el("span",{}, path)), body);
+}
+
+// ---------- Stage C: inline review comments (GitHub-backed) ----------
+async function loadComments(){
+  const m = STATE.data && STATE.data.meta; if (!m) return;
+  try {
+    const r = await fetch(`/api/comments?owner=${encodeURIComponent(m.owner)}&repo=${encodeURIComponent(m.repo)}&pull=${m.pull}`);
+    if (r.ok) STATE.comments = (await r.json()).comments || [];
+  } catch {}
+}
+function renderThread(root){
+  const replies = STATE.comments
+    .filter(c => c.in_reply_to_id === root.id)
+    .sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+  const box = el("div",{class:"rev-thread"}, renderComment(root), ...replies.map(renderComment));
+  const key = "reply:"+root.id;
+  box.append(el("button",{class:"rev-reply-toggle",
+    onclick:()=>{ STATE.composer = STATE.composer===key ? null : key; render(); }}, "Reply"));
+  if (STATE.composer===key) box.append(renderComposer(null, null, root.id));
+  return box;
+}
+function renderComment(c){
+  return el("div",{class:"rev-comment"},
+    el("div",{class:"rev-meta"},
+      el("span",{class:"rev-author"}, "@"+c.user),
+      c.outdated ? el("span",{class:"tag tag-warn"}, "outdated") : null,
+      el("a",{class:"rev-link", href:c.html_url, target:"_blank", rel:"noopener"}, "GitHub \u2197")),
+    el("div",{class:"rev-body"}, c.body));
+}
+function renderComposer(path, lineNo, replyTo){
+  const ta = el("textarea",{class:"rev-textarea", rows:"3",
+    placeholder: replyTo ? "Reply\u2026" : ("Comment on line "+lineNo+"\u2026")});
+  const status = el("span",{class:"rev-status"});
+  const submit = el("button",{class:"btn-primary"}, replyTo ? "Reply" : "Comment");
+  submit.addEventListener("click", async ()=>{
+    const text = ta.value.trim(); if (!text) return;
+    submit.setAttribute("disabled","disabled"); status.textContent = "Posting\u2026";
+    const res = replyTo ? await replyComment(replyTo, text) : await postComment(path, lineNo, "RIGHT", text);
+    if (res.ok){ STATE.composer = null; await loadComments(); render(); }
+    else { submit.removeAttribute("disabled"); status.textContent = res.error || "Failed \u2014 try again."; }
+  });
+  const cancel = el("button",{class:"btn-ghost", onclick:()=>{ STATE.composer=null; render(); }}, "Cancel");
+  const wrap = el("div",{class:"rev-composer"}, ta, el("div",{class:"rev-actions"}, submit, cancel, status));
+  setTimeout(()=>ta.focus(), 0);
+  return wrap;
+}
+async function postComment(path, line, side, body){
+  const m = STATE.data.meta;
+  try {
+    const r = await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ owner:m.owner, repo:m.repo, pull:m.pull, commit_id:m.head_sha, path, line, side, body })});
+    if (r.ok) return { ok:true };
+    return { ok:false, error:(await r.json().catch(()=>({}))).error };
+  } catch(e){ return { ok:false, error:String(e) }; }
+}
+async function replyComment(commentId, body){
+  const m = STATE.data.meta;
+  try {
+    const r = await fetch("/api/comments/reply",{method:"POST",headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ owner:m.owner, repo:m.repo, pull:m.pull, comment_id:commentId, body })});
+    if (r.ok) return { ok:true };
+    return { ok:false, error:(await r.json().catch(()=>({}))).error };
+  } catch(e){ return { ok:false, error:String(e) }; }
+}
+
+// ---------- Stage C: global (PR-level) comments for non-line items ----------
+function assumeAction(a, kind){
+  const on = STATE.acks[a.id]===kind;
+  if (on){ STATE.acks[a.id]=null; if (STATE.composer==="assume:"+a.id) STATE.composer=null; }
+  else {
+    STATE.acks[a.id]=kind;
+    STATE.composer="assume:"+a.id;
+    STATE.composerSeed = (kind==="flag"
+      ? `\ud83d\udea9 Flagging assumption ${a.id} for discussion: \u201c${a.assumption}\u201d.\n\n`
+      : `\u2705 Accepting assumption ${a.id}: \u201c${a.assumption}\u201d.\n\n`);
+  }
+  render();
+}
+function renderGlobalComposer(key, seed){
+  const ta = el("textarea",{class:"rev-textarea", rows:"3", placeholder:"Add a comment for the PR discussion\u2026"});
+  ta.value = seed || "";
+  const status = el("span",{class:"rev-status"});
+  const submit = el("button",{class:"btn-primary"}, "Post to PR");
+  submit.addEventListener("click", async ()=>{
+    const text = ta.value.trim(); if (!text) return;
+    submit.setAttribute("disabled","disabled"); status.textContent="Posting\u2026";
+    const res = await postIssueComment(text);
+    if (res.ok){ STATE.posted[key]=true; STATE.composer=null; render(); }
+    else { submit.removeAttribute("disabled"); status.textContent = res.error || "Failed \u2014 try again."; }
+  });
+  const cancel = el("button",{class:"btn-ghost", onclick:()=>{ STATE.composer=null; render(); }}, "Cancel");
+  const wrap = el("div",{class:"rev-composer mt-2"}, ta, el("div",{class:"rev-actions"}, submit, cancel, status));
+  setTimeout(()=>{ ta.focus(); const n=ta.value.length; ta.setSelectionRange(n,n); }, 0);
+  return wrap;
+}
+async function postIssueComment(body){
+  const m = STATE.data.meta;
+  try {
+    const r = await fetch("/api/issue-comment",{method:"POST",headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ owner:m.owner, repo:m.repo, pull:m.pull, body })});
+    if (r.ok) return { ok:true };
+    return { ok:false, error:(await r.json().catch(()=>({}))).error };
+  } catch(e){ return { ok:false, error:String(e) }; }
 }
 
 function renderCoverage(){
