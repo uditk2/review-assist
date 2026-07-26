@@ -150,6 +150,11 @@ function centered(...kids){ return el("div",{class:"mx-auto flex min-h-screen ma
 
 const REPO_URL = "https://github.com/uditk2/review-assist";
 const APP_INSTALL = "https://github.com/apps/review-assist-guided-review";
+function codeBlock(text){
+  const body = el("div",{class:"diff-body"});
+  for (const line of String(text).split("\n")) body.append(el("code",{class:"diff-line is-ctx"}, line));
+  return el("div",{class:"diff"}, body);
+}
 function renderLanding(){
   const step = (n, title, body) => el("li",{class:"flex gap-3"},
     el("span",{class:"id-chip shrink-0 pt-0.5"}, n),
@@ -167,36 +172,42 @@ function renderLanding(){
         el("p",{class:"eyebrow mb-2"}, "Guided review for AI-written code"),
         el("h1",{class:"mb-4 text-[2rem] leading-tight"}, "Review AI-written code as fast as agents write it."),
         el("p",{class:"max-w-prose text-[1.05rem] text-ink-700"},
-          "Most code today is written by AI agents, and a human can’t read diffs as fast as a fleet of agents produces them. Review Assist turns an agent’s coding session into a guided, verifiable pull-request review — the problem it solved, the assumptions it made, and a walkthrough where every step is anchored to a real change."),
+          "AI agents write code faster than anyone can read diffs. Review Assist turns an agent\u2019s coding session into a guided, verifiable pull request \u2014 the problem, the assumptions, and an anchored walkthrough of every change."),
         el("div",{class:"mt-6 flex items-center gap-3"},
           el("a",{class:"btn-primary", href:APP_INSTALL}, "Install the GitHub App \u2192"),
           el("a",{class:"btn-ghost", href:REPO_URL}, "View source"))),
 
       el("section",{class:"mb-12"},
         el("h2",{class:"mb-4 border-b border-ink-200 pb-1.5"}, "How it works"),
-        el("ol",{class:"space-y-4"},
-          step("1","Capture the intent","After a coding session, a two-agent pass distills what was asked, what was tried and rejected, and why each change exists into a structured Intent Document committed with the PR."),
-          step("2","Validate it","The installed GitHub App checks the document against the diff on every PR — every change explained, nothing stale, no secrets — and posts a guided-review comment and check. No CI setup, no workflow files."),
-          step("3","Review it here","This app renders the document as a guided walkthrough over the pull request: assumptions to check first, then an anchored tour of the change."))),
+        el("ol",{class:"space-y-3"},
+          step("1","Capture","A short author\u21c4reviewer interview over your coding session distills the Intent Document, committed with the PR."),
+          step("2","Validate","The GitHub App checks it against the diff on every PR and posts a check plus a guided-review link \u2014 no workflow files."),
+          step("3","Review","This viewer renders the walkthrough; inline and discussion comments sync back to GitHub.")),
+        el("p",{class:"mt-4 text-sm"}, el("a",{class:"text-ink-500", href:REPO_URL+"/blob/main/docs/ARCHITECTURE.md"}, "Architecture & internals \u2192"))),
 
       el("section",{class:"mb-12"},
         el("h2",{class:"mb-2 border-b border-ink-200 pb-1.5"}, "Get started"),
-        el("p",{class:"mb-4 text-ink-600"}, "Two one-time installs: the MCP server on the developer\u2019s side, and the GitHub App on the repository\u2019s side."),
-        el("ol",{class:"space-y-4"},
-          step("1","Install the MCP server \u2014 author side","Each developer registers the review-assist MCP server with their coding agent once, so it can author the Intent Document. Claude Code: add it to your project or user .mcp.json. Codex: add it under [mcp_servers.review-assist] in ~/.codex/config.toml."),
-          step("2","Install the GitHub App \u2014 repository side","Install \u201cReview Assist\u201d on the repositories you review (one click below). It adds the automatic PR check and guided-review comment and powers this viewer \u2014 read-only code plus pull-request comments, and no workflow files.")),
-        el("a",{class:"btn-primary mt-5", href:APP_INSTALL}, "Install the GitHub App \u2192"),
-        el("p",{class:"mt-6 text-sm text-ink-500"}, "Then, on every pull request: code as usual, ask your agent to generate the Intent Document (it commits .intent/<branch>.json with your code), and open the PR \u2014 the app posts an \u201cOpen guided review\u201d link straight to this walkthrough.")),
-
-      el("section",{class:"mb-12"},
-        el("h2",{class:"mb-3 border-b border-ink-200 pb-1.5"}, "Open a walkthrough"),
-        el("p",{class:"mb-3 text-ink-700"}, "Point the viewer at any pull request that has an Intent Document, using this URL shape:"),
-        el("div",{class:"diff"}, el("div",{class:"diff-body"},
-          el("code",{class:"diff-line is-ctx"}, location.origin + "/#owner/repo/pull/123"))),
-        el("p",{class:"mt-3 text-sm text-ink-500"}, "You’ll sign in with GitHub once so the viewer can read the pull request on your behalf. Nothing is stored — the page reads the document and diff directly from GitHub in your browser.")),
+        el("p",{class:"mb-5 text-ink-600"}, "Two one-time installs \u2014 the MCP server on the developer\u2019s side, the GitHub App on the repo\u2019s."),
+        el("ol",{class:"space-y-5"},
+          el("li",{class:"flex gap-3"},
+            el("span",{class:"id-chip shrink-0 pt-0.5"},"1"),
+            el("div",{class:"min-w-0 flex-1"},
+              el("p",{class:"font-medium text-ink-900"},"Register the MCP server with your agent"),
+              el("p",{class:"mb-2 mt-0.5 text-sm text-ink-600"},"So it can author the Intent Document. Claude Code:"),
+              codeBlock("claude mcp add review-assist -- npx -y review-assist-mcp"),
+              el("p",{class:"mb-2 mt-2 text-sm text-ink-600"},"Codex \u2014 add to ~/.codex/config.toml:"),
+              codeBlock("[mcp_servers.review-assist]\ncommand = \"npx\"\nargs = [\"-y\", \"review-assist-mcp\"]"))),
+          el("li",{class:"flex gap-3"},
+            el("span",{class:"id-chip shrink-0 pt-0.5"},"2"),
+            el("div",{class:"min-w-0 flex-1"},
+              el("p",{class:"font-medium text-ink-900"},"Install the GitHub App on your repos"),
+              el("p",{class:"mt-0.5 text-sm text-ink-600"},"One click. Read-only code + PR comments, no workflow files \u2014 it adds the automatic check, the guided-review comment, and this viewer."),
+              el("a",{class:"btn-primary mt-3", href:APP_INSTALL}, "Install the GitHub App \u2192")))),
+        el("p",{class:"mt-6 text-sm text-ink-500"}, "Then every PR: code, ask your agent to generate the Intent Document, open the PR \u2014 the App posts an \u201cOpen guided review\u201d link here.")),
 
       el("footer",{class:"border-t border-ink-200 pt-6 text-sm text-ink-500"},
-        "Open source · ", el("a",{href:REPO_URL}, "github.com/uditk2/review-assist"))));
+        el("p",{class:"mb-1"}, "Sign in with GitHub once; nothing is stored \u2014 documents and diffs are read live from GitHub in your browser."),
+        el("p",{}, "Open source \u00b7 ", el("a",{href:REPO_URL}, "github.com/uditk2/review-assist")))));
 }
 
 function renderLogin(ref){
