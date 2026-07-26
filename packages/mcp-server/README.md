@@ -1,4 +1,4 @@
-# @review-assist/mcp-server
+# review-assist-mcp
 
 The MCP server an agent uses to author and submit an Intent Document. It never calls a
 model — generation is the agent's job. The server provides ground truth and gatekeeps.
@@ -14,7 +14,7 @@ model — generation is the agent's job. The server provides ground truth and ga
 ## Run
 
 ```bash
-npm run build --workspace @review-assist/mcp-server
+npm run build --workspace review-assist-mcp
 REVIEW_ASSIST_REPO=/path/to/repo node packages/mcp-server/dist/index.js   # stdio transport
 ```
 
