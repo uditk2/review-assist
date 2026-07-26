@@ -1,22 +1,27 @@
 {
-  "name": "@review-assist/mcp-server",
+  "name": "review-assist-mcp",
   "version": "0.1.0",
-  "description": "MCP server that drives the two-agent distillation of an Intent Document and gatekeeps it with the validator.",
+  "description": "MCP server that turns an AI agent's coding session into a reviewable Intent Document — a two-agent author/reviewer distillation, gatekept by a deterministic validator. Works with Claude Code and Codex.",
   "license": "Apache-2.0",
   "type": "module",
+  "keywords": ["mcp", "model-context-protocol", "code-review", "claude-code", "codex", "ai-agents", "pull-request", "github", "intent-document"],
+  "homepage": "https://github.com/uditk2/review-assist",
+  "repository": { "type": "git", "url": "git+https://github.com/uditk2/review-assist.git", "directory": "packages/mcp-server" },
+  "bugs": { "url": "https://github.com/uditk2/review-assist/issues" },
+  "bin": { "review-assist-mcp": "./dist/index.js" },
   "main": "./dist/index.js",
-  "bin": {
-    "review-assist-mcp": "./dist/index.js"
-  },
-  "files": ["dist"],
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=18" },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node18 --outfile=dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
   },
-  "dependencies": {
+  "devDependencies": {
     "@review-assist/schema": "0.1.0",
     "@review-assist/validator": "0.1.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "esbuild": "^0.21.5"
   }
 }
