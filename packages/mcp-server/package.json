@@ -14,6 +14,7 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node18 --outfile=dist/index.js",
+    "mcpb:pack": "npm run build && npx --yes @anthropic-ai/mcpb pack . ../../review-assist-mcp.mcpb",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build"
   },

@@ -167,6 +167,7 @@ function centered(...kids){ return el("div",{class:"mx-auto flex min-h-screen ma
 
 const REPO_URL = "https://github.com/uditk2/review-assist";
 const APP_INSTALL = "https://github.com/apps/review-assist-guided-review";
+const MCPB_DOWNLOAD = REPO_URL + "/releases/latest/download/review-assist-mcp.mcpb";
 function codeBlock(text){
   const body = el("div",{class:"diff-body"});
   for (const line of String(text).split("\n")) body.append(el("code",{class:"diff-line is-ctx"}, line));
@@ -211,9 +212,11 @@ function renderLanding(){
             el("div",{class:"min-w-0 flex-1"},
               el("p",{class:"font-medium text-ink-900"},"Register the MCP server with your agent"),
               el("p",{class:"mb-2 mt-0.5 text-sm text-ink-600"},"So it can author the Intent Document. Claude Code:"),
-              codeBlock("claude mcp add review-assist -- npx -y review-assist-mcp"),
+              codeBlock("claude mcp add -s user review-assist -- npx -y review-assist-mcp"),
               el("p",{class:"mb-2 mt-2 text-sm text-ink-600"},"Codex \u2014 add to ~/.codex/config.toml:"),
-              codeBlock("[mcp_servers.review-assist]\ncommand = \"npx\"\nargs = [\"-y\", \"review-assist-mcp\"]"))),
+              codeBlock("[mcp_servers.review-assist]\ncommand = \"npx\"\nargs = [\"-y\", \"review-assist-mcp\"]"),
+              el("p",{class:"mb-2 mt-3 text-sm text-ink-600"},"Or, for the Claude desktop app \u2014 one-click install, no terminal:"),
+              el("a",{class:"btn-ghost", href:MCPB_DOWNLOAD}, "Download the .mcpb \u2192"))),
           el("li",{class:"flex gap-3"},
             el("span",{class:"id-chip shrink-0 pt-0.5"},"2"),
             el("div",{class:"min-w-0 flex-1"},
