@@ -1,0 +1,9 @@
+node_modules/
+src/
+test/
+tests/
+tsconfig.json
+*.ts
+*.map
+*.mcpb
+.mcpbignore
