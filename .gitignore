@@ -3,7 +3,6 @@ dist/
 *.log
 .wrangler/
 scripts/out-*.png
-.intent/
 scripts/frames/
 
 # built MCP bundle (ship as a release asset, not committed)
