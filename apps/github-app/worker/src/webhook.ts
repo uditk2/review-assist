@@ -14,6 +14,8 @@ import { installationToken } from "./githubApp.js";
 const GH_API = "https://api.github.com";
 const UA = "review-assist-viewer";
 const MARKER = "<!-- review-assist -->";
+const BODY_START = "<!-- review-assist:intent -->";
+const BODY_END = "<!-- /review-assist:intent -->";
 
 export interface WebhookEnv {
   GITHUB_APP_ID: string;
@@ -96,6 +98,10 @@ async function process(payload: PrEvent, installationId: number, origin: string,
   // 3. Sticky comment (upsert) + Check Run, as the app bot.
   await upsertComment(gh, token, owner, repo, pr.number, commentBody(doc, cov, viewerLink, docMissing || !doc));
   await createCheck(token, owner, repo, headSha, cov, viewerLink, docMissing || !doc);
+
+  // 4. Populate the PR description from the committed doc. If the body is empty we
+  //    set it; otherwise we manage a marked block and leave the author's prose intact.
+  if (doc) await upsertPrBody(gh, token, owner, repo, pr.number, intentSection(doc, viewerLink));
 }
 
 // ---- signature -------------------------------------------------------------
@@ -293,6 +299,70 @@ async function createCheck(
   });
 }
 
+/** Render the PR-description block from the committed doc (self-contained, mirrors renderPrDescription). */
+function intentSection(doc: IntentDoc, link: string): string {
+  const out: string[] = [BODY_START, `### 🧭 Review Assist — intent`];
+  const problem = (doc.problem?.statement ?? "").trim();
+  if (problem) out.push(`> ${problem}`, "");
+  const adopted = doc.approach?.adopted;
+  if (adopted?.summary) out.push(`**What changed.** ${adopted.summary}`, "");
+  if (adopted?.rationale) out.push(`_Why:_ ${adopted.rationale}`, "");
+  for (const d of doc.diagrams ?? []) {
+    if (!d?.mermaid) continue;
+    if (d.title) out.push(`**${d.title}**`, "");
+    out.push("```mermaid", d.mermaid.trim(), "```", "");
+    if (d.caption) out.push(`_${d.caption}_`, "");
+  }
+  const assumptions = doc.assumptions ?? [];
+  if (assumptions.length) {
+    out.push(`**Assumptions to check first**`, "");
+    for (const a of assumptions) {
+      const verify = a?.how_to_verify ? ` _Verify:_ ${a.how_to_verify}` : "";
+      out.push(`- **[${a?.id ?? "?"}] ${a?.assumption ?? ""}** — if wrong: ${a?.impact_if_wrong ?? ""}.${verify}`);
+    }
+    out.push("");
+  }
+  out.push(`**[Open guided review →](${link})**`, BODY_END);
+  return out.join("\n");
+}
+
+/** Set the PR body from the doc: empty body -> set it; else replace/append a marked block, never clobbering author prose. */
+async function upsertPrBody(
+  gh: (p: string, a?: string) => Promise<Response>,
+  token: string,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  section: string
+): Promise<void> {
+  const res = await gh(`/repos/${owner}/${repo}/pulls/${prNumber}`);
+  if (!res.ok) return;
+  const pr = (await res.json()) as { body?: string | null };
+  const cur = typeof pr.body === "string" ? pr.body : "";
+  const s = cur.indexOf(BODY_START);
+  const e = cur.indexOf(BODY_END);
+  let next: string;
+  if (s !== -1 && e !== -1 && e > s) {
+    next = cur.slice(0, s) + section + cur.slice(e + BODY_END.length);
+  } else if (cur.trim() === "") {
+    next = section;
+  } else {
+    next = cur.replace(/\s+$/, "") + "\n\n" + section;
+  }
+  if (next === cur) return;
+  await fetch(`${GH_API}/repos/${owner}/${repo}/pulls/${prNumber}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": UA,
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ body: next }),
+  });
+}
+
 function json(obj: unknown, status = 200): Response {
   return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
 }
@@ -308,6 +378,8 @@ interface PrEvent {
 
 interface IntentDoc {
   problem?: { statement?: string };
-  assumptions?: unknown[];
+  approach?: { adopted?: { summary?: string; rationale?: string } };
+  assumptions?: { id?: string; assumption?: string; impact_if_wrong?: string; how_to_verify?: string }[];
+  diagrams?: { title?: string; mermaid?: string; caption?: string }[];
   tour?: { anchors?: { path: string; hunk: { new_start: number; new_lines: number } }[] }[];
 }
