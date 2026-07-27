@@ -151,5 +151,12 @@
       "Behavior when Redis is unreachable (code falls back to direct validation; no test exercises the fallback)",
       "Load behavior — the original 429 symptom was not reproduced under load after the fix"
     ]
-  }
+  },
+  "diagrams": [
+    {
+      "title": "Token validation with the Redis cache",
+      "mermaid": "sequenceDiagram\n    participant C as Client\n    participant MW as Auth middleware\n    participant R as Redis cache\n    participant A as Auth service\n    C->>MW: request with bearer token\n    MW->>R: GET token\n    alt cache hit (fresh)\n        R-->>MW: claims\n    else miss or expired\n        MW->>A: validate token\n        A-->>MW: claims\n        MW->>R: SET token claims (TTL 60s)\n    end\n    MW-->>C: 200 or 401",
+      "caption": "The cache short-circuits validation for 60s; logout deletes the key so revocation is immediate."
+    }
+  ]
 }

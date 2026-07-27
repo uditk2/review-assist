@@ -19,7 +19,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { validate } from "@review-assist/validator";
+import { validate, renderPrDescription } from "@review-assist/validator";
 import { intentDocSchema } from "@review-assist/schema";
 import { GENERATION_GUIDE } from "./guide.js";
 import {
@@ -30,6 +30,13 @@ import {
   readTranscriptWindow,
   git,
 } from "./git.js";
+import {
+  getConsent,
+  setConsent,
+  resetConsent,
+  listConsent,
+  consentFilePath,
+} from "./consent.js";
 
 const REPO_DIR = resolve(process.env.REVIEW_ASSIST_REPO ?? process.cwd());
 
@@ -51,6 +58,7 @@ server.tool(
       schema: intentDocSchema,
       guide: GENERATION_GUIDE,
       repo_dir: REPO_DIR,
+      consent_state: getConsent(REPO_DIR),
     };
     return textResult(JSON.stringify(payload, null, 2));
   }
@@ -186,6 +194,46 @@ server.tool(
   },
   async ({ document, base, head, strict, write, require_interview, repo }) => {
     const repoDir = repo ? resolve(repo) : REPO_DIR;
+
+    // Commit-time consent gate. Review Assist is installed globally but must be
+    // opted in per repository; the write below is the point of no return.
+    const consent = getConsent(repoDir);
+    if (consent === "disabled") {
+      return textResult(
+        JSON.stringify(
+          {
+            ok: false,
+            skipped: true,
+            reason: "disabled",
+            repo: repoDir,
+            message: `Review Assist is turned off for this repository (you chose "Never"). Nothing was written. To turn it back on, run: npx review-assist-mcp consent enable "${repoDir}" — or call set_consent with decision "always".`,
+          },
+          null,
+          2
+        )
+      );
+    }
+    if (consent === "unknown") {
+      return textResult(
+        JSON.stringify(
+          {
+            ok: false,
+            consent_required: true,
+            repo: repoDir,
+            prompt: `Enable Review Assist for this project? It will distill this change into an Intent Document written to ${repoDir}/.intent/.`,
+            options: [
+              { decision: "always", label: "Always — enable for this repo and don't ask again" },
+              { decision: "once", label: "Just this time — do it now, ask again next session" },
+              { decision: "never", label: "Never — turn it off for this repo (won't ask again)" },
+            ],
+            next: "Ask the user to pick one, then call set_consent({ repo, decision }), then call submit_document again with the same document.",
+          },
+          null,
+          2
+        )
+      );
+    }
+
     // Some MCP clients serialize object args as a JSON string; accept object or string.
     let doc: unknown;
     try {
@@ -268,6 +316,7 @@ server.tool(
         {
           ok: true,
           written,
+          pr_description: renderPrDescription(doc as never),
           coverage: report.coverage,
           interview,
           note:
@@ -283,7 +332,87 @@ server.tool(
   }
 );
 
+server.tool(
+  "set_consent",
+  "Record the user's decision about whether Review Assist may operate in a repository. Call this only after the user has answered the consent prompt returned by submit_document.",
+  {
+    decision: z
+      .enum(["always", "once", "never"])
+      .describe("always = enable and remember; once = allow this session only; never = disable and remember"),
+    repo: z
+      .string()
+      .optional()
+      .describe("Absolute repo path; defaults to REVIEW_ASSIST_REPO or cwd."),
+  },
+  async ({ decision, repo }) => {
+    const repoDir = repo ? resolve(repo) : REPO_DIR;
+    setConsent(repoDir, decision);
+    const state =
+      decision === "always" ? "enabled" : decision === "never" ? "disabled" : "enabled for this session only";
+    return textResult(
+      JSON.stringify({ ok: true, repo: repoDir, decision, state }, null, 2)
+    );
+  }
+);
+
+server.tool(
+  "manage_consent",
+  "List Review Assist's per-repo enable/disable decisions, or reset one repo — removing it from the list so it is asked about again.",
+  {
+    action: z.enum(["list", "reset"]),
+    repo: z.string().optional().describe("Required for reset: absolute repo path (defaults to current repo)."),
+  },
+  async ({ action, repo }) => {
+    if (action === "list") {
+      return textResult(
+        JSON.stringify({ ok: true, file: consentFilePath(), repos: listConsent() }, null, 2)
+      );
+    }
+    const repoDir = repo ? resolve(repo) : REPO_DIR;
+    const removed = resetConsent(repoDir);
+    return textResult(
+      JSON.stringify({ ok: true, action: "reset", repo: repoDir, removed }, null, 2)
+    );
+  }
+);
+
+function runConsentCli(argv: string[]): number {
+  const [sub, repoArg] = argv;
+  const target = repoArg ? resolve(repoArg) : process.cwd();
+  switch (sub) {
+    case "list": {
+      const rows = listConsent();
+      if (rows.length === 0) process.stdout.write("No repositories on record.\n");
+      for (const r of rows) process.stdout.write(`${r.state === "enabled" ? "on " : "off"}  ${r.repo}\n`);
+      process.stdout.write(`\n(${consentFilePath()})\n`);
+      return 0;
+    }
+    case "enable":
+      setConsent(target, "always");
+      process.stdout.write(`enabled: ${target}\n`);
+      return 0;
+    case "disable":
+      setConsent(target, "never");
+      process.stdout.write(`disabled: ${target}\n`);
+      return 0;
+    case "reset": {
+      const removed = resetConsent(target);
+      process.stdout.write(`${removed ? "reset" : "not on record"}: ${target}\n`);
+      return 0;
+    }
+    default:
+      process.stdout.write(
+        "usage: review-assist-mcp consent <list|enable|disable|reset> [repo-path]\n"
+      );
+      return sub ? 1 : 0;
+  }
+}
+
 async function main() {
+  const argv = process.argv.slice(2);
+  if (argv[0] === "consent") {
+    process.exit(runConsentCli(argv.slice(1)));
+  }
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write(`review-assist MCP server running (repo: ${REPO_DIR})\n`);
