@@ -5,7 +5,3 @@ dist/
 scripts/out-*.png
 .intent/
 scripts/frames/
-
-# keep the built action so other repos can reference it by ref
-!apps/github-action/dist/
-!apps/github-action/dist/main.cjs
