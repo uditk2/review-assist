@@ -214,6 +214,21 @@
         },
         "not_verified": { "type": "array", "items": { "type": "string" } }
       }
+    },
+
+    "diagrams": {
+      "type": "array",
+      "description": "Optional Mermaid diagrams (architecture, sequence, data-flow) that help a reviewer understand the change. Rendered by GitHub in the PR description and by the guided viewer.",
+      "items": {
+        "type": "object",
+        "required": ["title", "mermaid"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string" },
+          "mermaid": { "type": "string", "description": "Mermaid diagram source." },
+          "caption": { "type": "string" }
+        }
+      }
     }
   },
 

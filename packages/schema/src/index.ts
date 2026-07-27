@@ -30,6 +30,14 @@ export interface IntentDocument {
   approach: Approach;
   tour: TourStop[];
   verification: Verification;
+  diagrams?: Diagram[];
+}
+
+export interface Diagram {
+  title: string;
+  /** Mermaid diagram source — rendered by GitHub (PR description) and the viewer. */
+  mermaid: string;
+  caption?: string;
 }
 
 export interface Meta {

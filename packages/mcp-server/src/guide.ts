@@ -44,6 +44,10 @@ reflects the real interview (a single-pass generation with no reviewer will show
   Every substantive diff hunk MUST be covered by some stop's anchors. Batch mechanical
   churn into one role=incidental stop. Mark each stop's \`provenance\`.
 - **Verification**: record what was actually run, and be honest in \`not_verified\`.
+- **Diagrams (optional)**: when a picture beats prose — architecture, a sequence of calls,
+  a data-flow — add entries to \`diagrams\` ({ title, mermaid, caption? }). Use plain-ASCII
+  Mermaid (sequenceDiagram / flowchart / etc.); avoid characters like \`&\`, \`×\`, or braces in
+  labels. They render in the PR description (GitHub-native) and the guided viewer.
 - **Redaction**: never put secrets, tokens, internal credentials, or raw keys in any
   field. The validator will hard-fail them, but do not rely on it.
 
@@ -57,8 +61,22 @@ Each anchor is { path, hunk: { old_start, old_lines, new_start, new_lines } } on
 new side of the diff, pinned to the head SHA from \`compute_diff\`. Use the hunk line
 numbers from the diff exactly.
 
-## Submitting
+## Submitting (consent gate)
 Call \`submit_document\` with the candidate JSON. If it returns validation findings,
-FIX them and resubmit — do not argue with the validator. On success it writes the
-document to the intent path and you are done.
+FIX them and resubmit — do not argue with the validator.
+
+The FIRST submit for a repo may return \`consent_required: true\` instead of writing.
+Review Assist is installed globally but must be opted in per repository. When you see
+this, present the \`prompt\` and \`options\` to the user verbatim and let THEM choose —
+do not decide for them. Then call \`set_consent\` with their \`decision\` (always | once |
+never) and the same \`repo\`, and call \`submit_document\` again. If the repo is disabled
+(\`skipped: true, reason: "disabled"\`), stop — do not write anything; tell the user how
+to re-enable it (\`manage_consent\` / the \`consent\` CLI).
+
+On success the response includes \`pr_description\` — a ready-made Markdown PR body
+(problem, approach, any diagrams, assumptions to check). When you open the PR, use it as
+the body (e.g. \`gh pr create --body-file\`). The guided-review link is added automatically
+by the app once the PR opens, so do not fabricate one.
+
+Then it writes the document to the intent path and you are done.
 `;

@@ -25,6 +25,7 @@
 .rev-actions{display:flex;align-items:center;gap:.5rem;margin-top:.4rem}
 .rev-status{font-size:.8rem;color:var(--ink-500)}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js" onload="window.__onMermaid&&window.__onMermaid()"></script>
 </head>
 <body>
 <div id="app" class="min-h-screen">
@@ -107,6 +108,22 @@ const el = (t, props={}, ...kids) => {
   for (const kid of kids.flat()) if (kid != null) n.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
   return n;
 };
+
+// Render any <pre class="mermaid"> nodes. securityLevel 'strict' neutralizes scripts/HTML
+// in the (repo-authored) diagram source. If the CDN hasn't loaded yet, onload re-runs this.
+function runMermaid(){
+  if(!window.mermaid) return;
+  try{
+    if(!window.__mmInit){
+      window.mermaid.initialize({ startOnLoad:false, securityLevel:"strict", theme:"neutral",
+        flowchart:{ useMaxWidth:true }, sequence:{ useMaxWidth:true } });
+      window.__mmInit = true;
+    }
+    const nodes = [...document.querySelectorAll(".mermaid:not([data-processed])")];
+    if(nodes.length) window.mermaid.run({ nodes });
+  }catch(e){ /* leave the <pre> source visible as a fallback */ }
+}
+window.__onMermaid = runMermaid;
 
 const CONF = {
   confirmed_by_user: { cls: "tag tag-ok", label: "confirmed by user" },
@@ -257,6 +274,7 @@ function render(){
       : renderStop()));
 
   document.getElementById("app").replaceChildren(header, el("div",{class:"flex"}, nav, main));
+  runMermaid();
 }
 
 function currentTheme() {
@@ -334,6 +352,17 @@ function renderOverview(doc){
       el("p",{class:"text-sm text-ink-600"}, "Outcome — "+t.outcome),
       el("p",{class:"text-sm text-ink-600"}, "Abandoned — "+t.why_abandoned))))));
   f.append(asec);
+
+  if (doc.diagrams?.length){
+    const dsec = section("Diagrams");
+    for (const d of doc.diagrams){
+      dsec.append(el("figure",{class:"mb-5"},
+        el("figcaption",{class:"mb-1.5 text-sm font-medium text-ink-700"}, d.title),
+        el("pre",{class:"mermaid overflow-x-auto rounded-lg border border-ink-200 bg-ink-50 p-3 text-center"}, d.mermaid),
+        d.caption ? el("p",{class:"mt-1 text-sm text-ink-500"}, d.caption) : null));
+    }
+    f.append(dsec);
+  }
 
   f.append(el("div",{class:"mt-8 flex items-center gap-3 border-t border-ink-200 pt-6"},
     el("button",{class:"btn-primary", onclick:()=>{STATE.view="tour";STATE.stopIndex=0;render();}}, "Start walkthrough"),
