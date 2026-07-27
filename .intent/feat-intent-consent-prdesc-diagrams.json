@@ -1,8 +1,8 @@
 {
   "approach": {
     "adopted": {
-      "rationale": "Least friction with an explicit safety gate; a single validation surface; and desktop one-click distribution reusing the tiny self-contained bundle.",
-      "summary": "A commit-time consent gate in submit_document backed by a per-user store (set_consent/manage_consent plus a consent CLI); a renderPrDescription in the validator returned by submit_document; an optional diagrams schema field rendered as native fences and in the viewer under strict mermaid; removal of the Action so the App webhook is the only validation path; and an .mcpb manifest + mcpb:pack script wrapping the self-contained dist."
+      "rationale": "Least friction with an explicit safety gate; a single validation surface that also fills the PR description; and desktop one-click distribution reusing the tiny self-contained bundle.",
+      "summary": "A commit-time consent gate in submit_document backed by a per-user store (set_consent/manage_consent plus a consent CLI); a renderPrDescription in the validator returned by submit_document AND rendered onto the PR body by the App webhook; an optional diagrams schema field rendered as native fences and in the viewer under strict mermaid; removal of the Action so the App webhook is the only validation path; and an .mcpb manifest + mcpb:pack script wrapping the self-contained dist."
     },
     "requirements": [
       {
@@ -11,7 +11,7 @@
       },
       {
         "source": "user",
-        "text": "submit_document returns a ready-to-use PR description."
+        "text": "submit_document returns a ready-to-use PR description, and the App sets it on the PR from the committed doc."
       },
       {
         "source": "user",
@@ -43,6 +43,11 @@
         "why_abandoned": "User chose a per-user central store at ~/.review-assist/consent.json."
       },
       {
+        "outcome": "Would duplicate the structured fields and go stale.",
+        "what": "Store the rendered PR description as a field inside the Intent Document JSON.",
+        "why_abandoned": "The description is rendered from the doc on demand (renderPrDescription); the doc stays the single source of truth."
+      },
+      {
         "outcome": "Tens of MB bundle.",
         "what": "Bundle node_modules into the .mcpb per the CLI default.",
         "why_abandoned": "The esbuild output is self-contained; the bundle is ~155KB with just dist + manifest."
@@ -72,9 +77,9 @@
       "impact_if_wrong": "Diagrams break or become an injection vector in the viewer."
     },
     {
-      "assumption": "The App webhook (non-blocking check + comment) fully replaces the Action, and the CLI covers teams that still want their own CI.",
+      "assumption": "The App webhook (non-blocking check + comment + PR-body) fully replaces the Action, and the CLI covers teams that still want their own CI.",
       "confidence": "confirmed_by_user",
-      "how_to_verify": "Confirm the webhook posts check+comment and the review-assist CLI still runs the same checks.",
+      "how_to_verify": "Confirm the webhook posts check+comment+body and the review-assist CLI still runs the same checks.",
       "id": "A4",
       "impact_if_wrong": "Teams relying on Action-based enforcement lose it with no path."
     },
@@ -84,6 +89,13 @@
       "how_to_verify": "Install the .mcpb in the Claude desktop app and invoke a tool.",
       "id": "A5",
       "impact_if_wrong": "The bundle fails to start after install."
+    },
+    {
+      "assumption": "Managing a marked block in the PR body (and only setting an empty body) never clobbers a human-written description.",
+      "confidence": "grounded_in_code",
+      "how_to_verify": "Open a PR with an existing body and confirm only the marked block changes.",
+      "id": "A6",
+      "impact_if_wrong": "The App could overwrite a reviewer's prose in the PR body."
     }
   ],
   "diagrams": [
@@ -96,7 +108,7 @@
   "meta": {
     "commit_range": {
       "base_sha": "52556fca44a51728c4c7d0ed8c84bfc4a92df621",
-      "head_sha": "29ed830cca3a22036044c96852adb26d6e293060"
+      "head_sha": "d83676f0c1426411ea067ef7ef07e9ed75dcc77a"
     },
     "generated_at": "2026-07-27T00:00:00Z",
     "generated_by": {
@@ -144,7 +156,7 @@
       },
       {
         "at": "late-session",
-        "formulation": "Package the MCP server as a one-click .mcpb bundle, hosted in the same repo."
+        "formulation": "Package the MCP server as a one-click .mcpb bundle, and have the App set the PR description from the committed doc."
       }
     ],
     "origin": "emerged_during_session",
@@ -159,7 +171,7 @@
       "We should also generate a PR description right as part of the intent.",
       "Also as part of it, it should allow generating mermaid diagrams and everything.",
       "this github app webhook should be the only path as we now have a github app. No need for the github action right ?",
-      "I thought we just need an mcpb file for the same ?"
+      "Shouldn't it be part of intent doc itself ? ... If the description is not empty already, then add another section to the PR"
     ]
   },
   "schema_version": "0.1",
@@ -222,16 +234,25 @@
             "old_start": 0
           },
           "path": "packages/validator/src/index.ts"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "apps/github-app/worker/src/webhook.ts"
         }
       ],
-      "attention": "diagramsMarkdown must not run escape() over the multi-line mermaid source.",
+      "attention": "diagramsMarkdown must not flatten multi-line mermaid; the webhook must not clobber a human-written body.",
       "id": "T2",
       "parent": null,
       "provenance": "inferred_from_code",
       "role": "core",
-      "title": "PR description generated from the intent",
-      "what": "A new renderPrDescription in the validator (problem, approach, diagrams, assumptions) exported and returned by submit_document as pr_description; mermaid newlines are preserved rather than flattened.",
-      "why": "The PR opens self-describing; the guided-review link still comes from the webhook so the two do not overlap."
+      "title": "PR description generated from the intent — in the tool and on the PR",
+      "what": "A new renderPrDescription in the validator (problem, approach, diagrams, assumptions) exported and returned by submit_document as pr_description; mermaid newlines are preserved rather than flattened. The GitHub App webhook then renders the same description onto the PR body from the committed doc — setting an empty body, else managing a delimited marker block so author prose is preserved.",
+      "why": "The PR opens self-describing with no copy-paste or gh step; the doc stays the single source of truth and the guided-review link still comes from the webhook."
     },
     {
       "anchors": [
@@ -427,11 +448,11 @@
     "not_verified": [
       "Visual rendering of the Diagrams section in a running guided viewer",
       "Installing the .mcpb into the Claude desktop app end-to-end",
-      "The webhook posting check+comment for this PR against the live App"
+      "The deployed webhook setting the PR body and posting check+comment for this PR against the live App"
     ],
     "performed": [
       {
-        "description": "tsc --noEmit across all workspaces",
+        "description": "tsc --noEmit across all workspaces incl. the worker",
         "kind": "typecheck",
         "result": "pass"
       },
