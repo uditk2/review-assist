@@ -52,10 +52,10 @@ runs in your CI, the viewer renders in the reviewer's browser.
    full transcript and an independent *reviewer* that interrogates it — produces the Intent
    Document. Runs in a fresh context, so it costs the working session nothing and sees even
    what compaction dropped. Exposed as an **MCP server** so any MCP-capable agent can drive it.
-2. **Validate.** A deterministic **CLI / GitHub Action** checks the document against the
-   diff: schema, staleness, coverage (every change explained), cross-references, and secret
-   redaction. It posts a zero-install Markdown summary comment on every PR.
-3. **Review.** A **GitHub app** renders the guided walkthrough — assumptions to check first,
+2. **Validate.** A deterministic **CLI**, plus a **GitHub App** that checks every PR against
+   the diff: schema, staleness, coverage (every change explained), cross-references, and secret
+   redaction — then posts a guided-review check and summary comment automatically. Zero config.
+3. **Review.** The **GitHub App** renders the guided walkthrough — assumptions to check first,
    then an anchored tour of the change, with a coverage overlay flagging anything unexplained.
 
 ## The Intent Document
@@ -79,7 +79,6 @@ place in a review. See [`packages/schema/src/example.json`](packages/schema/src/
 | [`packages/schema`](packages/schema) | The format — JSON Schema (draft 2020-12) + TypeScript types |
 | [`packages/validator`](packages/validator) | `review-assist` CLI + library: the five checks and the Markdown renderer |
 | [`packages/mcp-server`](packages/mcp-server) | MCP server that drives distillation and gatekeeps submissions |
-| [`apps/github-action`](apps/github-action) | Validates each PR + posts the guided-review summary comment |
 | [`apps/github-app/worker`](apps/github-app/worker) | Stateless Cloudflare Worker: OAuth broker + thin GitHub proxy |
 | [`apps/github-app/viewer`](apps/github-app/viewer) | Client-side guided-review viewer (Tailwind theme, self-hosted fonts) |
 
@@ -92,7 +91,7 @@ npm run build
 # Validate the example Intent Document
 node packages/validator/dist/cli.js validate packages/schema/src/example.json
 
-# Render the Markdown summary the Action posts on a PR
+# Render the Markdown summary (posted on the PR and shown in the viewer)
 node packages/validator/dist/cli.js render packages/schema/src/example.json
 
 # Preview the guided viewer with mock data → http://localhost:8787/#acme/checkout-service/pull/42
@@ -104,11 +103,12 @@ Run the tests: `npx vitest run`.
 
 ## Deployment
 
-- **GitHub Action** — runs in *your* CI. Enforcement + the zero-install Markdown fallback.
-- **GitHub app** — one-time install; reviewers sign in once. The viewer renders client-side;
-  the Cloudflare Worker only brokers OAuth (GitHub's token endpoint lacks CORS) and proxies
-  the document + diff with the reviewer's own token. **Stateless** — no KV/D1/R2/DO;
-  private-repo responses are `private, no-store` and never edge-cached; static assets are.
+- **GitHub App** — one-time install; reviewers sign in once. A webhook validates every PR
+  (guided-review check + summary comment) with zero config — no workflow file, no runner
+  minutes. The viewer renders client-side; the Cloudflare Worker signs the app JWT, brokers
+  OAuth (GitHub's token endpoint lacks CORS), and proxies the document + diff with an
+  installation/reviewer token. **Stateless** — no KV/D1/R2/DO; private-repo responses are
+  `private, no-store` and never edge-cached; static assets are.
 
 See [`SPEC.md`](SPEC.md) for the frozen design and [`apps/github-app/viewer/DESIGN.md`](apps/github-app/viewer/DESIGN.md)
 for the UI design rules.

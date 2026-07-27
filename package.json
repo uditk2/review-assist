@@ -2,16 +2,15 @@
   "name": "review-assist",
   "version": "0.1.0",
   "private": true,
-  "description": "Intent Document \u2014 an open format for AI change-intent, with a validator, MCP server, GitHub Action, and guided-review viewer.",
+  "description": "Intent Document \u2014 an open format for AI change-intent, with a validator, MCP server, and guided-review viewer.",
   "license": "Apache-2.0",
   "workspaces": [
     "packages/*",
-    "apps/github-action",
     "apps/github-app/worker",
     "apps/github-app/viewer"
   ],
   "scripts": {
-    "build": "npm run build -w @review-assist/schema && npm run build -w @review-assist/validator && npm run build -w review-assist-mcp && npm run build -w @review-assist/github-action && npm run build -w @review-assist/viewer",
+    "build": "npm run build -w @review-assist/schema && npm run build -w @review-assist/validator && npm run build -w review-assist-mcp && npm run build -w @review-assist/viewer",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },

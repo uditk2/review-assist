@@ -150,21 +150,24 @@ The validator is deterministic code. The agents write; the validator gatekeeps.
   Keyboard next/prev. `incidental` stops collapsed by default.
 - **Coverage overlay:** unexplained hunks visibly badged — never hidden.
 - **Verification panel:** performed checks and, prominently, `not_verified`.
-- **Zero-install fallback:** the pipeline also posts a markdown rendering of sections
-  3.2–3.6 as the PR description/comment, so the document has value with no extension.
+- **Zero-install fallback:** Review Assist renders a markdown view of sections 3.2–3.7
+  (including any Mermaid `diagrams`, which GitHub renders natively) as the PR description
+  and comment, so the document has value with no extension.
 
 ## 6. Deployment & distribution (FROZEN)
 
-Two components, one principle: enforcement runs in the user's CI; experience runs in a
-stateless, self-hostable App. No browser extension.
+One component, one principle: a single stateless, self-hostable GitHub App that both
+validates every PR (via webhook) and renders the guided-review experience. No browser
+extension, no CI action required.
 
-### 6.1 GitHub Action — `review-assist` action (enforcement + fallback)
-- Runs `review-assist validate` on every PR push: schema, staleness (head SHA), coverage,
-  cross-refs, redaction lint. Failing check = missing/stale/non-covering document.
-- Posts the markdown fallback rendering (sections problem → verification) as a PR
-  comment, plus an "Open guided review →" link into the App.
-- Runs entirely on the user's runners; costs us nothing; works even without the App.
-- Distributed via GitHub Marketplace (Actions listing).
+### 6.1 GitHub App — webhook validation (enforcement + fallback)
+- On every `pull_request` event the App runs the same checks as the CLI: schema, staleness
+  (head SHA), coverage, cross-refs, redaction lint. It writes a Checks API result and a
+  sticky summary comment with an "Open guided review →" link.
+- Zero config: no workflow file, no secrets, no runner minutes — installing the App on a
+  repo is the entire setup. The check is non-blocking by default.
+- The `review-assist` CLI remains available for teams that prefer to run the same checks
+  on their own runners/self-hosted CI.
 
 ### 6.2 GitHub App — guided review viewer (experience)
 - One-time install per repo/org by an admin; reviewers sign in with GitHub once.
@@ -178,7 +181,7 @@ stateless, self-hostable App. No browser extension.
   - MUST NOT persist repo content, diffs, or documents at rest. Permitted state:
     installation records, user sessions, and (optional, off by default) anonymous
     usage counters.
-  - No webhooks required in v1 — render on demand.
+  - The viewer renders on demand; the only webhook is the validation one (6.1).
   - **Runtime & caching (frozen):** reference deployment is Cloudflare Workers. The
     viewer SPA renders client-side; the Worker is an auth broker + thin GitHub API
     proxy only. Static assets MAY be edge-cached aggressively. Responses containing
