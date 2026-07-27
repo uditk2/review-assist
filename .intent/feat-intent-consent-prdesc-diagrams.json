@@ -1,0 +1,465 @@
+{
+  "approach": {
+    "adopted": {
+      "rationale": "Least friction with an explicit safety gate; a single validation surface; and desktop one-click distribution reusing the tiny self-contained bundle.",
+      "summary": "A commit-time consent gate in submit_document backed by a per-user store (set_consent/manage_consent plus a consent CLI); a renderPrDescription in the validator returned by submit_document; an optional diagrams schema field rendered as native fences and in the viewer under strict mermaid; removal of the Action so the App webhook is the only validation path; and an .mcpb manifest + mcpb:pack script wrapping the self-contained dist."
+    },
+    "requirements": [
+      {
+        "source": "user",
+        "text": "Global install must not silently act on a repo; ask per-repo with Always/Once/Never and a reset path."
+      },
+      {
+        "source": "user",
+        "text": "submit_document returns a ready-to-use PR description."
+      },
+      {
+        "source": "user",
+        "text": "Optional Mermaid diagrams render in the PR body and the viewer."
+      },
+      {
+        "source": "user",
+        "text": "One validation path (the App webhook); remove the Action."
+      },
+      {
+        "source": "user",
+        "text": "One-click desktop install via .mcpb, hosted in the same repo."
+      }
+    ],
+    "trials": [
+      {
+        "outcome": "Would still act everywhere by default.",
+        "what": "Have the viewer show a friendly 'install the app' prompt on a 404 for repos without the App.",
+        "why_abandoned": "User wanted explicit per-repo opt-in, not silent-attempt-then-nudge."
+      },
+      {
+        "outcome": "Avoids wasted work on a decline.",
+        "what": "Prompt for consent at the start of the flow (before the interview).",
+        "why_abandoned": "User explicitly chose commit-time gating."
+      },
+      {
+        "outcome": "Team-wide, shareable.",
+        "what": "Store the consent decision as a file committed in the repo.",
+        "why_abandoned": "User chose a per-user central store at ~/.review-assist/consent.json."
+      },
+      {
+        "outcome": "Tens of MB bundle.",
+        "what": "Bundle node_modules into the .mcpb per the CLI default.",
+        "why_abandoned": "The esbuild output is self-contained; the bundle is ~155KB with just dist + manifest."
+      }
+    ]
+  },
+  "assumptions": [
+    {
+      "assumption": "Commit time (submit_document) is the right point to ask for consent, per the user's explicit choice, rather than at the start of the flow.",
+      "confidence": "confirmed_by_user",
+      "how_to_verify": "Watch first-run UX on real repos; measure wasted work on declines.",
+      "id": "A1",
+      "impact_if_wrong": "A 'Never' answer wastes the interview/distillation work that already ran; the gate would need to move earlier."
+    },
+    {
+      "assumption": "The authoring agent already holds full change context, so local transcript hydration is unnecessary when dogfooding from a Cowork session.",
+      "confidence": "grounded_in_code",
+      "how_to_verify": "Review the document against the actual diff and conversation.",
+      "id": "A2",
+      "impact_if_wrong": "The document could miss rationale that only lived in the session; meta.interview reflects the real (small) interview."
+    },
+    {
+      "assumption": "GitHub renders our Mermaid fences natively and the viewer's securityLevel strict safely renders repo-authored diagrams.",
+      "confidence": "grounded_in_code",
+      "how_to_verify": "Open a PR with a diagram and load the guided viewer.",
+      "id": "A3",
+      "impact_if_wrong": "Diagrams break or become an injection vector in the viewer."
+    },
+    {
+      "assumption": "The App webhook (non-blocking check + comment) fully replaces the Action, and the CLI covers teams that still want their own CI.",
+      "confidence": "confirmed_by_user",
+      "how_to_verify": "Confirm the webhook posts check+comment and the review-assist CLI still runs the same checks.",
+      "id": "A4",
+      "impact_if_wrong": "Teams relying on Action-based enforcement lose it with no path."
+    },
+    {
+      "assumption": "The self-contained esbuild bundle needs no node_modules inside the .mcpb.",
+      "confidence": "grounded_in_code",
+      "how_to_verify": "Install the .mcpb in the Claude desktop app and invoke a tool.",
+      "id": "A5",
+      "impact_if_wrong": "The bundle fails to start after install."
+    }
+  ],
+  "diagrams": [
+    {
+      "caption": "Global install, per-repo opt-in. Decisions persist in ~/.review-assist/consent.json; manage_consent resets them.",
+      "mermaid": "flowchart TD\n    A[submit_document] --> B{consent for this repo}\n    B -->|enabled or once| C[validate, write Intent Document, return pr_description]\n    B -->|disabled| D[no-op: skip and tell user how to re-enable]\n    B -->|unknown| E[ask user: Always or Just this time or Never]\n    E --> F[set_consent] --> A",
+      "title": "Consent decision at commit time"
+    }
+  ],
+  "meta": {
+    "commit_range": {
+      "base_sha": "52556fca44a51728c4c7d0ed8c84bfc4a92df621",
+      "head_sha": "29ed830cca3a22036044c96852adb26d6e293060"
+    },
+    "generated_at": "2026-07-27T00:00:00Z",
+    "generated_by": {
+      "pipeline": "review-assist",
+      "version": "0.2.0"
+    },
+    "id": "review-assist-consent-prdesc-diagrams-mcpb",
+    "repo": "uditk2/review-assist",
+    "session": {
+      "agent": "Cowork (Claude)",
+      "model": "claude-opus-4-8",
+      "session_ids": []
+    },
+    "interview": {
+      "rounds": 2,
+      "questions_asked": 2,
+      "unresolved": 1
+    }
+  },
+  "open_questions": [
+    {
+      "context": "User chose commit-time gating; revisit if wasted work on declines is annoying in practice.",
+      "id": "Q1",
+      "question": "Should a 'Never' short-circuit earlier than commit time so the interview isn't wasted?",
+      "raised_by": "reviewer_agent"
+    }
+  ],
+  "problem": {
+    "evolution": [
+      {
+        "at": "mid-session",
+        "formulation": "Ask the user, at commit time, whether Review Assist may operate on a repo — Always / Just this time / Never — with a way to un-set it."
+      },
+      {
+        "at": "mid-session",
+        "formulation": "Generate a PR description as part of the intent."
+      },
+      {
+        "at": "mid-session",
+        "formulation": "Allow generating Mermaid diagrams as part of the intent."
+      },
+      {
+        "at": "mid-session",
+        "formulation": "The GitHub App webhook should be the only validation path; drop the Action."
+      },
+      {
+        "at": "late-session",
+        "formulation": "Package the MCP server as a one-click .mcpb bundle, hosted in the same repo."
+      }
+    ],
+    "origin": "emerged_during_session",
+    "out_of_scope": [
+      "Signing the .mcpb bundle",
+      "A full Cowork/Claude Code plugin (MCP + skills + slash commands) and a marketplace",
+      "Creating the GitHub Release that hosts the .mcpb asset"
+    ],
+    "statement": "Review Assist installs globally but would silently act on every repository, produced no PR description, could not carry diagrams, and shipped a redundant GitHub Action alongside the App — friction and safety gaps blocking real adoption.",
+    "user_asks": [
+      "We should ask user while committing if they want the review assist to work on it and if not.. should it be never or only this time. There should also be a way to remove from the no op list.",
+      "We should also generate a PR description right as part of the intent.",
+      "Also as part of it, it should allow generating mermaid diagrams and everything.",
+      "this github app webhook should be the only path as we now have a github app. No need for the github action right ?",
+      "I thought we just need an mcpb file for the same ?"
+    ]
+  },
+  "schema_version": "0.1",
+  "tour": [
+    {
+      "anchors": [
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "packages/mcp-server/src/consent.ts"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "packages/mcp-server/src/index.ts"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "packages/mcp-server/src/guide.ts"
+        }
+      ],
+      "attention": "The unknown/disabled branches in submit_document must run before any write.",
+      "id": "T1",
+      "parent": null,
+      "provenance": "inferred_from_code",
+      "role": "core",
+      "title": "Per-repo consent gate at commit time",
+      "what": "New consent.ts stores per-user decisions in ~/.review-assist/consent.json; submit_document gates on it — returning consent_required (Always/Once/Never) for unknown repos and skipping disabled ones — and gains set_consent + manage_consent tools plus a consent CLI subcommand. The guide tells the agent to relay the prompt at submit time.",
+      "why": "Installed globally, Review Assist must not act on a repo without the user's say-so; the write is the point of no return."
+    },
+    {
+      "anchors": [
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "packages/validator/src/render.ts"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "packages/validator/src/index.ts"
+        }
+      ],
+      "attention": "diagramsMarkdown must not run escape() over the multi-line mermaid source.",
+      "id": "T2",
+      "parent": null,
+      "provenance": "inferred_from_code",
+      "role": "core",
+      "title": "PR description generated from the intent",
+      "what": "A new renderPrDescription in the validator (problem, approach, diagrams, assumptions) exported and returned by submit_document as pr_description; mermaid newlines are preserved rather than flattened.",
+      "why": "The PR opens self-describing; the guided-review link still comes from the webhook so the two do not overlap."
+    },
+    {
+      "anchors": [
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "packages/schema/src/intent-doc.schema.json"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "packages/schema/src/index.ts"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "packages/schema/src/example.json"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "apps/github-app/viewer/index.html"
+        }
+      ],
+      "attention": "Use plain-ASCII mermaid; strict security neutralizes repo-authored source.",
+      "id": "T3",
+      "parent": null,
+      "provenance": "inferred_from_code",
+      "role": "core",
+      "title": "Mermaid diagrams as a first-class part of the format",
+      "what": "Optional top-level diagrams field in the schema (title/mermaid/caption) plus TS type; the example gains a sample sequence diagram; the viewer renders diagrams via mermaid.js (securityLevel strict) in a Diagrams section.",
+      "why": "Some changes are far clearer as a picture; GitHub renders fences natively and the viewer renders them too."
+    },
+    {
+      "anchors": [
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "README.md"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "SPEC.md"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "package.json"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "apps/github-action/action.yml"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "apps/github-action/dist/main.cjs"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "apps/github-action/examples/review-assist.yml"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "apps/github-action/package.json"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "apps/github-action/src/main.ts"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "apps/github-action/tsconfig.json"
+        }
+      ],
+      "attention": "The CLI is intentionally retained; the big diff hunk here is the deleted generated dist/main.cjs.",
+      "id": "T4",
+      "parent": null,
+      "provenance": "inferred_from_code",
+      "role": "core",
+      "title": "Retire the GitHub Action",
+      "what": "Delete apps/github-action and its workflow; drop it from the root workspaces/build; rewrite README and SPEC so the App is the single validation and experience surface. The review-assist CLI remains for self-hosted CI.",
+      "why": "The App webhook already runs the checks and posts the check+comment with zero config, making the Action redundant."
+    },
+    {
+      "anchors": [
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "packages/mcp-server/manifest.json"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "packages/mcp-server/.mcpbignore"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": "packages/mcp-server/package.json"
+        },
+        {
+          "hunk": {
+            "new_lines": 1000000,
+            "new_start": 0,
+            "old_lines": 0,
+            "old_start": 0
+          },
+          "path": ".gitignore"
+        }
+      ],
+      "attention": "No node_modules needed thanks to the esbuild bundle.",
+      "id": "T5",
+      "parent": null,
+      "provenance": "inferred_from_code",
+      "role": "core",
+      "title": "Package the MCP server as a one-click .mcpb",
+      "what": "Add manifest.json (stdio node to dist/index.js) and an mcpb:pack script; .mcpbignore keeps the bundle to manifest + dist + README; the ~155KB .mcpb ships as a release asset (gitignored). Landing gains a Download-.mcpb option and switches the Claude Code command to -s user.",
+      "why": "One-click desktop install with no terminal, reusing the self-contained bundle; global -s user makes the server available in every repo."
+    }
+  ],
+  "verification": {
+    "not_verified": [
+      "Visual rendering of the Diagrams section in a running guided viewer",
+      "Installing the .mcpb into the Claude desktop app end-to-end",
+      "The webhook posting check+comment for this PR against the live App"
+    ],
+    "performed": [
+      {
+        "description": "tsc --noEmit across all workspaces",
+        "kind": "typecheck",
+        "result": "pass"
+      },
+      {
+        "description": "vitest validator suite",
+        "kind": "test",
+        "result": "pass (20/20)"
+      },
+      {
+        "description": "full npm run build including viewer tailwind",
+        "kind": "build",
+        "result": "pass"
+      },
+      {
+        "description": "MCP end-to-end consent gate (unknown->consent_required, never->skipped, always->passes)",
+        "kind": "test",
+        "result": "pass"
+      },
+      {
+        "description": "renderPrDescription of example.json emits a mermaid fence with newlines intact",
+        "kind": "manual",
+        "result": "pass"
+      },
+      {
+        "description": "mcpb validate manifest.json and mcpb pack (4 files, ~155KB)",
+        "kind": "manual",
+        "result": "pass"
+      }
+    ]
+  }
+}
