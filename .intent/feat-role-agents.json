@@ -1,11 +1,11 @@
 {
   "schema_version": "0.1",
   "meta": {
-    "id": "role-locked-distillation-61cd5a2",
+    "id": "role-locked-distillation-928771b",
     "repo": "uditk2/review-assist",
     "commit_range": {
       "base_sha": "667d2003ba62b89b89a3957929799ab96be90e5e",
-      "head_sha": "61cd5a2592b497302a7662ac3698657e48b68f6c"
+      "head_sha": "928771bbc7306ad54b4fea420177f73e4edbfc2b"
     },
     "session": {
       "agent": "intent-reviewer",
@@ -15,176 +15,183 @@
       "pipeline": "review-assist-two-agent-distillation",
       "version": "0.2.0"
     },
-    "generated_at": "2026-07-28T00:00:00+05:30",
+    "generated_at": "2026-07-28T09:46:19.744Z",
     "interview": {
-      "rounds": 14,
-      "questions_asked": 14,
-      "unresolved": 14
+      "rounds": 13,
+      "questions_asked": 13,
+      "unresolved": 13
     }
   },
   "problem": {
-    "statement": "Make two-agent Intent Document distillation installable and enforceable with client-specific roles, server-side capability separation, and better transcript selection and retrieval.",
-    "origin": "stated_upfront",
+    "statement": "Make two-agent Intent Document distillation installable and enforceable across clients, while improving discovery and targeted retrieval of the implementation transcript.",
+    "origin": "emerged_during_session",
+    "evolution": [
+      {
+        "at": "post-hoc review",
+        "formulation": "The implementation session was not recovered; this formulation and the required origin classification are inferred from the completed diff, not from transcript evidence."
+      }
+    ],
     "user_asks": [],
     "out_of_scope": [
-      "No qualifying underlying-work transcript was found; original scope and evolution are unknown."
+      "No qualifying implementation transcript was found, so the original ask, evolution, rejected approaches, and deliberate exclusions remain unknown."
     ]
   },
   "assumptions": [
     {
       "id": "A1",
-      "assumption": "REVIEW_ASSIST_ROLE plus generated client configuration enforce the intended author/reviewer boundary.",
-      "impact_if_wrong": "One context could access both transcripts and submission.",
-      "how_to_verify": "Enumerate and invoke tools under installed author and reviewer configurations.",
+      "assumption": "REVIEW_ASSIST_ROLE and generated client configuration enforce the author/reviewer capability boundary.",
+      "impact_if_wrong": "An author could submit or a reviewer could read transcripts, invalidating provenance separation.",
+      "how_to_verify": "Launch each generated role, enumerate registered tools, and attempt forbidden calls with and without REVIEW_ASSIST_ROLE.",
       "confidence": "grounded_in_code"
     },
     {
       "id": "A2",
-      "assumption": "Leading XML-like blocks are injected scaffolding, not user content.",
-      "impact_if_wrong": "Legitimate asks can disappear from previews and classification.",
-      "how_to_verify": "Test injected wrappers and legitimate leading markup.",
+      "assumption": "Leading XML-like blocks matched by stripInjectedBlocks are injected scaffolding rather than legitimate user content.",
+      "impact_if_wrong": "A genuine opening ask can be removed from transcript previews and classification.",
+      "how_to_verify": "Test known injected wrappers and legitimate leading XML-like user messages.",
       "confidence": "unverified"
     },
     {
       "id": "A3",
-      "assumption": "Whole-file transcript loading is acceptable.",
-      "impact_if_wrong": "Large searches can exhaust memory.",
-      "how_to_verify": "Benchmark maximum-size transcripts.",
+      "assumption": "Whole-file loading in searchTranscript is acceptable for supported transcript sizes.",
+      "impact_if_wrong": "Large transcripts can cause latency or memory exhaustion.",
+      "how_to_verify": "Benchmark representative and maximum-size transcripts while measuring peak memory.",
       "confidence": "unverified"
     },
     {
       "id": "A4",
-      "assumption": "SERVER_VERSION remains synchronized with release metadata.",
-      "impact_if_wrong": "CLI and package versions can disagree.",
-      "how_to_verify": "Compare them during release or automate the check.",
+      "assumption": "SERVER_VERSION remains synchronized with package.json and published artifacts.",
+      "impact_if_wrong": "CLI, MCP identity, and released package metadata can report different versions.",
+      "how_to_verify": "Add or run a release-time equality check against package metadata.",
       "confidence": "unverified"
     },
     {
       "id": "A5",
-      "assumption": "Markdown/TOML loaders and published agent files work in npm and MCPB artifacts.",
-      "impact_if_wrong": "Generated roles can be unavailable after distribution.",
-      "how_to_verify": "Pack, inspect, install, and exercise both artifacts.",
+      "assumption": "Markdown/TOML loaders and published agents files work in bundled, npm, and MCPB artifacts.",
+      "impact_if_wrong": "Role definitions may fail to render or install after distribution.",
+      "how_to_verify": "Build, npm pack, inspect, install, and smoke-test role rendering from each artifact.",
       "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A6",
+      "assumption": "Bounded head reads, mount-name matching, and an 80-candidate scoring cap retain the relevant implementation session.",
+      "impact_if_wrong": "Relevant sessions can remain undiscoverable or unrelated sessions can rank highly.",
+      "how_to_verify": "Exercise late mount references, name collisions, changed storage layouts, and more than 80 candidates.",
+      "confidence": "unverified"
     }
   ],
   "open_questions": [
     {
       "id": "Q1",
-      "question": "What did the user actually ask for, verbatim, about this change?",
-      "context": "No qualifying work transcript exists.",
+      "question": "What did the user actually ask for, verbatim, in the implementation session?",
+      "context": "No qualifying implementation transcript was found; packaging/distillation prompts were rejected.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q2",
-      "question": "Was this the problem from the start, or did it change shape?",
-      "context": "The transcript does not cover this.",
+      "question": "Was the inferred problem present from the start or reformulated during implementation?",
+      "context": "The implementation session was not recovered, while the schema requires an origin classification.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q3",
-      "question": "What was tried and abandoned?",
-      "context": "The transcript does not cover this.",
+      "question": "What approaches were tried and abandoned?",
+      "context": "No qualifying transcript evidence exists.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q4",
-      "question": "What assumptions about the world motivated the change, including failure impact and checks?",
-      "context": "The transcript does not cover this.",
+      "question": "Which inferred environmental and distribution assumptions were explicitly intended?",
+      "context": "Assumptions are code-derived because the implementation transcript was not recovered.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q5",
-      "question": "Which hunks are genuinely incidental, including package.json formatting and .gitignore?",
-      "context": "The transcript does not cover this.",
+      "question": "Which supporting hunks did the implementer consider incidental?",
+      "context": "Classification is inferred from behavior and code comments.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q6",
-      "question": "What verification was run, and what was not run?",
-      "context": "The transcript does not cover this.",
+      "question": "What verification was actually run during implementation?",
+      "context": "No transcript-backed commands or results were recovered.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q7",
-      "question": "Why add role definitions and install generation now, with Claude, Codex, and generic wrappers?",
-      "context": "The transcript does not cover this.",
+      "question": "What exact failure or user need triggered installable, enforced roles?",
+      "context": "The trigger is unknown; purpose is inferred from code.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q8",
-      "question": "Why enforce REVIEW_ASSIST_ROLE and use these exact tool partitions?",
-      "context": "The transcript does not cover this.",
+      "question": "Was the author prose intentionally left without an explicit search_transcript mention?",
+      "context": "The generated allowlist contains it, but shared prose names list/read only.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q9",
-      "question": "Why do author prose and Claude's allowlist omit search_transcript while ROLE_TOOLS includes it?",
-      "context": "The transcript does not cover this.",
+      "question": "What concrete misses and measurements justified each transcript-discovery heuristic and cap?",
+      "context": "Code comments explain intended cases, but implementation-session evidence is absent.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q10",
-      "question": "What protects legitimate leading XML-like user content from stripInjectedBlocks?",
-      "context": "The transcript does not cover this.",
+      "question": "Was removal of legitimate leading XML-like user markup accepted and tested?",
+      "context": "The heuristic has no semantic safeguard.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q11",
-      "question": "Why is searchTranscript described as streaming although it loads the whole file?",
-      "context": "The transcript does not cover this.",
+      "question": "Should searchTranscript actually stream, or is its streaming comment stale?",
+      "context": "Implementation reads and splits the entire file.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q12",
-      "question": "Why set SERVER_VERSION separately and change publishing/build asset handling?",
-      "context": "The transcript does not cover this.",
+      "question": "How is SERVER_VERSION kept synchronized and how were packaged role assets verified?",
+      "context": "No release/package verification was recovered.",
       "raised_by": "reviewer_agent"
     },
     {
       "id": "Q13",
-      "question": "Which exact tests covered role generation, gating, search, packaging, build, typecheck, and validation?",
-      "context": "The transcript does not cover this.",
-      "raised_by": "reviewer_agent"
-    },
-    {
-      "id": "Q14",
-      "question": "What deliberate out-of-scope items or known risks are not evident in the diff?",
-      "context": "The transcript does not cover this.",
+      "question": "Which risks were deliberately left out of scope?",
+      "context": "No transcript-stated exclusions were recovered.",
       "raised_by": "reviewer_agent"
     }
   ],
   "approach": {
     "requirements": [
       {
-        "text": "Separate transcript access from Intent Document submission at the registered-tool boundary.",
+        "text": "Separate transcript custody from Intent Document submission at the server tool-registration boundary.",
         "source": "inferred_from_code"
       },
       {
-        "text": "Generate shared author/reviewer roles for Claude, Codex, and generic clients.",
+        "text": "Generate consistent author and reviewer definitions for Claude, Codex, and generic clients.",
         "source": "inferred_from_code"
       },
       {
-        "text": "Distinguish work sessions from distillation runs and retrieve question-specific transcript passages.",
+        "text": "Find implementation work in delegated, archived, and Cowork transcript storage and distinguish later distillation runs.",
         "source": "inferred_from_code"
       },
       {
-        "text": "Ship role assets and CLI installation/version entry points.",
+        "text": "Support question-targeted transcript retrieval and distribute the role assets and installer CLI.",
         "source": "inferred_from_code"
       }
     ],
     "trials": [],
     "adopted": {
-      "summary": "Add shared role prose and client wrappers, a rendering registry, REVIEW_ASSIST_ROLE registration gating, agent CLI support, and transcript preview/search enhancements.",
-      "rationale": "Inferred from code: shared prose limits drift, server gating enforces separation, and targeted search reduces author context. No transcript confirms rationale or rejected alternatives."
+      "summary": "Centralize shared role prose and client templates, render them through a registry, gate MCP registration with REVIEW_ASSIST_ROLE, add role/version/installation CLI surfaces, and expand transcript discovery, previews, classification, and ranked search.",
+      "rationale": "Inferred from code and comments: combine client-native setup with a server-side lock, reduce role-definition drift, recover sessions previously missed by storage/layout differences, and retrieve passages relevant to reviewer questions. No implementation transcript confirms rationale or rejected alternatives."
     }
   },
   "tour": [
     {
       "id": "T1",
-      "title": "Canonical role protocol",
+      "title": "Define the two-agent protocol",
       "role": "core",
-      "what": "Defines author, reviewer, and mandatory baseline questions.",
-      "why": "Establishes custody, submission, interviewing, and uncertainty rules.",
+      "what": "Adds canonical author/reviewer instructions and mandatory baseline interview questions.",
+      "why": "Makes provenance custody, verbatim user-ask rules, unresolved questions, and submission ownership explicit.",
       "anchors": [
         {
           "path": "packages/mcp-server/agents/_roles/author.md",
@@ -201,7 +208,7 @@
             "old_start": 0,
             "old_lines": 0,
             "new_start": 1,
-            "new_lines": 33
+            "new_lines": 38
           }
         },
         {
@@ -214,15 +221,14 @@
           }
         }
       ],
-      "provenance": "inferred_from_code",
-      "attention": "Author prose omits search_transcript."
+      "provenance": "inferred_from_code"
     },
     {
       "id": "T2",
-      "title": "Client-specific wrappers",
-      "role": "supporting",
-      "what": "Wraps shared roles for Claude, Codex, and generic clients.",
-      "why": "Adapts the protocol to client configuration and permission models.",
+      "title": "Render client-native role definitions",
+      "role": "core",
+      "what": "Adds Claude, Codex, and generic wrappers plus a registry that renders shared prose, installation metadata, environment detection, and role tool partitions.",
+      "why": "Keeps role behavior centralized while adapting configuration and enforcement to each client.",
       "anchors": [
         {
           "path": "packages/mcp-server/agents/claude/author.tpl.md",
@@ -277,38 +283,27 @@
             "new_start": 1,
             "new_lines": 1
           }
-        }
-      ],
-      "parent": "T1",
-      "provenance": "inferred_from_code",
-      "attention": "Claude author allowlist omits search_transcript."
-    },
-    {
-      "id": "T3",
-      "title": "Role registry",
-      "role": "core",
-      "what": "Renders roles, detects clients, declares install metadata and tool partitions.",
-      "why": "Keeps prose shared while producing environment-native definitions.",
-      "anchors": [
+        },
         {
           "path": "packages/mcp-server/src/roles.ts",
           "hunk": {
             "old_start": 0,
             "old_lines": 0,
             "new_start": 1,
-            "new_lines": 159
+            "new_lines": 165
           }
         }
       ],
       "parent": "T1",
-      "provenance": "inferred_from_code"
+      "provenance": "inferred_from_code",
+      "attention": "The author allowlist includes search_transcript, but shared author prose explicitly names only list/read."
     },
     {
-      "id": "T4",
-      "title": "Server enforcement and CLI",
+      "id": "T3",
+      "title": "Enforce roles and expose installation surfaces",
       "role": "core",
-      "what": "Gates tool registration by role; adds role retrieval, agent installation, version CLI, and active-role reporting.",
-      "why": "Makes the split enforceable and distributable.",
+      "what": "Routes all MCP registration through the active-role gate; adds search and role-definition tools, agent installation, version reporting, and active-role diagnostics.",
+      "why": "Turns advisory separation into server-enforced capability separation and makes generated roles usable from supported clients.",
       "anchors": [
         {
           "path": "packages/mcp-server/src/index.ts",
@@ -419,24 +414,78 @@
           }
         }
       ],
-      "parent": "T3",
+      "parent": "T2",
       "provenance": "inferred_from_code",
-      "attention": "Runtime partitions lack recovered test evidence."
+      "attention": "Behavior when REVIEW_ASSIST_ROLE is unset remains unrestricted; interview state is process-local."
     },
     {
-      "id": "T5",
-      "title": "Transcript selection and search",
+      "id": "T4",
+      "title": "Recover and rank more transcript sources",
       "role": "core",
-      "what": "Cleans first-user previews, flags probable distillation runs, and adds ranked transcript search.",
-      "why": "Helps authors choose the work session and retrieve passages relevant to one question.",
+      "what": "Discovers Claude subagent files, archived Codex sessions, and Cowork sessions via connected mounts; increases the scoring pool, bounds candidate reads, cleans previews, flags probable distillation runs, and adds ranked passage search.",
+      "why": "Targets implementation sessions and delegated reasoning that prior location, cwd, recency, and paging assumptions could miss.",
       "anchors": [
+        {
+          "path": "packages/mcp-server/src/git.ts",
+          "hunk": {
+            "old_start": 6,
+            "old_lines": 9,
+            "new_start": 6,
+            "new_lines": 9
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/git.ts",
+          "hunk": {
+            "old_start": 37,
+            "old_lines": 6,
+            "new_start": 37,
+            "new_lines": 11
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/git.ts",
+          "hunk": {
+            "old_start": 54,
+            "old_lines": 16,
+            "new_start": 59,
+            "new_lines": 29
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/git.ts",
+          "hunk": {
+            "old_start": 71,
+            "old_lines": 7,
+            "new_start": 89,
+            "new_lines": 10
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/git.ts",
+          "hunk": {
+            "old_start": 82,
+            "old_lines": 6,
+            "new_start": 103,
+            "new_lines": 28
+          }
+        },
         {
           "path": "packages/mcp-server/src/git.ts",
           "hunk": {
             "old_start": 218,
             "old_lines": 6,
-            "new_start": 218,
+            "new_start": 261,
             "new_lines": 17
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/git.ts",
+          "hunk": {
+            "old_start": 230,
+            "old_lines": 17,
+            "new_start": 284,
+            "new_lines": 19
           }
         },
         {
@@ -444,7 +493,7 @@
           "hunk": {
             "old_start": 257,
             "old_lines": 6,
-            "new_start": 268,
+            "new_start": 313,
             "new_lines": 7
           }
         },
@@ -453,7 +502,7 @@
           "hunk": {
             "old_start": 265,
             "old_lines": 14,
-            "new_start": 277,
+            "new_start": 322,
             "new_lines": 28
           }
         },
@@ -462,7 +511,7 @@
           "hunk": {
             "old_start": 281,
             "old_lines": 6,
-            "new_start": 307,
+            "new_start": 352,
             "new_lines": 22
           }
         },
@@ -471,20 +520,20 @@
           "hunk": {
             "old_start": 292,
             "old_lines": 3,
-            "new_start": 334,
-            "new_lines": 109
+            "new_start": 379,
+            "new_lines": 166
           }
         }
       ],
       "provenance": "inferred_from_code",
-      "attention": "Markup stripping risks false removal; search loads the full file despite streaming rationale."
+      "attention": "XML stripping can remove legitimate markup; search currently loads whole files despite a streaming comment; mount/cap heuristics can still miss or mis-rank sessions."
     },
     {
-      "id": "T6",
-      "title": "Required two-agent guide",
+      "id": "T5",
+      "title": "Require role-based distillation in the guide",
       "role": "supporting",
-      "what": "Requires obtaining role definitions before separate author/reviewer runs.",
-      "why": "Aligns guidance with enforcement.",
+      "what": "Changes two-agent distillation from recommended to required and directs callers to generated role definitions.",
+      "why": "Aligns the authoring guide with the new enforceable workflow.",
       "anchors": [
         {
           "path": "packages/mcp-server/src/guide.ts",
@@ -500,11 +549,11 @@
       "provenance": "inferred_from_code"
     },
     {
-      "id": "T7",
-      "title": "Package role assets",
+      "id": "T6",
+      "title": "Package role sources and text loaders",
       "role": "supporting",
-      "what": "Publishes agents and configures text loaders and TypeScript declarations.",
-      "why": "Makes source templates available to builds and packages.",
+      "what": "Ships agents in npm, configures markdown/TOML bundling, and declares text module types; surrounding package.json layout changes are formatting only.",
+      "why": "Ensures role templates are available to builds, installers, and type checking.",
       "anchors": [
         {
           "path": "packages/mcp-server/package.json",
@@ -525,16 +574,16 @@
           }
         }
       ],
-      "parent": "T3",
+      "parent": "T2",
       "provenance": "inferred_from_code",
-      "attention": "Formatting surrounds behavioral packaging changes."
+      "attention": "No recovered npm/MCPB pack or install verification."
     },
     {
-      "id": "T8",
-      "title": "Ignore generated Codex files",
-      "role": "incidental",
-      "what": "Ignores repository-local .codex output.",
-      "why": "Avoids committing machine-specific generated paths.",
+      "id": "T7",
+      "title": "Ignore generated local agent definitions",
+      "role": "supporting",
+      "what": "Ignores repository-local Codex and Claude agent output created by agents --write.",
+      "why": "Prevents machine-specific generated definitions from becoming source changes.",
       "anchors": [
         {
           "path": ".gitignore",
@@ -542,19 +591,20 @@
             "old_start": 7,
             "old_lines": 3,
             "new_start": 7,
-            "new_lines": 6
+            "new_lines": 7
           }
         }
       ],
-      "parent": "T3",
+      "parent": "T2",
       "provenance": "inferred_from_code"
     }
   ],
   "verification": {
     "performed": [],
     "not_verified": [
-      "No qualifying work transcript exists, so no build, lint, typecheck, test, CLI, packaging, or manual verification can be claimed.",
-      "Problem evolution, rejected alternatives, exact scope, cross-client role behavior, transcript edge cases, artifact contents, and version consistency remain unverified."
+      "No qualifying implementation transcript was found, so no test, typecheck, build, lint, CLI, packaging, or manual command/result can be claimed.",
+      "Role gating and forbidden-call behavior; role rendering and installation; transcript-source discovery, XML stripping, distillation classification, ranking and search; maximum-size memory/performance; npm/MCPB contents; and version synchronization were not verified.",
+      "Problem origin/evolution, exact user scope, rejected alternatives, intentional tradeoffs, and deliberate exclusions were not verified."
     ]
   }
 }
