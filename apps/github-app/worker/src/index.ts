@@ -55,6 +55,7 @@ export default {
       if (path === "/api/comments" && request.method === "POST") return handleCreateComment(request, env);
       if (path === "/api/comments/reply" && request.method === "POST") return handleReplyComment(request, env);
       if (path === "/api/issue-comment" && request.method === "POST") return handleIssueComment(request, env);
+      if (path === "/api/review" && request.method === "POST") return handleSubmitReview(request, env);
     } catch (e) {
       return json({ error: (e as Error).message }, 500, true);
     }
@@ -301,6 +302,36 @@ async function handleIssueComment(request: Request, env: Env): Promise<Response>
   const data = await res.json();
   if (!res.ok) return json({ error: (data as { message?: string }).message ?? `create failed (${res.status})` }, res.status, true);
   return json({ comment: data }, 201, true);
+}
+
+/** Submit the review verdict (approve / request changes) as the signed-in reviewer.
+ *  Merge is deliberately NOT offered here — branch protection, merge queues and merge
+ *  method live on GitHub; the viewer concludes the *review*, not the merge. */
+async function handleSubmitReview(request: Request, env: Env): Promise<Response> {
+  const session = await currentSession(request, env);
+  if (!session) return json({ error: "unauthenticated" }, 401, true);
+  const b = (await request.json().catch(() => ({}))) as {
+    owner?: string; repo?: string; pull?: string | number; event?: string; body?: string; commit_id?: string;
+  };
+  const { owner, repo, pull, event, body, commit_id } = b;
+  if (!owner || !repo || !pull || !event) {
+    return json({ error: "owner, repo, pull, event required" }, 400, true);
+  }
+  if (event !== "APPROVE" && event !== "REQUEST_CHANGES") {
+    return json({ error: "event must be APPROVE or REQUEST_CHANGES" }, 400, true);
+  }
+  // GitHub requires a body for REQUEST_CHANGES; it's optional for APPROVE.
+  if (event === "REQUEST_CHANGES" && !body?.trim()) {
+    return json({ error: "a body is required when requesting changes" }, 400, true);
+  }
+  const res = await ghUser(session.token, `/repos/${owner}/${repo}/pulls/${pull}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ event, body: body ?? "", ...(commit_id ? { commit_id } : {}) }),
+  });
+  const data = await res.json();
+  if (!res.ok) return json({ error: (data as { message?: string }).message ?? `review failed (${res.status})` }, res.status, true);
+  const r = data as { id: number; state: string; html_url: string };
+  return json({ review: { id: r.id, state: r.state, html_url: r.html_url } }, 201, true);
 }
 
 interface GhReviewComment {
