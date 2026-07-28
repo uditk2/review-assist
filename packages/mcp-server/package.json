@@ -4,16 +4,40 @@
   "description": "MCP server that turns an AI agent's coding session into a reviewable Intent Document — a two-agent author/reviewer distillation, gatekept by a deterministic validator. Works with Claude Code and Codex.",
   "license": "Apache-2.0",
   "type": "module",
-  "keywords": ["mcp", "model-context-protocol", "code-review", "claude-code", "codex", "ai-agents", "pull-request", "github", "intent-document"],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "code-review",
+    "claude-code",
+    "codex",
+    "ai-agents",
+    "pull-request",
+    "github",
+    "intent-document"
+  ],
   "homepage": "https://github.com/uditk2/review-assist",
-  "repository": { "type": "git", "url": "git+https://github.com/uditk2/review-assist.git", "directory": "packages/mcp-server" },
-  "bugs": { "url": "https://github.com/uditk2/review-assist/issues" },
-  "bin": { "review-assist-mcp": "./dist/index.js" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uditk2/review-assist.git",
+    "directory": "packages/mcp-server"
+  },
+  "bugs": {
+    "url": "https://github.com/uditk2/review-assist/issues"
+  },
+  "bin": {
+    "review-assist-mcp": "./dist/index.js"
+  },
   "main": "./dist/index.js",
-  "files": ["dist", "README.md"],
-  "engines": { "node": ">=18" },
+  "files": [
+    "dist",
+    "agents",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node18 --outfile=dist/index.js",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node18 --loader:.md=text --outfile=dist/index.js",
     "mcpb:pack": "npm run build && npx --yes @anthropic-ai/mcpb pack . ../../review-assist-mcp.mcpb",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build"

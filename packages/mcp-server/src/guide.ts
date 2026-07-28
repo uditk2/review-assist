@@ -11,8 +11,16 @@ export const GENERATION_GUIDE = `# How to author an Intent Document
 You are producing an Intent Document: a curated, reviewable explanation of a code
 change, distilled from the authoring session. Follow this protocol.
 
-## Two-agent distillation (recommended)
-Run this as two roles in a fresh context, so the depleted main session pays nothing:
+## Two-agent distillation
+Call \`get_role_definitions\` FIRST. It returns author and reviewer definitions built for
+your client, plus how to spin them up — for Claude Code they install as subagents whose
+\`tools:\` allowlist enforces the split, so the roles cannot bleed into one another.
+
+Run this as two roles in separate contexts, so the depleted main session pays nothing.
+The split is the point: the author holds the transcript and cannot submit; the reviewer
+submits and never sees the transcript. Anything the reviewer knows about intent, it had
+to ask for. Playing both roles yourself produces a document that validates and still
+quietly sources \`user_asks\` from the commit message:
 
 1. **Author role** — hydrate from the FULL session transcript (call \`list_transcripts\` with \`base\` (candidates come back ranked by how much
    they touch the changed files); pick the one whose \`first_user\` matches how THIS session
