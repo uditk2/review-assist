@@ -6,9 +6,9 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, existsSync, openSync, readSync, closeSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve, dirname, sep } from "node:path";
+import { join, resolve, dirname, basename, sep } from "node:path";
 
 const exec = promisify(execFile);
 
@@ -37,6 +37,11 @@ export async function computeDiff(
  * Locate session transcript(s) for a repo across supported agents, newest-first.
  * Works with BOTH:
  *   - Claude Code: ~/.claude/projects/<encoded-cwd>/<session>.jsonl  (one dir per cwd)
+ *   - Cowork (on this machine): ~/Library/Application Support/Claude/
+ *                 local-agent-mode-sessions/<id>/…/.claude/projects/<enc>/<uuid>.jsonl
+ *                 Claude Code's own format, but the recorded cwd is the SANDBOX path
+ *                 (/sessions/<name>, or …/outputs) — never the repo — so it is matched on
+ *                 the connected-folder mount instead. See findCoworkTranscripts.
  *   - Codex:       ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl       (global; cwd is
  *                  recorded in the session's meta head)
  *
@@ -80,6 +85,27 @@ export function findTranscripts(repoDir: string, override?: string): string[] {
     for (const { p } of recent) {
       const cwd = sessionCwd(p);
       if (cwd && candidates.has(resolve(cwd))) found.push({ path: p, mtime: safeMtime(p) });
+    }
+  }
+
+  // Cowork running on this machine. Neither strategy above can work: the transcript is in
+  // Claude Code's format but lives under the desktop app's support directory, and every
+  // session records a sandbox cwd (/sessions/<name>, or …/outputs) rather than the repo, so
+  // both the directory-name encoding and cwd matching miss. Connected folders are mounted
+  // at /sessions/<name>/mnt/<folder>, which IS traceable back to a repo on this disk.
+  for (const root of coworkRoots()) {
+    if (!existsSync(root)) continue;
+    const names = mountNames(repo);
+    // Not bounded by recency, unlike the Codex scan above: a repo's Cowork session is often
+    // old while unrelated newer ones crowd it out — the one on this machine ranked 419th of
+    // 442. Scanning every session with a bounded head read costs ~150ms for that corpus, so
+    // the cap bought nothing and lost the only matching session. The high ceiling is a
+    // runaway guard, not a filter.
+    const sessions = walkJsonl(root, 8)
+      .filter((p) => !p.endsWith("audit.jsonl"))
+      .slice(0, 2000);
+    for (const p of sessions) {
+      if (mentionsMount(p, names)) found.push({ path: p, mtime: safeMtime(p) });
     }
   }
 
@@ -241,17 +267,19 @@ export function listTranscriptCandidates(
   repoDir: string,
   opts: { override?: string; changedBasenames?: string[]; branch?: string; limit?: number } = {}
 ): TranscriptCandidate[] {
-  const paths = findTranscripts(repoDir, opts.override).slice(0, 30); // recency-bounded scan
+  // Scored set is bounded for cost, not for relevance — everything findTranscripts returns
+  // already passed a strong filter (cwd match, or connected-folder mount). Thirty was too
+  // tight once Cowork sessions joined: a repo with 40 recent Claude Code transcripts pushed
+  // all 29 of its mount-matched Cowork sessions out of the window before scoring, so the
+  // only sessions that held the work were never ranked.
+  const paths = findTranscripts(repoDir, opts.override).slice(0, 80);
   const basenames = Array.from(new Set((opts.changedBasenames ?? []).filter((b) => b && b.length > 2)));
   const branch = opts.branch?.trim();
   const cands: TranscriptCandidate[] = paths.map((p) => {
-    let content = "";
-    try {
-      content = readFileSync(p, "utf8");
-    } catch {
-      /* unreadable — skip content-based signals */
-    }
-    if (content.length > 1_000_000) content = content.slice(0, 500_000) + content.slice(-500_000);
+    // Bounded read: scoring only needs to know whether the session mentions the changed
+    // files, and slurping multi-megabyte sessions whole to then discard most of it made the
+    // scan cost scale with session length rather than with the number of candidates.
+    let content = readBounded(p, 1_000_000);
     const lines = content.split("\n").filter((l) => l.trim().length > 0);
     const agent: TranscriptCandidate["agent"] = p.includes(`${sep}.claude${sep}`)
       ? "claude-code"
@@ -439,4 +467,61 @@ function looksLikeDistillationRun(firstUser: string): boolean {
   const namesTheMachinery =
     /intent-author|intent-reviewer|record_interview_round|submit_document|require_interview/.test(t);
   return asksForDocument && namesTheMachinery;
+}
+
+/** Where the desktop app keeps on-this-machine Cowork sessions, per platform. */
+function coworkRoots(): string[] {
+  const home = homedir();
+  return [
+    join(home, "Library", "Application Support", "Claude", "local-agent-mode-sessions"),
+    join(home, ".config", "Claude", "local-agent-mode-sessions"),
+    join(home, "AppData", "Roaming", "Claude", "local-agent-mode-sessions"),
+  ];
+}
+
+/**
+ * Folder names worth matching a mount against: the repo and its nearest ancestors, since
+ * the user connects either the repo itself or a directory containing it. Kept shallow —
+ * matching on "Documents" would pull in every unrelated session.
+ */
+function mountNames(repo: string): string[] {
+  return ancestorsInclusive(repo, 2).map((p) => basename(p)).filter((n) => n.length > 1);
+}
+
+/**
+ * Does this session touch one of those mounts? Reads a bounded head rather than the whole
+ * file — mount paths appear early, in the first tool calls, and these sessions run long.
+ */
+function mentionsMount(path: string, names: string[]): boolean {
+  if (names.length === 0) return false;
+  let head: string;
+  try {
+    const fd = openSync(path, "r");
+    try {
+      const buf = Buffer.alloc(128 * 1024);
+      const n = readSync(fd, buf, 0, buf.length, 0);
+      head = buf.subarray(0, n).toString("utf8");
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+  return names.some((n) => head.includes(`/mnt/${n}`));
+}
+
+/** Read at most `max` bytes of a file as UTF-8; empty string if unreadable. */
+function readBounded(path: string, max: number): string {
+  try {
+    const fd = openSync(path, "r");
+    try {
+      const buf = Buffer.alloc(max);
+      const n = readSync(fd, buf, 0, max, 0);
+      return buf.subarray(0, n).toString("utf8");
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return "";
+  }
 }

@@ -79,8 +79,14 @@ const REGISTRY: Record<RoleEnv, EnvEntry> = {
   },
 };
 
+/**
+ * Fill a template. {{TOOLS}} is derived from ROLE_TOOLS rather than written by hand:
+ * the two drifted the moment search_transcript was added, leaving the Claude author
+ * unable to call the one tool the interview depends on.
+ */
 function render(tpl: string, role: RoleName): string {
-  return tpl.replace("{{BODY}}", BODY[role].trim());
+  const allowlist = ROLE_TOOLS[role].map((t) => `mcp__review-assist__${t}`).join(", ");
+  return tpl.replace("{{BODY}}", BODY[role].trim()).replace("{{TOOLS}}", allowlist);
 }
 
 /**
