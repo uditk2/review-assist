@@ -130,7 +130,13 @@ export const KNOWN_ENVS: RoleEnv[] = ["claude", "codex", "generic"];
 
 /** Tools each role may reach. Read by index.ts from REVIEW_ASSIST_ROLE. */
 export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
-  author: ["get_generation_guide", "list_transcripts", "read_transcript", "compute_diff"],
+  author: [
+    "get_generation_guide",
+    "list_transcripts",
+    "search_transcript",
+    "read_transcript",
+    "compute_diff",
+  ],
   reviewer: [
     "get_generation_guide",
     "get_role_definitions",

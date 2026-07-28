@@ -29,6 +29,7 @@ import {
   findTranscripts,
   listTranscriptCandidates,
   readTranscriptWindow,
+  searchTranscript,
   git,
 } from "./git.js";
 import {
@@ -78,6 +79,33 @@ registerTool(
       consent_state: getConsent(REPO_DIR),
     };
     return textResult(JSON.stringify(payload, null, 2));
+  }
+);
+
+
+registerTool(
+  "search_transcript",
+  "Search a session transcript for the passages that answer a specific question. Use this " +
+    "instead of paging: the reviewer asks about one thing, so retrieve only what bears on it. " +
+    "Returns ranked excerpts with their entry index — follow up with read_transcript around an " +
+    "index when you need the surrounding turns.",
+  {
+    path: z.string().describe("Transcript path (from list_transcripts)"),
+    query: z
+      .string()
+      .describe("The reviewer's question, or the key terms from it — verbatim is fine."),
+    limit: z.number().int().min(1).max(30).default(8),
+    context_chars: z.number().int().min(120).max(4000).default(600),
+  },
+  async ({ path, query, limit, context_chars }) => {
+    try {
+      const res = searchTranscript(path, query, limit, context_chars);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(res, null, 2) }],
+      };
+    } catch (e) {
+      return textResult(`search failed: ${(e as Error).message}`, true);
+    }
   }
 );
 

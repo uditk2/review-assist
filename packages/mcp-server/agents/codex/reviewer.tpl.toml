@@ -3,11 +3,12 @@ description = "Reviewer role for Review Assist distillation. Reads the diff cold
 
 # REVIEW_ASSIST_ROLE=reviewer drops list_transcripts and read_transcript from the tool
 # list entirely, so the reviewer cannot see the session even by accident.
-[mcp_servers.review-assist]
-command = "npx"
-args = ["-y", "review-assist-mcp"]
-env = { REVIEW_ASSIST_ROLE = "reviewer" }
 
 developer_instructions = '''
 {{BODY}}
 '''
+
+[mcp_servers.review-assist]
+command = "npx"
+args = ["-y", "review-assist-mcp"]
+env = { REVIEW_ASSIST_ROLE = "reviewer" }
