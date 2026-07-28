@@ -233,7 +233,11 @@ async function handleListComments(request: Request, url: URL, env: Env): Promise
     id: c.id,
     path: c.path,
     line: c.line ?? c.original_line ?? null,
+    // Ranges were dropped here, so a multi-line comment made on GitHub rendered in the
+    // viewer as if it applied to its last line alone.
+    start_line: c.start_line ?? c.original_start_line ?? null,
     side: c.side,
+    start_side: c.start_side ?? null,
     in_reply_to_id: c.in_reply_to_id ?? null,
     body: c.body,
     user: c.user?.login ?? "unknown",
@@ -249,16 +253,31 @@ async function handleCreateComment(request: Request, env: Env): Promise<Response
   const session = await currentSession(request, env);
   if (!session) return json({ error: "unauthenticated" }, 401, true);
   const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-  const { owner, repo, pull, commit_id, path, line, body } = b as {
-    owner?: string; repo?: string; pull?: string | number; commit_id?: string; path?: string; line?: number; body?: string;
+  const { owner, repo, pull, commit_id, path, line, body, start_line } = b as {
+    owner?: string; repo?: string; pull?: string | number; commit_id?: string; path?: string;
+    line?: number; body?: string; start_line?: number;
   };
   const side = (b.side as string) || "RIGHT";
+  const start_side = (b.start_side as string) || side;
   if (!owner || !repo || !pull || !commit_id || !path || !line || !body) {
     return json({ error: "owner, repo, pull, commit_id, path, line, body required" }, 400, true);
   }
+  // Multi-line comment: GitHub anchors the thread at `line` (the LAST line of the range)
+  // and takes the first line as `start_line`, so a reviewer can mark a whole block rather
+  // than picking one line out of it and hoping the reader infers the rest.
+  if (start_line !== undefined && (!Number.isInteger(start_line) || start_line >= line)) {
+    return json({ error: "start_line must be an integer less than line" }, 400, true);
+  }
   const res = await ghUser(session.token, `/repos/${owner}/${repo}/pulls/${pull}/comments`, {
     method: "POST",
-    body: JSON.stringify({ body, commit_id, path, line, side }),
+    body: JSON.stringify({
+      body,
+      commit_id,
+      path,
+      line,
+      side,
+      ...(start_line !== undefined ? { start_line, start_side } : {}),
+    }),
   });
   const data = await res.json();
   if (!res.ok) return json({ error: (data as { message?: string }).message ?? `create failed (${res.status})` }, res.status, true);
@@ -339,6 +358,9 @@ interface GhReviewComment {
   path: string;
   line: number | null;
   original_line: number | null;
+  start_line?: number | null;
+  original_start_line?: number | null;
+  start_side?: string | null;
   side: string;
   in_reply_to_id?: number;
   body: string;

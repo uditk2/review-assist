@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="./styles.css" />
 <style>
 .rev-line{position:relative}
+.rev-line.is-sel{box-shadow:inset 3px 0 0 var(--accent-600);background:var(--accent-50)}
+.rev-range{font-size:.78rem;color:var(--ink-500);margin-bottom:.25rem}
 .rev-add{position:absolute;top:0;right:.25rem;height:100%;display:flex;align-items:center;padding:0 .45rem;border:0;background:none;color:var(--ink-400);font-weight:700;cursor:pointer;opacity:0;transition:opacity .1s}
 .rev-line:hover .rev-add{opacity:1}
 .rev-add:hover{color:var(--accent-600)}
@@ -132,7 +134,7 @@ const CONF = {
 };
 const titleCase = s => String(s||"").replace(/_/g," ");
 
-let STATE = { data:null, files:[], coverage:null, ordered:[], view:"overview", stopIndex:0, acks:{}, me:null, comments:[], composer:null, composerSeed:"", posted:{}, reviewSubmitted:null };
+let STATE = { data:null, files:[], coverage:null, ordered:[], view:"overview", stopIndex:0, acks:{}, me:null, comments:[], composer:null, composerSeed:"", posted:{}, reviewSubmitted:null, selAnchor:null };
 
 function parseHash() {
   const m = /#([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(location.hash);
@@ -483,11 +485,32 @@ function renderHunk(path, h){
     const code = el("code",{class:"diff-line "+cls}, line);
     if (onRight && STATE.me){
       const key = path+":"+lineNo;
-      const addBtn = el("button",{class:"rev-add", title:"Comment on line "+lineNo,
-        onclick:()=>{ STATE.composer = STATE.composer===key ? null : key; render(); }}, "+");
-      body.append(el("div",{class:"rev-line"}, code, addBtn));
+      const sel = STATE.selAnchor;
+      // Shift-click marks the other end of a range. One line is the common case, so a plain
+      // click still opens a single-line composer without ceremony.
+      const addBtn = el("button",{class:"rev-add",
+        title:"Comment on line "+lineNo+" — shift-click a second line to comment on a range",
+        onclick:(e)=>{
+          if (e.shiftKey) {
+            if (!sel || sel.path!==path) { STATE.selAnchor = {path, line:lineNo}; STATE.composer = null; }
+            else {
+              const a = Math.min(sel.line, lineNo), b2 = Math.max(sel.line, lineNo);
+              STATE.selAnchor = null;
+              STATE.composer = a===b2 ? path+":"+b2 : `${path}:${a}-${b2}`;
+            }
+          } else {
+            STATE.selAnchor = null;
+            STATE.composer = STATE.composer===key ? null : key;
+          }
+          render();
+        }}, "+");
+      const pending = sel && sel.path===path && sel.line===lineNo;
+      const inRange = rangeOf(STATE.composer, path);
+      const spanned = inRange && lineNo>=inRange[0] && lineNo<=inRange[1];
+      body.append(el("div",{class:"rev-line"+(pending||spanned?" is-sel":"")}, code, addBtn));
       for (const root of STATE.comments.filter(c => c.path===path && c.line===lineNo && !c.in_reply_to_id)) body.append(renderThread(root));
-      if (STATE.composer===key) body.append(renderComposer(path, lineNo, null));
+      if (STATE.composer===key) body.append(renderComposer(path, lineNo, lineNo, null));
+      if (inRange && inRange[1]===lineNo) body.append(renderComposer(path, inRange[0], inRange[1], null));
     } else {
       body.append(code);
     }
@@ -504,6 +527,13 @@ async function loadComments(){
     if (r.ok) STATE.comments = (await r.json()).comments || [];
   } catch {}
 }
+/** A composer key of "path:start-end" means a range; anything else is a single line. */
+function rangeOf(key, path){
+  if (!key || !key.startsWith(path+":")) return null;
+  const m = /:(\d+)-(\d+)$/.exec(key);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+
 function renderThread(root){
   const replies = STATE.comments
     .filter(c => c.in_reply_to_id === root.id)
@@ -512,39 +542,49 @@ function renderThread(root){
   const key = "reply:"+root.id;
   box.append(el("button",{class:"rev-reply-toggle",
     onclick:()=>{ STATE.composer = STATE.composer===key ? null : key; render(); }}, "Reply"));
-  if (STATE.composer===key) box.append(renderComposer(null, null, root.id));
+  if (STATE.composer===key) box.append(renderComposer(null, null, null, root.id));
   return box;
 }
 function renderComment(c){
   return el("div",{class:"rev-comment"},
     el("div",{class:"rev-meta"},
       el("span",{class:"rev-author"}, "@"+c.user),
+      c.start_line && c.line && c.start_line !== c.line
+        ? el("span",{class:"tag"}, `lines ${c.start_line}\u2013${c.line}`) : null,
       c.outdated ? el("span",{class:"tag tag-warn"}, "outdated") : null,
       el("a",{class:"rev-link", href:c.html_url, target:"_blank", rel:"noopener"}, "GitHub \u2197")),
     el("div",{class:"rev-body"}, c.body));
 }
-function renderComposer(path, lineNo, replyTo){
+function renderComposer(path, startLine, endLine, replyTo){
+  const isRange = !replyTo && startLine !== endLine;
   const ta = el("textarea",{class:"rev-textarea", rows:"3",
-    placeholder: replyTo ? "Reply\u2026" : ("Comment on line "+lineNo+"\u2026")});
+    placeholder: replyTo ? "Reply\u2026"
+      : isRange ? `Comment on lines ${startLine}\u2013${endLine}\u2026`
+                : ("Comment on line "+endLine+"\u2026")});
   const status = el("span",{class:"rev-status"});
   const submit = el("button",{class:"btn-primary"}, replyTo ? "Reply" : "Comment");
   submit.addEventListener("click", async ()=>{
     const text = ta.value.trim(); if (!text) return;
     submit.setAttribute("disabled","disabled"); status.textContent = "Posting\u2026";
-    const res = replyTo ? await replyComment(replyTo, text) : await postComment(path, lineNo, "RIGHT", text);
-    if (res.ok){ STATE.composer = null; await loadComments(); render(); }
+    const res = replyTo ? await replyComment(replyTo, text)
+                        : await postComment(path, startLine, endLine, "RIGHT", text);
+    if (res.ok){ STATE.composer = null; STATE.selAnchor = null; await loadComments(); render(); }
     else { submit.removeAttribute("disabled"); status.textContent = res.error || "Failed \u2014 try again."; }
   });
-  const cancel = el("button",{class:"btn-ghost", onclick:()=>{ STATE.composer=null; render(); }}, "Cancel");
-  const wrap = el("div",{class:"rev-composer"}, ta, el("div",{class:"rev-actions"}, submit, cancel, status));
+  const cancel = el("button",{class:"btn-ghost", onclick:()=>{ STATE.composer=null; STATE.selAnchor=null; render(); }}, "Cancel");
+  const wrap = el("div",{class:"rev-composer"},
+    isRange ? el("div",{class:"rev-range"}, `Lines ${startLine}\u2013${endLine}`) : null,
+    ta, el("div",{class:"rev-actions"}, submit, cancel, status));
   setTimeout(()=>ta.focus(), 0);
   return wrap;
 }
-async function postComment(path, line, side, body){
+async function postComment(path, startLine, endLine, side, body){
   const m = STATE.data.meta;
   try {
     const r = await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ owner:m.owner, repo:m.repo, pull:m.pull, commit_id:m.head_sha, path, line, side, body })});
+      body: JSON.stringify({ owner:m.owner, repo:m.repo, pull:m.pull, commit_id:m.head_sha, path,
+        line:endLine, side, body,
+        ...(startLine!==endLine ? { start_line:startLine, start_side:side } : {}) })});
     if (r.ok) return { ok:true };
     return { ok:false, error:(await r.json().catch(()=>({}))).error };
   } catch(e){ return { ok:false, error:String(e) }; }
