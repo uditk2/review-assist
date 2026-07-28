@@ -11,6 +11,7 @@
   ],
   "scripts": {
     "build": "npm run build -w @review-assist/schema && npm run build -w @review-assist/validator && npm run build -w review-assist-mcp && npm run build -w @review-assist/viewer",
+    "docs:architecture": "node scripts/generate-architecture.mjs",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
