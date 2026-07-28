@@ -399,7 +399,7 @@ function renderStop(){
 
   const wrap = el("div",{class:"mt-5 space-y-3"});
   for (const hp of hunksForStop(s, STATE.files)){
-    if (hp.missing){ wrap.append(el("div",{class:"diff"}, el("div",{class:"diff-file"}, hp.path, el("span",{class:"tag tag-warn"},"no matching hunk")))); continue; }
+    if (hp.missing){ wrap.append(el("div",{class:"diff"}, el("div",{class:"diff-file"}, hp.path, el("span",{class:"tag tag-warn"},"no matching change")))); continue; }
     wrap.append(renderHunk(hp.path, hp.hunk));
   }
   f.append(wrap);
@@ -642,7 +642,7 @@ async function postIssueComment(body){
 function renderCoverage(){
   const f = document.createDocumentFragment();
   f.append(el("h1",{class:"mb-1"},"Uncovered changes"));
-  f.append(el("p",{class:"mb-5 text-ink-500"},"These diff hunks aren’t accounted for by any walkthrough stop. A complete review explains every change."));
+  f.append(el("p",{class:"mb-5 text-ink-500"},"These changes aren’t accounted for by any walkthrough stop. A complete review explains every change."));
   const wrap = el("div",{class:"space-y-3"});
   if (!STATE.coverage.unexplained.length) wrap.append(el("p",{class:"text-ink-500"},"Everything is accounted for."));
   for (const u of STATE.coverage.unexplained) wrap.append(renderHunk(u.path, u.hunk));
