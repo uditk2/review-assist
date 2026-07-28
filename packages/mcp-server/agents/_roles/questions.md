@@ -6,7 +6,12 @@ that is easy to fill with a confident guess, and each has been filled wrongly in
 Ask the author; do not answer them yourself from the diff.
 
 1. **What did the user actually ask for, in their words?**
-   Guards `problem.user_asks`. Quotes only, and about the CHANGE. If the author cannot
+   Guards `problem.user_asks`. Quotes only, and about the CHANGE — from the session that
+   MADE it. If the author says a transcript is not the implementation session, nothing in it
+   is a user ask, however quotable: a request to open the PR, publish a release, or re-run
+   the distillation is about the change's packaging, not its intent. Ask the author to
+   confirm the quote came from the session that wrote the diff; if they cannot, leave the
+   array empty. If the author cannot
    produce a verbatim quote, the array stays empty — a commit message, branch name, PR
    title, or the prompt that launched this distillation is not a user ask. If a quote
    mentions Intent Documents, subagents, or submitting, it came from the wrong session:
