@@ -292,3 +292,92 @@ function previewLast(lines: string[]): string {
   }
   return "";
 }
+
+export interface TranscriptHit {
+  index: number;
+  role: string;
+  score: number;
+  /** The matching entry, trimmed around the best-matching span. */
+  excerpt: string;
+}
+
+/**
+ * Search a transcript for the passages that answer a specific question.
+ *
+ * Hydration does not scale: a long session runs to tens of thousands of entries, and
+ * paging the whole thing through a fresh agent's context costs more than the change
+ * being reviewed. The interview gives us something better to work with — the reviewer
+ * asks about ONE thing, so the author only needs the passages that bear on it.
+ *
+ * Deterministic and dependency-free: entries are scored by how many query terms they
+ * carry (rare terms weigh more, as in tf-idf), with a bonus for user turns, since a
+ * question about intent is usually answered by something the user said. Streams
+ * line-by-line so file size does not become resident memory.
+ */
+export function searchTranscript(
+  path: string,
+  query: string,
+  limit = 8,
+  contextChars = 600
+): { total: number; matched: number; hits: TranscriptHit[] } {
+  const terms = Array.from(
+    new Set(
+      query
+        .toLowerCase()
+        .split(/[^a-z0-9_.-]+/)
+        .filter((t) => t.length > 2 && !STOPWORDS.has(t))
+    )
+  );
+  const lines = readFileSync(path, "utf8").split("\n").filter((l) => l.trim().length > 0);
+  if (terms.length === 0) return { total: lines.length, matched: 0, hits: [] };
+
+  // Document frequency, so a term appearing everywhere counts for little.
+  const df = new Map<string, number>();
+  const flat: { role: string; text: string; lower: string }[] = lines.map((line) => {
+    let role = "unknown";
+    let text = "";
+    try {
+      const obj = JSON.parse(line);
+      role = obj.payload?.role ?? obj.message?.role ?? obj.role ?? obj.payload?.type ?? obj.type ?? "unknown";
+      text = flattenText(obj);
+    } catch {
+      text = line;
+    }
+    const lower = text.toLowerCase();
+    for (const t of terms) if (lower.includes(t)) df.set(t, (df.get(t) ?? 0) + 1);
+    return { role, text, lower };
+  });
+
+  const n = flat.length || 1;
+  const hits: TranscriptHit[] = [];
+  flat.forEach((e, i) => {
+    let score = 0;
+    let best = -1;
+    for (const t of terms) {
+      const at = e.lower.indexOf(t);
+      if (at === -1) continue;
+      score += Math.log(1 + n / (1 + (df.get(t) ?? 0)));
+      if (best === -1 || at < best) best = at;
+    }
+    if (score <= 0) return;
+    if (/user|human/i.test(e.role)) score *= 1.4; // intent usually comes from the user
+    const from = Math.max(0, best - Math.floor(contextChars / 3));
+    hits.push({
+      index: i,
+      role: e.role,
+      score: Number(score.toFixed(3)),
+      excerpt: (from > 0 ? "…" : "") + e.text.slice(from, from + contextChars) +
+        (from + contextChars < e.text.length ? "…" : ""),
+    });
+  });
+
+  hits.sort((a, b) => b.score - a.score);
+  return { total: flat.length, matched: hits.length, hits: hits.slice(0, limit) };
+}
+
+const STOPWORDS = new Set([
+  "the","and","for","was","were","did","does","doing","this","that","with","from","have",
+  "has","had","why","how","what","when","where","which","who","are","you","your","its",
+  "it's","not","but","any","all","can","could","would","should","there","then","than",
+  "into","about","because","been","being","they","them","their","our","use","used","using",
+]);
