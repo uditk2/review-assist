@@ -8,8 +8,8 @@
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#how-it-works">How it works</a> ·
-  <a href="#the-intent-document">Format</a> ·
-  <a href="#developing">Developing</a>
+  <a href="#developing">Developing</a> ·
+  <a href="#contributing">Contributing</a>
 </p>
 
 <p align="center">
@@ -65,15 +65,6 @@ check on every PR, the summary comment, and the guided-review viewer.
 
 Full diagram and internals: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## The Intent Document
-
-One open format ([`packages/schema`](packages/schema)), six sections: the **problem**
-as actually asked, **assumptions** with blast radius, the **approach** including
-rejected alternatives, a **tour** anchored to real diff hunks, honest **verification**
-(including what *wasn't* verified), and **meta** for staleness and provenance. See the
-[example](packages/schema/src/example.json), and [`SPEC.md`](SPEC.md) for the frozen
-design.
-
 ## Developing
 
 | Path | Component |
@@ -83,6 +74,7 @@ design.
 | [`packages/mcp-server`](packages/mcp-server) | MCP server that drives distillation and gatekeeps submissions |
 | [`apps/github-app/worker`](apps/github-app/worker) | Stateless Cloudflare Worker: OAuth broker + thin GitHub proxy |
 | [`apps/github-app/viewer`](apps/github-app/viewer) | Client-side guided-review viewer |
+| [`SPEC.md`](SPEC.md) | The frozen design: the document's six sections and the five checks |
 
 ```bash
 npm install
@@ -100,6 +92,18 @@ npx vitest run
 ```
 
 Architecture and internals: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Contributing
+
+Issues and pull requests are welcome. If the guided review reads wrong on one of your
+pull requests, [open an issue](https://github.com/uditk2/review-assist/issues) with the
+Intent Document and the diff that produced it — that pair is usually enough to reproduce.
+Proposals to change the format itself are worth raising as an issue first, since
+[`SPEC.md`](SPEC.md) is deliberately frozen and any change ripples through the validator,
+the viewer, and every document already committed.
+
+Before opening a pull request, run the checks under [Developing](#developing); CI runs the
+same build, typecheck, tests, and example validation.
 
 ## License
 
