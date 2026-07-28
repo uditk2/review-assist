@@ -1,64 +1,82 @@
 /**
  * Role definitions for the two-agent distillation.
  *
- * The guide *describes* an author/reviewer split; these definitions *are* it. Each
- * environment gets its own pair under `agents/<env>/`, authored as markdown and
- * inlined at build time (esbuild `--loader:.md=text`), so the single-file bundle and
- * the .mcpb keep working unchanged.
+ * The guide *described* an author/reviewer split; this *is* it.
  *
- * Adding an environment is a folder plus one registry line — no other code moves.
+ * Layout: the role prose lives once in `agents/_roles/`, and each environment supplies
+ * a thin template under `agents/<env>/` that wraps it in whatever container that client
+ * reads — YAML frontmatter for Claude Code, TOML for Codex, bare markdown otherwise.
+ * Adding an environment is a folder plus one registry line; the prose never forks, so
+ * the three copies cannot drift.
  *
- * The split is not cosmetic. The author holds the transcript and cannot submit; the
- * reviewer can submit and cannot read the transcript. Whatever the reviewer knows
- * about intent, it had to ask for — which is what makes `meta.interview` mean
- * something rather than merely counting calls.
+ * Templates are authored as real files and inlined at build time (esbuild
+ * `--loader:.md=text --loader:.toml=text`), so the single-file bundle and the .mcpb are
+ * unchanged.
+ *
+ * On enforcement: the split only means something if the roles cannot reach each other's
+ * tools. Claude Code can express that in the subagent `tools:` allowlist. Codex scopes
+ * MCP access per *server*, not per tool — so the real lock is REVIEW_ASSIST_ROLE, read
+ * by index.ts, which decides which tools get registered at all. Both templates set it;
+ * the allowlist is then belt and braces.
  */
 
-import claudeAuthor from "../agents/claude/author.md";
-import claudeReviewer from "../agents/claude/reviewer.md";
-import codexAuthor from "../agents/codex/author.md";
-import codexReviewer from "../agents/codex/reviewer.md";
-import genericAuthor from "../agents/generic/author.md";
-import genericReviewer from "../agents/generic/reviewer.md";
+import roleAuthor from "../agents/_roles/author.md";
+import roleReviewer from "../agents/_roles/reviewer.md";
+import claudeAuthorTpl from "../agents/claude/author.tpl.md";
+import claudeReviewerTpl from "../agents/claude/reviewer.tpl.md";
+import codexAuthorTpl from "../agents/codex/author.tpl.toml";
+import codexReviewerTpl from "../agents/codex/reviewer.tpl.toml";
+import genericAuthorTpl from "../agents/generic/author.tpl.md";
+import genericReviewerTpl from "../agents/generic/reviewer.tpl.md";
 
 export type RoleEnv = "claude" | "codex" | "generic";
 export type RoleName = "author" | "reviewer";
 
+const BODY: Record<RoleName, string> = { author: roleAuthor, reviewer: roleReviewer };
+
 interface EnvEntry {
-  author: string;
-  reviewer: string;
-  /** Where the client reads agent definitions from, if it has such a place. */
+  templates: Record<RoleName, string>;
+  /** Where this client reads agent definitions from, if it has such a place. */
   install_dir?: string;
-  /** How to actually spin the roles up in this environment. */
+  /** File name for an installed role definition. */
+  filename: (role: RoleName) => string;
   how_to_run: string;
 }
 
 const REGISTRY: Record<RoleEnv, EnvEntry> = {
   claude: {
-    author: claudeAuthor,
-    reviewer: claudeReviewer,
+    templates: { author: claudeAuthorTpl, reviewer: claudeReviewerTpl },
     install_dir: ".claude/agents",
+    filename: (r) => `intent-${r}.md`,
     how_to_run:
-      "Write each definition to .claude/agents/<name>.md (or run `review-assist-mcp agents --write`), " +
-      "then dispatch them with the Task tool: the author first, then the reviewer, passing the " +
-      "author's answers between them. Each subagent starts in its own context.",
+      "Install with `review-assist-mcp agents --write`, then dispatch the subagents with the " +
+      "Task tool — author first, then reviewer, relaying questions and answers between them. " +
+      "Each starts in its own context, and the `tools:` allowlist keeps the roles apart.",
   },
   codex: {
-    author: codexAuthor,
-    reviewer: codexReviewer,
+    templates: { author: codexAuthorTpl, reviewer: codexReviewerTpl },
+    install_dir: ".codex/agents",
+    filename: (r) => `intent-${r}.toml`,
     how_to_run:
-      "Codex has no subagent file format. Run each role as its own `codex exec` invocation so it " +
-      "starts fresh, relaying the reviewer's questions to the author process and the answers back.",
+      "Install with `review-assist-mcp agents --write` (writes TOML agent definitions to " +
+      ".codex/agents/; use ~/.codex/agents/ for personal scope), then ask Codex to delegate the " +
+      "author and reviewer parts to subagents. `/agent` switches between the running threads. " +
+      "Each definition pins REVIEW_ASSIST_ROLE, so the server itself withholds the other role's tools.",
   },
   generic: {
-    author: genericAuthor,
-    reviewer: genericReviewer,
+    templates: { author: genericAuthorTpl, reviewer: genericReviewerTpl },
+    filename: (r) => `intent-${r}.md`,
     how_to_run:
-      "Start two separate agent sessions against this MCP server — one per role — and relay " +
-      "questions and answers between them. What matters is that the reviewer never sees the " +
-      "transcript, not which client you use.",
+      "Start two separate agent sessions against this server, one per role, and relay questions " +
+      "and answers between them. Launch each with REVIEW_ASSIST_ROLE set (author | reviewer) so " +
+      "the server withholds the other role's tools; what matters is that the reviewer never sees " +
+      "the transcript.",
   },
 };
+
+function render(tpl: string, role: RoleName): string {
+  return tpl.replace("{{BODY}}", BODY[role].trim());
+}
 
 /**
  * Resolve the environment from the MCP `initialize` handshake's clientInfo.name.
@@ -80,31 +98,28 @@ export interface RoleBundle {
   detected_from: string;
   how_to_run: string;
   install_dir?: string;
-  roles: Partial<Record<RoleName, string>>;
+  roles: Partial<Record<RoleName, { filename: string; definition: string }>>;
 }
 
-export function getRoles(opts: {
-  env?: string;
-  role?: RoleName;
-  clientName?: string;
-}): RoleBundle {
+export function getRoles(opts: { env?: string; role?: RoleName; clientName?: string }): RoleBundle {
   const requested = opts.env?.toLowerCase();
   const env: RoleEnv = requested && isRoleEnv(requested) ? requested : detectEnv(opts.clientName);
   const entry = REGISTRY[env];
-  const roles: Partial<Record<RoleName, string>> =
-    opts.role === "author"
-      ? { author: entry.author }
-      : opts.role === "reviewer"
-        ? { reviewer: entry.reviewer }
-        : { author: entry.author, reviewer: entry.reviewer };
+  const wanted: RoleName[] = opts.role ? [opts.role] : ["author", "reviewer"];
+
+  const roles: RoleBundle["roles"] = {};
+  for (const r of wanted) {
+    roles[r] = { filename: entry.filename(r), definition: render(entry.templates[r], r) };
+  }
 
   return {
     env,
-    detected_from: requested && isRoleEnv(requested)
-      ? "explicit env argument"
-      : opts.clientName
-        ? `MCP clientInfo.name = ${opts.clientName}`
-        : "no client info; defaulted",
+    detected_from:
+      requested && isRoleEnv(requested)
+        ? "explicit env argument"
+        : opts.clientName
+          ? `MCP clientInfo.name = ${opts.clientName}`
+          : "no client info; defaulted",
     how_to_run: entry.how_to_run,
     install_dir: entry.install_dir,
     roles,
@@ -112,3 +127,22 @@ export function getRoles(opts: {
 }
 
 export const KNOWN_ENVS: RoleEnv[] = ["claude", "codex", "generic"];
+
+/** Tools each role may reach. Read by index.ts from REVIEW_ASSIST_ROLE. */
+export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
+  author: ["get_generation_guide", "list_transcripts", "read_transcript", "compute_diff"],
+  reviewer: [
+    "get_generation_guide",
+    "get_role_definitions",
+    "compute_diff",
+    "record_interview_round",
+    "submit_document",
+    "set_consent",
+    "manage_consent",
+  ],
+};
+
+export function activeRole(): RoleName | undefined {
+  const v = (process.env.REVIEW_ASSIST_ROLE ?? "").toLowerCase();
+  return v === "author" || v === "reviewer" ? v : undefined;
+}

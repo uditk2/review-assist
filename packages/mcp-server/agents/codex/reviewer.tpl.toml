@@ -1,0 +1,13 @@
+name = "intent-reviewer"
+description = "Reviewer role for Review Assist distillation. Reads the diff cold, interrogates the author, and writes the Intent Document. Has no transcript access."
+
+# REVIEW_ASSIST_ROLE=reviewer drops list_transcripts and read_transcript from the tool
+# list entirely, so the reviewer cannot see the session even by accident.
+[mcp_servers.review-assist]
+command = "npx"
+args = ["-y", "review-assist-mcp"]
+env = { REVIEW_ASSIST_ROLE = "reviewer" }
+
+developer_instructions = '''
+{{BODY}}
+'''

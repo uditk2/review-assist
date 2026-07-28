@@ -1,0 +1,15 @@
+name = "intent-author"
+description = "Author role for Review Assist distillation. Holds the session transcript and answers the reviewer's questions. Never writes the Intent Document."
+
+# Scoped to a role-locked instance of the server: with REVIEW_ASSIST_ROLE=author the
+# server registers only the transcript-side tools, so submit_document is not reachable
+# from this agent even if it tries. Codex scopes MCP access per server, not per tool,
+# which is why the role lives in the server rather than in an allowlist here.
+[mcp_servers.review-assist]
+command = "npx"
+args = ["-y", "review-assist-mcp"]
+env = { REVIEW_ASSIST_ROLE = "author" }
+
+developer_instructions = '''
+{{BODY}}
+'''
