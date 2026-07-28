@@ -6,11 +6,10 @@
 </p>
 
 <p align="center">
-  <a href="#the-problem">Problem</a> ·
+  <a href="#install">Install</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#the-intent-document">Format</a> ·
-  <a href="#quickstart">Quickstart</a> ·
-  <a href="#deployment">Deployment</a>
+  <a href="#developing">Developing</a>
 </p>
 
 <p align="center">
@@ -19,60 +18,75 @@
 
 ---
 
-## The problem
+AI agents write code faster than anyone can read diffs — and the context that makes
+review fast (what was asked, what was assumed, what was tried and abandoned, what was
+tested) is thrown away the moment the PR opens. Review Assist captures it at the source:
+an agent's session becomes an **Intent Document**, a validator proves it actually covers
+the diff, and a GitHub App renders it as a guided review on top of the pull request.
 
-Most code today is written by AI agents — Claude, Cursor, Codex, Copilot. The review
-process wasn't built for that. A human reviewer can't read diffs as fast as a fleet of
-agents produces them, and the tools meant to help only look at the *finished diff* — so
-they can, at best, **guess** why a change was made.
+Fully open source, self-hostable, and **stores none of your code** — validation runs
+against the diff on GitHub's side of the fence, and the viewer renders live in the
+reviewer's browser.
 
-The information that makes review fast lives in the *session*: what the user actually
-asked for, which alternatives the agent tried and abandoned, what it assumed, what it
-tested. That context is thrown away the moment the PR opens.
+## Install
 
-**Review Assist captures it at the source and turns it into the review.** An agent's
-session becomes an **Intent Document** — a structured, redacted artifact that explains the
-change the way its author would: problem first, assumptions up front, a guided walkthrough
-where every stop is anchored to real diff hunks, and an honest account of what was and
-wasn't verified. A validator then proves the document actually covers the diff, and a
-GitHub app renders it as a guided review on top of the pull request.
+Two one-time installs — the MCP server on the developer's side, the GitHub App on the repo's.
 
-It's fully open source, self-hostable, and **stores none of your code** — the validator
-runs in your CI, the viewer renders in the reviewer's browser.
+**1. Register the MCP server with your agent** (so it can author Intent Documents).
+
+Claude Code:
+
+```bash
+claude mcp add -s user review-assist -- npx -y review-assist-mcp
+```
+
+Codex — add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.review-assist]
+command = "npx"
+args = ["-y", "review-assist-mcp"]
+```
+
+Claude desktop app — one-click, no terminal:
+[download the `.mcpb`](https://github.com/uditk2/review-assist/releases/latest/download/review-assist-mcp.mcpb)
+and open it.
+
+**2. [Install the GitHub App →](https://github.com/apps/review-assist-guided-review)**
+
+One click. Read-only code + PR comments, no workflow files — it adds the automatic
+check on every PR, the summary comment, and the guided-review viewer.
 
 ## How it works
 
-```
- coding agent session  ──►  distillation  ──►  Intent Document  ──►  validator ──► guided review
- (Claude Code, Cursor)      author ⇄ reviewer   .intent/<branch>.json    (CI)         (GitHub app)
-                            agents, fresh ctx
-```
+<p align="center">
+  <img src="docs/how-it-works.svg" alt="Three steps: 1 Code — your agent writes the change and an Intent Document explaining it, on the developer's machine. 2 Validate — a GitHub App proves the document covers the diff and posts a guided-review link on every PR, on GitHub with zero config and no code stored. 3 Review — check the assumptions, take the anchored tour, approve or request changes in the browser; everything lands on GitHub." width="640">
+</p>
 
-1. **Capture & distill.** After a session, a two-agent pass — an *author* hydrated from the
-   full transcript and an independent *reviewer* that interrogates it — produces the Intent
-   Document. Runs in a fresh context, so it costs the working session nothing and sees even
-   what compaction dropped. Exposed as an **MCP server** so any MCP-capable agent can drive it.
-2. **Validate.** A deterministic **CLI**, plus a **GitHub App** that checks every PR against
-   the diff: schema, staleness, coverage (every change explained), cross-references, and secret
-   redaction — then posts a guided-review check and summary comment automatically. Zero config.
-3. **Review.** The **GitHub App** renders the guided walkthrough — assumptions to check first,
-   then an anchored tour of the change, with a coverage overlay flagging anything unexplained.
+1. **Capture.** After a session, a two-agent pass — an *author* hydrated from the full
+   transcript and an independent *reviewer* that interrogates it — distills the Intent
+   Document. Runs in a fresh context via the MCP server, so it costs the working session
+   nothing and sees even what compaction dropped.
+2. **Validate.** The GitHub App checks every PR against the diff — schema, staleness,
+   coverage (every change explained), cross-references, secret redaction — and posts a
+   check plus a guided-review link. Zero config. The same checks run standalone via the
+   `review-assist` CLI.
+3. **Review.** The viewer renders the walkthrough — assumptions to check first, then an
+   anchored tour of the change, with a coverage overlay flagging anything unexplained.
+   Comments and the verdict sync back to GitHub.
+
+Full diagram and internals: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## The Intent Document
 
-One open format ([`packages/schema`](packages/schema)), six sections, each earning its
-place in a review. See [`packages/schema/src/example.json`](packages/schema/src/example.json).
+One open format ([`packages/schema`](packages/schema)), six sections: the **problem**
+as actually asked, **assumptions** with blast radius, the **approach** including
+rejected alternatives, a **tour** anchored to real diff hunks, honest **verification**
+(including what *wasn't* verified), and **meta** for staleness and provenance. See the
+[example](packages/schema/src/example.json), and [`SPEC.md`](SPEC.md) for the frozen
+design.
 
-| Section | Why a reviewer cares |
-|---|---|
-| **problem** | The concrete ask (post-hoc), how it evolved, verbatim user quotes, what's out of scope. |
-| **assumptions** | The front page: what the change assumes, blast radius if wrong, how to verify — reject bad framing in 2 minutes. |
-| **approach** | Requirements, and **rejected alternatives** — the thing diff-only tools can never know. |
-| **tour** | A narrative walkthrough; every stop anchored to real diff hunks, so coverage is checkable. |
-| **verification** | What was actually run — and an honest `not_verified` list. |
-| **meta** | Session, commit range (staleness), pipeline provenance. |
-
-## What's in this repo
+## Developing
 
 | Path | Component |
 |---|---|
@@ -80,38 +94,24 @@ place in a review. See [`packages/schema/src/example.json`](packages/schema/src/
 | [`packages/validator`](packages/validator) | `review-assist` CLI + library: the five checks and the Markdown renderer |
 | [`packages/mcp-server`](packages/mcp-server) | MCP server that drives distillation and gatekeeps submissions |
 | [`apps/github-app/worker`](apps/github-app/worker) | Stateless Cloudflare Worker: OAuth broker + thin GitHub proxy |
-| [`apps/github-app/viewer`](apps/github-app/viewer) | Client-side guided-review viewer (Tailwind theme, self-hosted fonts) |
-
-## Quickstart
+| [`apps/github-app/viewer`](apps/github-app/viewer) | Client-side guided-review viewer |
 
 ```bash
 npm install
 npm run build
 
-# Validate the example Intent Document
+# Validate and render the example Intent Document
 node packages/validator/dist/cli.js validate packages/schema/src/example.json
-
-# Render the Markdown summary (posted on the PR and shown in the viewer)
 node packages/validator/dist/cli.js render packages/schema/src/example.json
 
 # Preview the guided viewer with mock data → http://localhost:8787/#acme/checkout-service/pull/42
 node scripts/mockserver.mjs
+
+# Tests
+npx vitest run
 ```
 
-Run the tests: `npx vitest run`.
-
-
-## Deployment
-
-- **GitHub App** — one-time install; reviewers sign in once. A webhook validates every PR
-  (guided-review check + summary comment) with zero config — no workflow file, no runner
-  minutes. The viewer renders client-side; the Cloudflare Worker signs the app JWT, brokers
-  OAuth (GitHub's token endpoint lacks CORS), and proxies the document + diff with an
-  installation/reviewer token. **Stateless** — no KV/D1/R2/DO; private-repo responses are
-  `private, no-store` and never edge-cached; static assets are.
-
-See [`SPEC.md`](SPEC.md) for the frozen design and [`apps/github-app/viewer/DESIGN.md`](apps/github-app/viewer/DESIGN.md)
-for the UI design rules.
+Architecture and internals: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## License
 
