@@ -218,6 +218,17 @@ export interface TranscriptCandidate {
   last_activity: string;
   /** How much this session references the changed files/branch (higher = more likely). */
   relevance: number;
+  /**
+   * True when the session looks like a distillation run rather than the work being
+   * reviewed — its opening turn asks for an Intent Document instead of a code change.
+   *
+   * A HINT, never a filter. In Claude Code the roles are usually spawned from the very
+   * session that wrote the code, so the live transcript is the right one; excluding it
+   * would break the common case. And a repo whose subject IS review-assist legitimately
+   * discusses these tools throughout. So the signal is confined to the opening user turn
+   * and handed to the author to judge.
+   */
+  looks_like_distillation_run: boolean;
 }
 
 /**
@@ -257,6 +268,7 @@ export function listTranscriptCandidates(
       cwd: sessionCwd(p),
       lines: lines.length,
       first_user: previewFirstUser(lines),
+      looks_like_distillation_run: looksLikeDistillationRun(firstUserText(lines)),
       last_activity: previewLast(lines),
       relevance,
     };
@@ -265,20 +277,50 @@ export function listTranscriptCandidates(
   return cands.slice(0, opts.limit ?? 8);
 }
 
+/**
+ * The opening ask, with injected boilerplate stripped.
+ *
+ * The whole point of this preview is that the author can tell one session from another.
+ * Clients prepend their own scaffolding to the first user turn — Codex leads with a
+ * <recommended_plugins> block, so every session looks identical unless it is removed and
+ * the previews become worthless for picking the right transcript.
+ */
 function previewFirstUser(lines: string[]): string {
+  const t = firstUserText(lines);
+  return t.slice(0, 240);
+}
+
+/** Full text of the first real user turn (boilerplate stripped, not truncated). */
+function firstUserText(lines: string[]): string {
   for (const line of lines) {
     try {
       const obj = JSON.parse(line);
       const role = obj.payload?.role ?? obj.message?.role ?? obj.role ?? obj.type;
       if (role === "user") {
-        const t = flattenText(obj);
-        if (t) return t.slice(0, 240);
+        const t = stripInjectedBlocks(flattenText(obj));
+        if (t) return t;
       }
     } catch {
       /* ignore non-JSON line */
     }
   }
   return "";
+}
+
+/**
+ * Remove client-injected wrappers so what remains is what the human actually typed.
+ * Tag-agnostic: any <foo>...</foo> block that opens the turn is scaffolding, not an ask.
+ */
+function stripInjectedBlocks(text: string): string {
+  let t = text;
+  for (let i = 0; i < 8; i++) {
+    const next = t
+      .replace(/^\s*<([a-z0-9_-]+)>[\s\S]*?<\/\1>\s*/i, "")
+      .replace(/^\s*<[a-z0-9_-]+\/>\s*/i, "");
+    if (next === t) break;
+    t = next;
+  }
+  return t.trim();
 }
 
 function previewLast(lines: string[]): string {
@@ -381,3 +423,20 @@ const STOPWORDS = new Set([
   "it's","not","but","any","all","can","could","would","should","there","then","than",
   "into","about","because","been","being","they","them","their","our","use","used","using",
 ]);
+
+/**
+ * Does this session's opening ask read as "produce an Intent Document" rather than
+ * "change the code"? Deliberately narrow: only the first user turn, and only when the
+ * ask pairs the artifact with the machinery that produces it. A session that merely
+ * mentions submit_document while working on this repo does not trip it.
+ */
+function looksLikeDistillationRun(firstUser: string): boolean {
+  const t = firstUser.toLowerCase();
+  if (!t) return false;
+  const asksForDocument =
+    /(distill|generate|author|produce|create|write)[^.]{0,40}intent document/.test(t) ||
+    /intent document[^.]{0,40}(for this|for the) (repo|branch|change|pr)/.test(t);
+  const namesTheMachinery =
+    /intent-author|intent-reviewer|record_interview_round|submit_document|require_interview/.test(t);
+  return asksForDocument && namesTheMachinery;
+}
