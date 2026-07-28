@@ -21,6 +21,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { validate, renderPrDescription } from "@review-assist/validator";
 import { intentDocSchema } from "@review-assist/schema";
+import { getRoles, KNOWN_ENVS, type RoleName } from "./roles.js";
 import { GENERATION_GUIDE } from "./guide.js";
 import {
   computeDiff,
@@ -40,9 +41,12 @@ import {
 
 const REPO_DIR = resolve(process.env.REVIEW_ASSIST_REPO ?? process.cwd());
 
+/** Single source of truth: keep in step with package.json on release. */
+export const SERVER_VERSION = "0.2.0";
+
 const server = new McpServer({
   name: "review-assist",
-  version: "0.1.0",
+  version: SERVER_VERSION,
 });
 
 function textResult(text: string, isError = false) {
@@ -376,6 +380,72 @@ server.tool(
   }
 );
 
+server.tool(
+  "get_role_definitions",
+  "Return the author and reviewer role definitions for the two-agent distillation, " +
+    "picked for the calling client (Claude Code, Codex, or a generic fallback) and " +
+    "including how to spin them up. Spawn each role in its OWN context: the author holds " +
+    "the transcript and cannot submit; the reviewer submits and never sees the transcript.",
+  {
+    env: z
+      .enum(["claude", "codex", "generic"])
+      .optional()
+      .describe("Override the environment; default is detected from the MCP client handshake."),
+    role: z
+      .enum(["author", "reviewer"])
+      .optional()
+      .describe("Return just one role; default returns both."),
+  },
+  async ({ env, role }) => {
+    const bundle = getRoles({
+      env,
+      role: role as RoleName | undefined,
+      clientName: server.server.getClientVersion()?.name,
+    });
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({ ...bundle, known_envs: KNOWN_ENVS }, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+function runAgentsCli(argv: string[]): number {
+  const envArg = argv.includes("--env") ? argv[argv.indexOf("--env") + 1] : undefined;
+  const write = argv.includes("--write");
+  const bundle = getRoles({ env: envArg, clientName: undefined });
+
+  if (!write) {
+    process.stdout.write(`environment: ${bundle.env} (${bundle.detected_from})\n\n`);
+    process.stdout.write(`${bundle.how_to_run}\n\n`);
+    for (const [name, body] of Object.entries(bundle.roles)) {
+      process.stdout.write(`----- ${name} -----\n${body}\n`);
+    }
+    if (bundle.install_dir) {
+      process.stdout.write(`\nRe-run with --write to install into ${bundle.install_dir}/\n`);
+    }
+    return 0;
+  }
+
+  if (!bundle.install_dir) {
+    process.stderr.write(
+      `${bundle.env} has no agent directory to install into — use the printed definitions instead.\n`
+    );
+    return 1;
+  }
+  const dir = resolve(process.cwd(), bundle.install_dir);
+  mkdirSync(dir, { recursive: true });
+  for (const [name, body] of Object.entries(bundle.roles)) {
+    const file = resolve(dir, `intent-${name}.md`);
+    writeFileSync(file, body, "utf8");
+    process.stdout.write(`wrote ${file}\n`);
+  }
+  return 0;
+}
+
 function runConsentCli(argv: string[]): number {
   const [sub, repoArg] = argv;
   const target = repoArg ? resolve(repoArg) : process.cwd();
@@ -410,8 +480,15 @@ function runConsentCli(argv: string[]): number {
 
 async function main() {
   const argv = process.argv.slice(2);
+  if (argv[0] === "--version" || argv[0] === "-v") {
+    process.stdout.write(`${SERVER_VERSION}\n`);
+    process.exit(0);
+  }
   if (argv[0] === "consent") {
     process.exit(runConsentCli(argv.slice(1)));
+  }
+  if (argv[0] === "agents") {
+    process.exit(runAgentsCli(argv.slice(1)));
   }
   const transport = new StdioServerTransport();
   await server.connect(transport);
