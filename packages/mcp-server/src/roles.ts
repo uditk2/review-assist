@@ -22,6 +22,7 @@
 
 import roleAuthor from "../agents/_roles/author.md";
 import roleReviewer from "../agents/_roles/reviewer.md";
+import roleQuestions from "../agents/_roles/questions.md";
 import claudeAuthorTpl from "../agents/claude/author.tpl.md";
 import claudeReviewerTpl from "../agents/claude/reviewer.tpl.md";
 import codexAuthorTpl from "../agents/codex/author.tpl.toml";
@@ -32,7 +33,11 @@ import genericReviewerTpl from "../agents/generic/reviewer.tpl.md";
 export type RoleEnv = "claude" | "codex" | "generic";
 export type RoleName = "author" | "reviewer";
 
-const BODY: Record<RoleName, string> = { author: roleAuthor, reviewer: roleReviewer };
+/** The reviewer carries the baseline question set; the author answers, so it does not. */
+const BODY: Record<RoleName, string> = {
+  author: roleAuthor,
+  reviewer: roleReviewer.trimEnd() + "\n" + roleQuestions,
+};
 
 interface EnvEntry {
   templates: Record<RoleName, string>;
