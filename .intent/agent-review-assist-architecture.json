@@ -1,0 +1,275 @@
+{
+  "schema_version": "0.1",
+  "meta": {
+    "id": "review-assist-architecture-2026-07-28",
+    "repo": "uditk2/review-assist",
+    "commit_range": {
+      "base_sha": "ec3717dffe8992a2cf63e9fe59ff5618cdff6acf",
+      "head_sha": "e0903208a3236bcb6c358fd4a6526f22eed8eb0b"
+    },
+    "session": {
+      "agent": "Codex",
+      "model": "gpt-5",
+      "session_ids": [
+        "019fa85d-d776-7c03-bb74-e611e64e9264"
+      ]
+    },
+    "generated_by": {
+      "pipeline": "review-assist-mcp",
+      "version": "0.1"
+    },
+    "generated_at": "2026-07-28T12:32:33.489Z",
+    "interview": {
+      "rounds": 1,
+      "questions_asked": 1,
+      "unresolved": 0
+    }
+  },
+  "problem": {
+    "statement": "The architecture material mixed system, deployment, actor, resource, and MCP component concerns, which obscured ownership and incorrectly suggested that GitHub or the MCP Server hosted behavior that belongs to the Review Assist Application or the calling agent runtime.",
+    "origin": "stated_upfront",
+    "evolution": [
+      {
+        "at": "initial architecture review",
+        "formulation": "Rename Reviewer to Review Assist Application, expose its webhook and application interfaces, and expand the MCP author/reviewer mechanism."
+      },
+      {
+        "at": "diagram critique",
+        "formulation": "Reduce prose, preserve the hand-drawn left-to-right topology, and keep each diagram at one abstraction level."
+      },
+      {
+        "at": "MCP clarification",
+        "formulation": "Show Author and Intent Reviewer as caller-orchestrated subagents outside the MCP Server, while retaining exact role-scoped tools as pills."
+      },
+      {
+        "at": "final correction",
+        "formulation": "Add the external Developer actor and remove vendor-specific Cloudflare terminology from the logical architecture."
+      }
+    ],
+    "user_asks": [
+      "we need to call Reviewer as the ReviewAssist Application.",
+      "we should mention the services/endpoints it offers",
+      "Lets make it less verbose and more diagram oriented.",
+      "webhook should be outside in the Review Assist Application.",
+      "we should not mingle levels.",
+      "From the MCP Servers it is not apparent that they are sub agents trying to generate the intent.",
+      "We need not mention cloudflare worker.",
+      "You did not add developer as an actor ?",
+      "You also did not modify mcp server details"
+    ],
+    "out_of_scope": [
+      "Changing Review Assist product runtime behavior or endpoints.",
+      "Adding a CI drift check for generated diagrams.",
+      "Changing long-term Intent Document retention policy."
+    ]
+  },
+  "assumptions": [
+    {
+      "id": "A1",
+      "assumption": "The Intent Document remains a versioned repository artifact committed on the pull-request head.",
+      "impact_if_wrong": "The GitHub ownership model and commit-with-code flow in the system view would need to change.",
+      "how_to_verify": "Confirm the current submit_document write path and desired post-merge retention policy.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A2",
+      "assumption": "Author and Intent Reviewer orchestration is supplied by the calling Codex, Claude, or generic agent client; this repository does not implement a subagent scheduler.",
+      "impact_if_wrong": "The MCP detail would assign orchestration to the wrong runtime boundary.",
+      "how_to_verify": "Inspect the MCP generation guide, role definitions, role templates, and REVIEW_ASSIST_ROLE registration behavior.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A3",
+      "assumption": "GitHub should be modeled as an external black-box system using depended-on capabilities and contracts rather than guessed internal services.",
+      "impact_if_wrong": "The main diagram would need a lower-level GitHub integration view.",
+      "how_to_verify": "Confirm the intended audience and C4 abstraction level for this document.",
+      "confidence": "confirmed_by_user"
+    },
+    {
+      "id": "A4",
+      "assumption": "Cloudflare is a deployment detail and should not appear in this logical architecture view.",
+      "impact_if_wrong": "A separate deployment view would be needed to show the hosting runtime.",
+      "how_to_verify": "Confirm whether a deployment architecture diagram is requested separately.",
+      "confidence": "confirmed_by_user"
+    }
+  ],
+  "approach": {
+    "requirements": [
+      {
+        "text": "Keep the main view at the system/container level with Developer machine, GitHub, and Review Assist Application boundaries.",
+        "source": "User topology and level-purity feedback"
+      },
+      {
+        "text": "Show Developer and Human Reviewer once each as external actors.",
+        "source": "User actor corrections"
+      },
+      {
+        "text": "Place POST /api/webhook inside Review Assist Application and show GitHub pull_request event and bot-posting directions.",
+        "source": "User webhook correction"
+      },
+      {
+        "text": "Keep GitHub as the durable source of truth and show its external capabilities rather than presumed internal services.",
+        "source": "Architecture convention discussion"
+      },
+      {
+        "text": "Use a separate MCP component view with caller-owned Author and Intent Reviewer subagents.",
+        "source": "User request to expose subagents without mingling levels"
+      },
+      {
+        "text": "Retain exact role-scoped MCP tool names as pills and show the correct Reviewer-question and Author-evidence directions.",
+        "source": "User visual preference and factual corrections"
+      },
+      {
+        "text": "Show consent, interview attestation, five local checks, and local write as deterministic MCP Server responsibilities with no model calls.",
+        "source": "MCP protocol and code"
+      },
+      {
+        "text": "Make both committed SVGs reproducible from a checked-in generator.",
+        "source": "Implementation decision during the session"
+      }
+    ],
+    "trials": [
+      {
+        "what": "A verbose portrait architecture diagram.",
+        "outcome": "It exposed more detail but was difficult to scan.",
+        "why_abandoned": "The user explicitly requested a less verbose, more diagram-oriented view."
+      },
+      {
+        "what": "A single dense landscape diagram containing systems, endpoints, agents, and exact tools.",
+        "outcome": "Orientation improved but boundaries, arrow directions, and abstraction levels remained confusing.",
+        "why_abandoned": "The user required level purity and the attached critique identified factual and legibility problems."
+      },
+      {
+        "what": "Merge MCP internals into the main topology.",
+        "outcome": "It would make subagents visible in one place but overload the container view.",
+        "why_abandoned": "Exact tool pills and submission gates belong at component level."
+      },
+      {
+        "what": "Show Cloudflare Worker and guessed GitHub services.",
+        "outcome": "It mixed deployment detail with logical architecture and implied knowledge of third-party internals.",
+        "why_abandoned": "The adopted view is vendor-neutral and treats GitHub as a black box."
+      }
+    ],
+    "adopted": {
+      "summary": "Use two horizontally flowing diagrams stacked in the documentation: a container-level system topology and a component-level MCP distillation view. Generate both SVGs deterministically from one script.",
+      "rationale": "Separating levels preserves ownership clarity while still exposing the MCP protocol, subagent roles, exact tool access, consent, validation, and write gates. External actors remain outside boundaries, GitHub owns durable review state, and the Review Assist Application owns webhook automation and guided review."
+    }
+  },
+  "tour": [
+    {
+      "id": "T1",
+      "title": "Clarify system ownership and external actors",
+      "role": "core",
+      "what": "Replaces the mixed narrative with a three-boundary topology: Developer machine, GitHub, and Review Assist Application, plus external Developer and Human Reviewer actors. The webhook, guided-review application, identities, and directional GitHub flows are explicit and vendor-neutral.",
+      "why": "A reviewer can now see who owns each behavior and where durable review state lives without inferring GitHub internals or confusing a human actor with an application component.",
+      "anchors": [
+        {
+          "path": "docs/ARCHITECTURE.md",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 36,
+            "new_start": 1,
+            "new_lines": 81
+          }
+        },
+        {
+          "path": "docs/architecture.svg",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 83,
+            "new_start": 1,
+            "new_lines": 120
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "The Pull request box intentionally compresses the distinction between files in the head commit and the PR resource for container-level readability."
+    },
+    {
+      "id": "T2",
+      "title": "Separate subagent orchestration from MCP enforcement",
+      "role": "core",
+      "what": "Adds a dedicated MCP detail in which the calling agent runtime coordinates Author and Intent Reviewer subagents. Each calls a role-scoped MCP tool surface; the server performs deterministic consent, interview, validation, and local-write responsibilities without model calls.",
+      "why": "The earlier view made the MCP Server appear to host or spawn model-driven roles. The separation matches the transcript, generation guide, role templates, and REVIEW_ASSIST_ROLE tool registration.",
+      "anchors": [
+        {
+          "path": "docs/mcp-distillation.svg",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 119
+          }
+        },
+        {
+          "path": "scripts/generate-architecture.mjs",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 297
+          }
+        }
+      ],
+      "parent": "T1",
+      "provenance": "confirmed_in_interview",
+      "attention": "The label “spawns · coordinates” describes caller behavior, not an in-repository scheduler."
+    },
+    {
+      "id": "T3",
+      "title": "Make architecture artifacts reproducible",
+      "role": "supporting",
+      "what": "Adds the docs:architecture npm script that regenerates both committed SVG files from the checked-in generator.",
+      "why": "The SVGs remain reviewable artifacts while their source, layout rules, palette, and accessibility metadata are deterministic and maintainable.",
+      "anchors": [
+        {
+          "path": "package.json",
+          "hunk": {
+            "old_start": 11,
+            "old_lines": 6,
+            "new_start": 11,
+            "new_lines": 7
+          }
+        }
+      ],
+      "parent": "T1",
+      "provenance": "from_transcript",
+      "attention": "Regeneration is currently manual; this change does not add a CI drift check."
+    }
+  ],
+  "verification": {
+    "performed": [
+      {
+        "kind": "build",
+        "description": "Regenerated both architecture SVGs with npm run docs:architecture.",
+        "result": "Passed; architecture.svg and mcp-distillation.svg were written successfully.",
+        "evidence": "Generator output reported both docs paths."
+      },
+      {
+        "kind": "manual",
+        "description": "Parsed both generated SVGs with xmllint.",
+        "result": "Passed with no XML errors."
+      },
+      {
+        "kind": "manual",
+        "description": "Raster-rendered both SVGs with Sharp and visually inspected the final layouts.",
+        "result": "Passed; actors, boundaries, arrows, role pills, and submission gate were legible without overlaps."
+      },
+      {
+        "kind": "lint",
+        "description": "Ran git diff --check and checked the generator syntax.",
+        "result": "Passed with no whitespace or syntax findings."
+      },
+      {
+        "kind": "manual",
+        "description": "Regenerated and compared the generated artifacts for deterministic output.",
+        "result": "Passed with no drift."
+      }
+    ],
+    "added_tests": [],
+    "not_verified": [
+      "No product unit, integration, or end-to-end tests were run because the change is limited to documentation and deterministic SVG generation.",
+      "No CI job currently verifies that committed SVGs match generator output."
+    ]
+  }
+}
