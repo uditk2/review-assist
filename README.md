@@ -40,13 +40,15 @@ Claude Code:
 claude mcp add -s user review-assist -- npx -y review-assist-mcp
 ```
 
-Codex — add to `~/.codex/config.toml`:
+Codex:
 
-```toml
-[mcp_servers.review-assist]
-command = "npx"
-args = ["-y", "review-assist-mcp"]
+```bash
+codex mcp add review-assist -- npx -y review-assist-mcp
 ```
+
+Both write the same entry to the agent's own config — for Codex that's
+`~/.codex/config.toml`, shared with the IDE extension. Check it landed with
+`codex mcp list` (or `claude mcp list`).
 
 Claude desktop app — one-click, no terminal:
 [download the `.mcpb`](https://github.com/uditk2/review-assist/releases/latest/download/review-assist-mcp.mcpb)
