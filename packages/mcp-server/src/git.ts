@@ -59,16 +59,29 @@ export function findTranscripts(repoDir: string, override?: string): string[] {
   const found: { path: string; mtime: number }[] = [];
 
   // Claude Code — one directory per cwd-encoded path.
-  const projects = join(homedir(), ".claude", "projects");
+  const projects = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects");
   if (existsSync(projects)) {
     for (const c of candidates) {
       const dir = join(projects, c.replace(/[/\\]/g, "-"));
-      if (existsSync(dir)) {
-        for (const f of readdirSync(dir)) {
-          if (f.endsWith(".jsonl")) {
-            const p = join(dir, f);
-            found.push({ path: p, mtime: safeMtime(p) });
-          }
+      if (!existsSync(dir)) continue;
+      for (const f of readdirSync(dir, { withFileTypes: true })) {
+        if (f.isFile() && f.name.endsWith(".jsonl")) {
+          const p = join(dir, f.name);
+          found.push({ path: p, mtime: safeMtime(p) });
+          continue;
+        }
+        // Delegated work lives in <session-uuid>/subagents/agent-*.jsonl and is NOT
+        // duplicated into the parent — the parent carries no isSidechain entries. Skipping
+        // these lost the reasoning behind anything the session handed to a subagent. Safe to
+        // include unfiltered: they sit inside a project directory already matched to this
+        // repo, so they cannot pull in another repo's sessions.
+        if (!f.isDirectory()) continue;
+        const sub = join(dir, f.name, "subagents");
+        if (!existsSync(sub)) continue;
+        for (const g of readdirSync(sub)) {
+          if (!g.endsWith(".jsonl")) continue;
+          const p = join(sub, g);
+          found.push({ path: p, mtime: safeMtime(p) });
         }
       }
     }
@@ -76,7 +89,10 @@ export function findTranscripts(repoDir: string, override?: string): string[] {
 
   // Codex — sessions are global; match the cwd recorded in each session's head against
   // repo-or-ancestor. Bound the content scan to the most-recent files for speed.
-  const codexRoot = join(homedir(), ".codex", "sessions");
+  const codexHome = process.env.CODEX_HOME || join(homedir(), ".codex");
+  // archived_sessions holds sessions Codex has rotated out — old, but old is exactly when a
+  // change's authoring session tends to live by the time anyone reviews it.
+  for (const codexRoot of [join(codexHome, "sessions"), join(codexHome, "archived_sessions")]) {
   if (existsSync(codexRoot)) {
     const recent = walkJsonl(codexRoot, 4)
       .map((p) => ({ p, m: safeMtime(p) }))
@@ -86,6 +102,7 @@ export function findTranscripts(repoDir: string, override?: string): string[] {
       const cwd = sessionCwd(p);
       if (cwd && candidates.has(resolve(cwd))) found.push({ path: p, mtime: safeMtime(p) });
     }
+  }
   }
 
   // Cowork running on this machine. Neither strategy above can work: the transcript is in
