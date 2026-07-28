@@ -489,8 +489,20 @@ function renderHunk(path, h){
       // Shift-click marks the other end of a range. One line is the common case, so a plain
       // click still opens a single-line composer without ceremony.
       const addBtn = el("button",{class:"rev-add",
-        title:"Comment on line "+lineNo+" — shift-click a second line to comment on a range",
+        title:"Comment on line "+lineNo+" — or select lines with the mouse first, or shift-click a second line, to comment on a range",
         onclick:(e)=>{
+          // If the reviewer has dragged across lines, that selection IS the range — no
+          // modifier to discover. Falls through to shift-click and single-line otherwise.
+          const dragged = e.shiftKey ? null : selectedLineRange(path);
+          if (dragged) {
+            STATE.selAnchor = null;
+            STATE.composer = dragged[0]===dragged[1]
+              ? path+":"+dragged[1]
+              : `${path}:${dragged[0]}-${dragged[1]}`;
+            const ws = window.getSelection(); if (ws) ws.removeAllRanges();
+            render();
+            return;
+          }
           if (e.shiftKey) {
             if (!sel || sel.path!==path) { STATE.selAnchor = {path, line:lineNo}; STATE.composer = null; }
             else {
@@ -507,7 +519,8 @@ function renderHunk(path, h){
       const pending = sel && sel.path===path && sel.line===lineNo;
       const inRange = rangeOf(STATE.composer, path);
       const spanned = inRange && lineNo>=inRange[0] && lineNo<=inRange[1];
-      body.append(el("div",{class:"rev-line"+(pending||spanned?" is-sel":"")}, code, addBtn));
+      body.append(el("div",{class:"rev-line"+(pending||spanned?" is-sel":""),
+        "data-path":path, "data-line":String(lineNo)}, code, addBtn));
       for (const root of STATE.comments.filter(c => c.path===path && c.line===lineNo && !c.in_reply_to_id)) body.append(renderThread(root));
       if (STATE.composer===key) body.append(renderComposer(path, lineNo, lineNo, null));
       if (inRange && inRange[1]===lineNo) body.append(renderComposer(path, inRange[0], inRange[1], null));
@@ -527,6 +540,28 @@ async function loadComments(){
     if (r.ok) STATE.comments = (await r.json()).comments || [];
   } catch {}
 }
+/**
+ * Line numbers covered by the current text selection within one file's diff.
+ * Reading the browser's own selection means the familiar click-and-drag works without the
+ * viewer reimplementing drag tracking, and it also picks up double-click and shift-arrow.
+ */
+function selectedLineRange(path){
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  const nums = [];
+  for (const el of document.querySelectorAll(".rev-line")) {
+    if (el.dataset.path !== path) continue;
+    let hit = false;
+    try { hit = range.intersectsNode(el); } catch { hit = false; }
+    if (!hit) continue;
+    const n = Number(el.dataset.line);
+    if (Number.isFinite(n)) nums.push(n);
+  }
+  if (nums.length < 2) return null;
+  return [Math.min(...nums), Math.max(...nums)];
+}
+
 /** A composer key of "path:start-end" means a range; anything else is a single line. */
 function rangeOf(key, path){
   if (!key || !key.startsWith(path+":")) return null;
