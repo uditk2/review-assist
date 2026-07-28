@@ -21,7 +21,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { validate, renderPrDescription } from "@review-assist/validator";
 import { intentDocSchema } from "@review-assist/schema";
-import { getRoles, KNOWN_ENVS, type RoleName } from "./roles.js";
+import { getRoles, KNOWN_ENVS, ROLE_TOOLS, activeRole, type RoleName } from "./roles.js";
 import { GENERATION_GUIDE } from "./guide.js";
 import {
   computeDiff,
@@ -49,11 +49,24 @@ const server = new McpServer({
   version: SERVER_VERSION,
 });
 
+/**
+ * Role gate. When REVIEW_ASSIST_ROLE is set, only that role's tools are registered — so
+ * an author instance has no submit_document to call and a reviewer instance has no
+ * read_transcript, whatever the agent driving it decides to try. This is the lock that
+ * makes the two-agent split real rather than advisory; Claude Code's `tools:` allowlist
+ * and Codex's per-agent mcp_servers both point at it.
+ */
+const ACTIVE_ROLE = activeRole();
+const registerTool: typeof server.tool = ((name: string, ...rest: unknown[]) => {
+  if (ACTIVE_ROLE && !ROLE_TOOLS[ACTIVE_ROLE].includes(name)) return;
+  return (server.tool as (...a: unknown[]) => unknown)(name, ...rest);
+}) as typeof server.tool;
+
 function textResult(text: string, isError = false) {
   return { content: [{ type: "text" as const, text }], isError };
 }
 
-server.tool(
+registerTool(
   "get_generation_guide",
   "Return the Intent Document JSON Schema and the authoring protocol. Call this first.",
   {},
@@ -68,7 +81,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   "compute_diff",
   "Compute the PR's own unified diff (base...head) plus resolved SHAs. Anchors must use these hunk line numbers and pin to head_sha.",
   {
@@ -87,7 +100,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   "list_transcripts",
   "List candidate session transcripts for this repo — across BOTH Claude Code and Codex — ranked so you can pick THIS session's transcript even when several are close in time. Pass `base` (the change's base ref) so ranking scores each candidate by how much it references the changed files and branch. Each candidate includes `first_user`/`last_activity` previews: choose the one whose `first_user` matches how THIS session actually began; prefer higher `relevance`.",
   {
@@ -128,7 +141,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   "read_transcript",
   "Read a window of a session transcript as lightweight entries. Page through long transcripts to hydrate a fresh distiller agent.",
   {
@@ -151,7 +164,7 @@ server.tool(
 // the same process as the tools both roles call, so a sub-agent reviewer pass shares the state.
 const interviewRounds = new Map<string, { question: string; answer: string; resolved: boolean }[]>();
 
-server.tool(
+registerTool(
   "record_interview_round",
   "Reviewer role: record ONE author\u21c4reviewer interview round — a question you raised about a thin/under-justified spot, the author role's answer, and whether it resolved. The server counts these and stamps meta.interview on submit, so the two-agent interview is server-attested rather than self-reported. Unresolved rounds should also surface as open_questions in the document.",
   {
@@ -184,7 +197,7 @@ function extractChangedBasenames(diff: string): string[] {
   return Array.from(names);
 }
 
-server.tool(
+registerTool(
   "submit_document",
   "Validate a candidate Intent Document against the diff and head SHA. On pass, write it to .intent/<branch>.json. On failure, returns findings to fix and resubmit.",
   {
@@ -336,7 +349,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   "set_consent",
   "Record the user's decision about whether Review Assist may operate in a repository. Call this only after the user has answered the consent prompt returned by submit_document.",
   {
@@ -359,7 +372,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   "manage_consent",
   "List Review Assist's per-repo enable/disable decisions, or reset one repo — removing it from the list so it is asked about again.",
   {
@@ -380,7 +393,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   "get_role_definitions",
   "Return the author and reviewer role definitions for the two-agent distillation, " +
     "picked for the calling client (Claude Code, Codex, or a generic fallback) and " +
@@ -416,31 +429,33 @@ server.tool(
 function runAgentsCli(argv: string[]): number {
   const envArg = argv.includes("--env") ? argv[argv.indexOf("--env") + 1] : undefined;
   const write = argv.includes("--write");
-  const bundle = getRoles({ env: envArg, clientName: undefined });
+  const bundle = getRoles({ env: envArg });
 
   if (!write) {
     process.stdout.write(`environment: ${bundle.env} (${bundle.detected_from})\n\n`);
     process.stdout.write(`${bundle.how_to_run}\n\n`);
-    for (const [name, body] of Object.entries(bundle.roles)) {
-      process.stdout.write(`----- ${name} -----\n${body}\n`);
+    for (const [name, r] of Object.entries(bundle.roles)) {
+      process.stdout.write(`----- ${name} (${r.filename}) -----\n${r.definition}\n`);
     }
-    if (bundle.install_dir) {
-      process.stdout.write(`\nRe-run with --write to install into ${bundle.install_dir}/\n`);
-    }
+    process.stdout.write(
+      bundle.install_dir
+        ? `\nRe-run with --write to install into ${bundle.install_dir}/\n`
+        : `\nThis environment has no agent directory; use the definitions above.\n`
+    );
     return 0;
   }
 
   if (!bundle.install_dir) {
     process.stderr.write(
-      `${bundle.env} has no agent directory to install into — use the printed definitions instead.\n`
+      `${bundle.env} has no agent directory to install into — run without --write and use the printed definitions.\n`
     );
     return 1;
   }
   const dir = resolve(process.cwd(), bundle.install_dir);
   mkdirSync(dir, { recursive: true });
-  for (const [name, body] of Object.entries(bundle.roles)) {
-    const file = resolve(dir, `intent-${name}.md`);
-    writeFileSync(file, body, "utf8");
+  for (const r of Object.values(bundle.roles)) {
+    const file = resolve(dir, r.filename);
+    writeFileSync(file, r.definition, "utf8");
     process.stdout.write(`wrote ${file}\n`);
   }
   return 0;
@@ -492,7 +507,9 @@ async function main() {
   }
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write(`review-assist MCP server running (repo: ${REPO_DIR})\n`);
+  process.stderr.write(
+    `review-assist MCP server running (repo: ${REPO_DIR}${ACTIVE_ROLE ? `, role: ${ACTIVE_ROLE}` : ""})\n`
+  );
 }
 
 main().catch((e) => {
