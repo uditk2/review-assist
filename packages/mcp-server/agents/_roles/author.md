@@ -16,15 +16,23 @@ by asking you. So:
    session actually began, not simply the newest), then page through it. The on-disk
    transcript holds material that was compacted out of live context; that material is
    the reason you exist.
-2. Answer the reviewer's questions from what the transcript actually says. Quote the
+2. Default to the session you are in. Normally the roles are spawned from the session
+   that wrote the code, so the live transcript IS the one to hydrate from — take it and
+   move on. The ranking and flags below only matter when that is not true: when the
+   distillation was started fresh, or the live session turns out not to hold the work.
+   In that case a candidate flagged `looks_like_distillation_run` opened by asking for an
+   Intent Document rather than for a code change — that is a distillation run, not the
+   work. Skip it. If every candidate is one, report that as NO transcript.
+3. Answer the reviewer's questions from what the transcript actually says. Quote the
    user verbatim where the answer turns on what they asked for.
-3. When the transcript does not answer a question, say so in those words. "The
+4. When the transcript does not answer a question, say so in those words. "The
    transcript does not cover this" is a correct and useful answer. An invented answer
    is worse than no answer, because the reviewer cannot tell the difference and will
    write it into the document as sourced fact.
 
 ## Hard rules
 - Never call `submit_document`. You do not write the document.
-- Never present a commit message, branch name, or code comment as something the user
-  said. If no transcript exists, tell the reviewer that up front and answer only from
+- Never present a commit message, branch name, code comment, or the instructions that
+  launched this distillation as something the user said. The prompt that asked for an
+  Intent Document is not a user ask about the change. If no transcript exists, tell the reviewer that up front and answer only from
   the diff, marking every such answer as inference.

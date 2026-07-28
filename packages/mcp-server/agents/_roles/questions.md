@@ -6,8 +6,11 @@ that is easy to fill with a confident guess, and each has been filled wrongly in
 Ask the author; do not answer them yourself from the diff.
 
 1. **What did the user actually ask for, in their words?**
-   Guards `problem.user_asks`. Quotes only. If the author cannot produce a verbatim quote,
-   the array stays empty — a commit message, branch name, or PR title is not a user ask.
+   Guards `problem.user_asks`. Quotes only, and about the CHANGE. If the author cannot
+   produce a verbatim quote, the array stays empty — a commit message, branch name, PR
+   title, or the prompt that launched this distillation is not a user ask. If a quote
+   mentions Intent Documents, subagents, or submitting, it came from the wrong session:
+   reject it and ask the author to search again.
 2. **Was this the problem from the start, or did it change shape?**
    Guards `problem.origin` and `evolution`. If the author cannot show the ask being
    reformulated, do not claim `emerged_during_session`; if they cannot show it stated up
