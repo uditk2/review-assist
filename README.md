@@ -60,20 +60,8 @@ check on every PR, the summary comment, and the guided-review viewer.
 ## How it works
 
 <p align="center">
-  <img src="docs/how-it-works.svg" alt="Three steps: 1 Code — your agent writes the change and an Intent Document explaining it, on the developer's machine. 2 Validate — a GitHub App proves the document covers the diff and posts a guided-review link on every PR, on GitHub with zero config and no code stored. 3 Review — check the assumptions, take the anchored tour, approve or request changes in the browser; everything lands on GitHub." width="640">
+  <img src="docs/how-it-works.svg" alt="How it works, in three steps. 1 Code, on your machine: your agent writes the change and an Intent Document that explains it — the ask, the assumptions, a tour of the diff — committed alongside the code; the transcript never leaves the machine. 2 Validate, on GitHub with no code stored: a GitHub App proves the document covers the diff (schema, staleness, cross-refs, redaction), reports coverage such as 5 of 5 changes explained, and posts an Open guided review link on the pull request. 3 Review, in the reviewer's browser: check the assumptions first — flagging one posts it to the PR discussion — then take the anchored tour and approve or request changes; the verdict posts to the pull request as you, and merging stays on GitHub." width="620">
 </p>
-
-1. **Capture.** After a session, a two-agent pass — an *author* hydrated from the full
-   transcript and an independent *reviewer* that interrogates it — distills the Intent
-   Document. Runs in a fresh context via the MCP server, so it costs the working session
-   nothing and sees even what compaction dropped.
-2. **Validate.** The GitHub App checks every PR against the diff — schema, staleness,
-   coverage (every change explained), cross-references, secret redaction — and posts a
-   check plus a guided-review link. Zero config. The same checks run standalone via the
-   `review-assist` CLI.
-3. **Review.** The viewer renders the walkthrough — assumptions to check first, then an
-   anchored tour of the change, with a coverage overlay flagging anything unexplained.
-   Comments and the verdict sync back to GitHub.
 
 Full diagram and internals: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
