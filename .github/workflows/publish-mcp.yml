@@ -47,18 +47,31 @@ jobs:
       - run: npm run build
       - run: npx vitest run
 
+      # `npm version` run inside a workspace directory bumps package.json but performs
+      # NO git operations at all — there is no .git in packages/mcp-server, so it silently
+      # skips the commit and tag. That shipped 0.2.3 to npm while main stayed on 0.2.2.
+      # Bump without git, then commit and tag from the repo root ourselves.
       - name: Bump version
         if: ${{ !inputs.release_only }}
-        working-directory: packages/mcp-server
+        run: npm version "${{ inputs.version }}" --no-git-tag-version --workspace packages/mcp-server
+
+      # Read it back from disk rather than parsing npm's stdout, which prints the package
+      # name alongside the version.
+      - name: Resolve version
+        id: v
+        run: echo "version=$(node -p "require('./packages/mcp-server/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and tag
+        if: ${{ !inputs.dry_run && !inputs.release_only }}
+        env:
+          V: ${{ steps.v.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          npm version "${{ inputs.version }}" -m "release(mcp-server): %s"
-
-      - name: Resolve version
-        id: v
-        working-directory: packages/mcp-server
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          node scripts/sync-version.mjs
+          git add -A
+          git commit -m "release(mcp-server): v$V"
+          git tag "v$V"
 
       - name: Publish to npm
         if: ${{ !inputs.dry_run && !inputs.release_only }}
