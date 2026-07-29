@@ -95,6 +95,18 @@ jobs:
         if: ${{ !inputs.dry_run && !inputs.release_only }}
         run: git push origin HEAD:${{ github.ref_name }} --follow-tags
 
+      # The MCP registry namespaces servers by identity: io.github.uditk2/* belongs to
+      # whoever controls that GitHub account. github-oidc proves it from the workflow,
+      # so there is no device-code step and no cached token on anyone's laptop, and the
+      # registry entry tracks each release instead of drifting.
+      - name: Publish to the MCP registry
+        if: ${{ !inputs.dry_run }}
+        run: |
+          curl -sSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/').tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
+
       - name: Create the GitHub release
         if: ${{ !inputs.dry_run }}
         env:
