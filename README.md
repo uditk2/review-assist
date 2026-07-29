@@ -68,7 +68,23 @@ check on every PR, the summary comment, and the guided-review viewer.
   <img src="docs/how-it-works.svg" alt="How it works, in three steps. 1 Code, on your machine: your agent writes the change and an Intent Document that explains it — the ask, the assumptions, a tour of the diff — committed alongside the code; the transcript never leaves the machine. 2 Validate, on GitHub with no code stored: a GitHub App proves the document covers the diff (schema, staleness, cross-refs, redaction), reports coverage such as 5 of 5 changes explained, and posts an Open guided review link on the pull request. 3 Review, in the reviewer's browser: check the assumptions first — flagging one posts it to the PR discussion — then take the anchored tour and approve or request changes; the verdict posts to the pull request as you, and merging stays on GitHub." width="620">
 </p>
 
-Full diagram and internals: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+## Architecture
+
+<p align="center">
+  <a href="docs/architecture.svg">
+    <img src="docs/architecture.svg" alt="Container-level topology: three systems and two external actors. The developer machine runs the coding agent and the MCP server and writes the Intent Document, with the transcript staying local. GitHub holds the pull request, the committed document, the automation output and the reviewer's comments and verdict. The Review Assist Application receives pull_request events on its webhook, posts the check run, summary and PR-description block as its bot identity, and serves the guided review, reading and writing GitHub as the signed-in reviewer." width="820">
+  </a>
+</p>
+
+Three systems and two external actors. Your machine produces the change and its Intent
+Document; the session transcript never leaves it. GitHub holds the pull request and every
+durable piece of review state. The application reacts to `pull_request` events and posts
+the check as its bot identity, then serves the guided review, reading and writing GitHub
+as the signed-in reviewer.
+
+The two-agent distillation — author and reviewer as separate role-locked contexts, and the
+tools each one may reach — is a component-level view, kept in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) along with the full route list.
 
 ## Developing
 
