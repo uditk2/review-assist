@@ -2,34 +2,80 @@
   "manifest_version": "0.2",
   "name": "review-assist-mcp",
   "display_name": "Review Assist",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Turn an AI agent's coding session into a reviewable Intent Document.",
   "long_description": "Review Assist runs a two-agent author/reviewer distillation over your coding session and produces an Intent Document — the problem, the assumptions, the rejected alternatives, and an anchored walkthrough of every change — gatekept by a deterministic validator. It also generates a ready-made PR description (with optional Mermaid diagrams) and asks per repository before it does anything. Works with Claude Code, Codex, and any MCP-capable agent.",
-  "author": { "name": "Udit Khandelwal", "url": "https://github.com/uditk2" },
+  "author": {
+    "name": "Udit Khandelwal",
+    "url": "https://github.com/uditk2"
+  },
   "homepage": "https://github.com/uditk2/review-assist",
   "documentation": "https://github.com/uditk2/review-assist#readme",
   "support": "https://github.com/uditk2/review-assist/issues",
   "license": "Apache-2.0",
-  "keywords": ["code-review", "pull-request", "intent-document", "claude-code", "codex", "github"],
+  "keywords": [
+    "code-review",
+    "pull-request",
+    "intent-document",
+    "claude-code",
+    "codex",
+    "github"
+  ],
   "server": {
     "type": "node",
     "entry_point": "dist/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/dist/index.js"]
+      "args": [
+        "${__dirname}/dist/index.js"
+      ]
     }
   },
   "tools": [
-    { "name": "get_generation_guide", "description": "Return the Intent Document schema and the two-agent authoring protocol." },
-    { "name": "compute_diff", "description": "Deterministic PR diff + base/head SHAs (read-only git)." },
-    { "name": "list_transcripts", "description": "Locate and rank the session transcript(s) for the repo." },
-    { "name": "read_transcript", "description": "Page through a transcript to hydrate the author role." },
-    { "name": "record_interview_round", "description": "Record one reviewer interview round (server-attests the interview)." },
-    { "name": "submit_document", "description": "Validate a candidate Intent Document; on pass write it and return a PR description." },
-    { "name": "set_consent", "description": "Record whether Review Assist may operate on a repository (always/once/never)." },
-    { "name": "manage_consent", "description": "List or reset per-repository consent decisions." }
+    {
+      "name": "get_generation_guide",
+      "description": "Return the Intent Document schema and the two-agent authoring protocol."
+    },
+    {
+      "name": "get_role_definitions",
+      "description": "Return the author and reviewer role definitions for the calling client, and how to spin them up."
+    },
+    {
+      "name": "compute_diff",
+      "description": "Deterministic PR diff + base/head SHAs (read-only git)."
+    },
+    {
+      "name": "list_transcripts",
+      "description": "Locate and rank the session transcript(s) for the repo."
+    },
+    {
+      "name": "search_transcript",
+      "description": "Search a transcript for the passages that answer a specific reviewer question."
+    },
+    {
+      "name": "read_transcript",
+      "description": "Page through a transcript to hydrate the author role."
+    },
+    {
+      "name": "record_interview_round",
+      "description": "Record one reviewer interview round (server-attests the interview)."
+    },
+    {
+      "name": "submit_document",
+      "description": "Validate a candidate Intent Document; on pass write it and return a PR description."
+    },
+    {
+      "name": "set_consent",
+      "description": "Record whether Review Assist may operate on a repository (always/once/never)."
+    },
+    {
+      "name": "manage_consent",
+      "description": "List or reset per-repository consent decisions."
+    }
   ],
   "compatibility": {
-    "runtimes": { "node": ">=18.0.0" }
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
   }
 }

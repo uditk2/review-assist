@@ -43,7 +43,7 @@ import {
 const REPO_DIR = resolve(process.env.REVIEW_ASSIST_REPO ?? process.cwd());
 
 /** Single source of truth: keep in step with package.json on release. */
-export const SERVER_VERSION = "0.2.0";
+export const SERVER_VERSION = "0.2.1";
 
 const server = new McpServer({
   name: "review-assist",
