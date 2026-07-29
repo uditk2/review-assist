@@ -24,9 +24,12 @@ tested) is thrown away the moment the PR opens. Review Assist captures it at the
 an agent's session becomes an **Intent Document**, a validator proves it actually covers
 the diff, and a GitHub App renders it as a guided review on top of the pull request.
 
-Fully open source, self-hostable, and **stores none of your code** — validation runs
-against the diff on GitHub's side of the fence, and the viewer renders live in the
-reviewer's browser.
+Fully open source, self-hostable, and **stores none of your code**. Your session
+transcript never leaves your machine. The app has no database: it reads the document and
+diff from GitHub per request with the reviewer's own token, keeps them in memory for the
+length of that request, and serves them `private, no-store` to a viewer that renders in
+the reviewer's browser. Nothing is written down, but your code does pass through the
+service in transit — if that matters to you, self-host it.
 
 ## Install
 
