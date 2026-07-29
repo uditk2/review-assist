@@ -54,6 +54,20 @@ Both write the same entry to the agent's own config — for Codex that's
 `~/.codex/config.toml`, shared with the IDE extension. Check it landed with
 `codex mcp list` (or `claude mcp list`).
 
+If you use the **VS Code extension** or a GUI-launched editor, register it without
+`npx` instead. GUI apps on macOS get only `/usr/bin:/bin:/usr/sbin:/sbin`, so a
+Homebrew or nvm `npx` is not on the path; on Windows `npx` is a `.cmd` wrapper that
+fails without a TTY, and the VS Code panel has none. Either way the server shows as
+*not connected* with no error. Invoking `node` directly avoids both:
+
+```bash
+npm install -g review-assist-mcp
+claude mcp add -s user review-assist -- "$(which node)" "$(npm root -g)/review-assist-mcp/dist/index.js"
+```
+
+Both `$(...)` expand on your machine, so it is correct for Homebrew, nvm, fnm, Volta
+and Linux alike. nvm users: re-run it after switching Node versions.
+
 Claude desktop app — one-click, no terminal:
 [download the `.mcpb`](https://github.com/uditk2/review-assist/releases/latest/download/review-assist-mcp.mcpb)
 and open it.

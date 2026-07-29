@@ -26,6 +26,20 @@ codex mcp add review-assist -- npx -y review-assist-mcp            # Codex
 
 Claude desktop app: [download the `.mcpb`](https://github.com/uditk2/review-assist/releases/latest/download/review-assist-mcp.mcpb) and open it. No terminal.
 
+> **Using the VS Code extension, or a GUI-launched editor?** Register it without
+> `npx`. GUI apps on macOS get only `/usr/bin:/bin:/usr/sbin:/sbin`, so a
+> Homebrew/nvm `npx` is not on the path, and on Windows `npx` is a `.cmd` wrapper
+> that fails silently without a TTY. Either way the server shows as *not connected*
+> with no error. Invoking `node` directly avoids both:
+>
+> ```bash
+> npm install -g review-assist-mcp
+> claude mcp add -s user review-assist -- "$(which node)" "$(npm root -g)/review-assist-mcp/dist/index.js"
+> ```
+>
+> Both `$(...)` expand on your machine, so this is correct for Homebrew, nvm, fnm,
+> Volta and Linux alike. If you use nvm and later switch Node versions, re-run it.
+
 **2. [The GitHub App](https://github.com/apps/review-assist-guided-review)** — so the
 document becomes a guided review on the pull request.
 
