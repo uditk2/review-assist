@@ -100,9 +100,9 @@ jobs:
       # so there is no device-code step and no cached token on anyone's laptop, and the
       # registry entry tracks each release instead of drifting.
       - name: Publish to the MCP registry
-        if: ${{ !inputs.dry_run }}
+        if: ${{ !inputs.dry_run && !inputs.release_only }}
         run: |
-          curl -sSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/').tar.gz" \
+          curl -sSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
             | tar xz mcp-publisher
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
