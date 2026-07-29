@@ -17,6 +17,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { validate, renderPrDescription } from "@review-assist/validator";
@@ -42,8 +43,9 @@ import {
 
 const REPO_DIR = resolve(process.env.REVIEW_ASSIST_REPO ?? process.cwd());
 
-/** Single source of truth: keep in step with package.json on release. */
-export const SERVER_VERSION = "0.2.1";
+/** Single source of truth: package.json. Never write a version literal here — a
+    hand-maintained copy silently drifts the moment `npm version` bumps the real one. */
+export const SERVER_VERSION: string = createRequire(import.meta.url)("../package.json").version;
 
 const server = new McpServer({
   name: "review-assist",

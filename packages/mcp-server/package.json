@@ -1,6 +1,6 @@
 {
   "name": "review-assist-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "MCP server that turns an AI agent's coding session into a reviewable Intent Document — a two-agent author/reviewer distillation, gatekept by a deterministic validator. Works with Claude Code and Codex.",
   "license": "Apache-2.0",
   "type": "module",
@@ -37,7 +37,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node18 --loader:.md=text --loader:.toml=text --outfile=dist/index.js",
+    "build": "node ../../scripts/sync-version.mjs && esbuild src/index.ts --bundle --platform=node --format=esm --target=node18 --loader:.md=text --loader:.toml=text --outfile=dist/index.js",
     "mcpb:pack": "npm run build && npx --yes @anthropic-ai/mcpb pack . ../../review-assist-mcp.mcpb",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build"

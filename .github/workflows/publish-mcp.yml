@@ -33,6 +33,10 @@ jobs:
       - uses: actions/checkout@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Check out the branch, not a detached HEAD: `npm version` commits here and
+          # the push below needs a branch to land on, or only the tag gets pushed and
+          # main keeps the old version.
+          ref: ${{ github.ref_name }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -66,7 +70,7 @@ jobs:
 
       - name: Push version commit and tag
         if: ${{ !inputs.dry_run && !inputs.release_only }}
-        run: git push --follow-tags
+        run: git push origin HEAD:${{ github.ref_name }} --follow-tags
 
       - name: Create the GitHub release
         if: ${{ !inputs.dry_run }}
