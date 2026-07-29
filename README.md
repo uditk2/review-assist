@@ -8,6 +8,7 @@
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#how-it-works">How it works</a> ·
+  <a href="#architecture">Architecture</a> ·
   <a href="#developing">Developing</a> ·
   <a href="#contributing">Contributing</a>
 </p>
