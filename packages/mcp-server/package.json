@@ -1,6 +1,6 @@
 {
   "name": "review-assist-mcp",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "MCP server that turns an AI agent's coding session into a reviewable Intent Document — a two-agent author/reviewer distillation, gatekept by a deterministic validator. Works with Claude Code and Codex.",
   "mcpName": "io.github.uditk2/review-assist-mcp",
   "license": "Apache-2.0",
