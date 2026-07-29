@@ -20,7 +20,7 @@
  * the allowlist is then belt and braces.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import roleAuthor from "../agents/_roles/author.md";
@@ -157,12 +157,19 @@ export function getRoles(opts: { env?: string; role?: RoleName; clientName?: str
  * `generic`, and refused to write — so every agent fell through to placing the files by
  * hand, in whatever directory it happened to be in.
  */
-export function installRoles(bundle: RoleBundle): string[] {
+export function installRoles(bundle: RoleBundle, opts: { onlyIfChanged?: boolean } = {}): string[] {
   if (!bundle.install_dir) return [];
   mkdirSync(bundle.install_dir, { recursive: true });
   const written: string[] = [];
   for (const r of Object.values(bundle.roles)) {
     const file = join(bundle.install_dir, r.filename);
+    if (opts.onlyIfChanged) {
+      try {
+        if (readFileSync(file, "utf8") === r.definition) continue;
+      } catch {
+        /* missing or unreadable: write it */
+      }
+    }
     writeFileSync(file, r.definition, "utf8");
     written.push(file);
   }

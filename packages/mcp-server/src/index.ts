@@ -562,11 +562,45 @@ async function main() {
   if (argv[0] === "agents") {
     process.exit(runAgentsCli());
   }
+  // Wait for the handshake before installing: connect() resolves as soon as the
+  // transport is wired up, which is BEFORE the client sends `initialize`, so
+  // getClientVersion() is still undefined there and the env resolves to `generic`.
+  server.server.oninitialized = () => installRoleDefinitions();
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
   process.stderr.write(
     `review-assist MCP server running (repo: ${REPO_DIR}${ACTIVE_ROLE ? `, role: ${ACTIVE_ROLE}` : ""})\n`
   );
+}
+
+/**
+ * Install the role definitions as soon as we know the client, not when the agent
+  // asks. Claude Code reads ~/.claude/agents/ once, at session start — so definitions
+  // written during a tool call cannot be dispatched until the next session, and the
+  // agent is left offering to "simulate" the split with general-purpose agents, which
+  // drops the `tools:` allowlist that makes the split real.
+  //
+  // Writing at handshake means they land during the session start the user already
+  // performs when adding the server, so no extra restart is needed. Idempotent: only
+  // touches a file whose content differs, so a steady state writes nothing.
+ */
+function installRoleDefinitions(): void {
+  if (ACTIVE_ROLE) return; // role-gated instances are spawned per-role; not their job
+  try {
+    const bundle = getRoles({ clientName: server.server.getClientVersion()?.name });
+    const changed = installRoles(bundle, { onlyIfChanged: true });
+    if (changed.length) {
+      process.stderr.write(
+        `review-assist: installed role definitions -> ${changed.join(", ")}\n` +
+          `review-assist: restart this session once so they register as subagents\n`
+      );
+    }
+  } catch (e) {
+    // Never let this break startup; the agent can still call install explicitly.
+    process.stderr.write(`review-assist: could not install role definitions: ${(e as Error).message}\n`);
+  }
 }
 
 main().catch((e) => {
