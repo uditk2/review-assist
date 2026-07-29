@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "review-assist-mcp",
   "display_name": "Review Assist",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "Turn an AI agent's coding session into a reviewable Intent Document.",
   "long_description": "Review Assist runs a two-agent author/reviewer distillation over your coding session and produces an Intent Document — the problem, the assumptions, the rejected alternatives, and an anchored walkthrough of every change — gatekept by a deterministic validator. It also generates a ready-made PR description (with optional Mermaid diagrams) and asks per repository before it does anything. Works with Claude Code, Codex, and any MCP-capable agent.",
   "author": {
