@@ -40,9 +40,16 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      # Trusted publishing needs npm >= 11.5.1. Note: no registry-url here on purpose —
-      # setup-node would write an _authToken line to .npmrc that breaks OIDC.
-      - run: npm install -g npm@latest
+      # Trusted publishing needs npm >= 11.5.1, which Node 24 already bundles. Do NOT
+      # `npm i -g npm@latest` here: it makes every run depend on whatever npm shipped
+      # that hour, so a green pipeline can turn red without the repo changing.
+      # Note: no registry-url on setup-node either, on purpose — it writes an
+      # _authToken line into .npmrc that breaks OIDC.
+      - name: Check the toolchain
+        run: |
+          echo "node $(node -v), npm $(npm -v)"
+          npx --yes semver -r ">=11.5.1" "$(npm -v)" >/dev/null \
+            || { echo "npm $(npm -v) is too old for trusted publishing"; exit 1; }
       - run: npm ci
       - run: npm run build
       - run: npx vitest run
