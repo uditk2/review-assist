@@ -71,7 +71,10 @@ jobs:
           node scripts/sync-version.mjs
           git add -A
           git commit -m "release(mcp-server): v$V"
-          git tag "v$V"
+          # Annotated, not lightweight: `git push --follow-tags` below only pushes
+          # annotated tags, so a lightweight one stays in the runner and the release
+          # step then fails with "tag exists locally but has not been pushed".
+          git tag -a "v$V" -m "review-assist-mcp v$V"
 
       - name: Publish to npm
         if: ${{ !inputs.dry_run && !inputs.release_only }}
