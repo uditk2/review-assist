@@ -1,0 +1,22 @@
+# Fast local echo of the release gate in .github/workflows/publish-mcp.yml.
+#
+# This is a convenience, not the gate: it is skippable with --no-verify and only exists
+# on machines that have run `npm install`. The authoritative check runs in the publish
+# workflow, which is what actually protects users. This just tells you now instead of
+# at release time.
+#
+# Kept to two node scripts (no build, no tests) so it stays well under a second.
+
+node scripts/sync-version.mjs > /dev/null
+
+if ! git diff --quiet -- packages/mcp-server/manifest.json server.json; then
+  echo
+  echo "  manifest.json / server.json were stale and have been regenerated from"
+  echo "  packages/mcp-server/package.json. Stage them and commit again:"
+  echo
+  echo "      git add packages/mcp-server/manifest.json server.json"
+  echo
+  exit 1
+fi
+
+npm run --silent check:release

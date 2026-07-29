@@ -14,12 +14,14 @@
     "docs:architecture": "node scripts/generate-architecture.mjs",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "check:release": "node scripts/check-release-consistency.mjs"
+    "check:release": "node scripts/check-release-consistency.mjs",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "@types/node": "^22.20.1",
+    "husky": "^9.1.7",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
   }
