@@ -39,6 +39,14 @@ Claude desktop app: [download the `.mcpb`](https://github.com/uditk2/review-assi
 >
 > Both `$(...)` expand on your machine, so this is correct for Homebrew, nvm, fnm,
 > Volta and Linux alike. If you use nvm and later switch Node versions, re-run it.
+>
+> To avoid the global install, launch VS Code from a terminal with `code .` so it
+> inherits your shell's `PATH`; `npx` then works. That is a habit rather than a
+> setting — open the editor from the Dock and it silently stops connecting.
+>
+> This is a client-side issue rather than something specific to this server — every
+> `npx`-based MCP server is affected the same way
+> ([claude-code#25044](https://github.com/anthropics/claude-code/issues/25044)).
 
 **2. [The GitHub App](https://github.com/apps/review-assist-guided-review)** — so the
 document becomes a guided review on the pull request.

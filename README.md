@@ -68,6 +68,11 @@ claude mcp add -s user review-assist -- "$(which node)" "$(npm root -g)/review-a
 Both `$(...)` expand on your machine, so it is correct for Homebrew, nvm, fnm, Volta
 and Linux alike. nvm users: re-run it after switching Node versions.
 
+If you would rather not install globally, launching VS Code from a terminal with
+`code .` makes it inherit your shell's `PATH`, and the `npx` command above then works.
+That is a habit rather than a setting, though — open the editor from the Dock once and
+the server quietly stops connecting.
+
 Claude desktop app — one-click, no terminal:
 [download the `.mcpb`](https://github.com/uditk2/review-assist/releases/latest/download/review-assist-mcp.mcpb)
 and open it.
