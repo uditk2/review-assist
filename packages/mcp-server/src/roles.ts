@@ -20,6 +20,9 @@
  * the allowlist is then belt and braces.
  */
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import roleAuthor from "../agents/_roles/author.md";
 import roleReviewer from "../agents/_roles/reviewer.md";
 import roleQuestions from "../agents/_roles/questions.md";
@@ -41,7 +44,14 @@ const BODY: Record<RoleName, string> = {
 
 interface EnvEntry {
   templates: Record<RoleName, string>;
-  /** Where this client reads agent definitions from, if it has such a place. */
+  /**
+   * Where this client reads agent definitions from, relative to the user's home.
+   *
+   * User scope, not project scope: the rendered definitions contain nothing
+   * repo-specific — for Claude only the tools allowlist is substituted — so writing
+   * them per project would drop untracked files into every repository the tool runs
+   * in, and only this repo's .gitignore knows to exclude them.
+   */
   install_dir?: string;
   /** File name for an installed role definition. */
   filename: (role: RoleName) => string;
@@ -54,19 +64,20 @@ const REGISTRY: Record<RoleEnv, EnvEntry> = {
     install_dir: ".claude/agents",
     filename: (r) => `intent-${r}.md`,
     how_to_run:
-      "Install with `review-assist-mcp agents --write`, then dispatch the subagents with the " +
-      "Task tool — author first, then reviewer, relaying questions and answers between them. " +
-      "Each starts in its own context, and the `tools:` allowlist keeps the roles apart.",
+      "Call this tool again with `install: true` and the definitions are written to " +
+      "~/.claude/agents/. Then dispatch them with the Task tool — author first, then reviewer, " +
+      "relaying questions and answers between them. Each starts in its own context, and the " +
+      "`tools:` allowlist keeps the roles apart.",
   },
   codex: {
     templates: { author: codexAuthorTpl, reviewer: codexReviewerTpl },
     install_dir: ".codex/agents",
     filename: (r) => `intent-${r}.toml`,
     how_to_run:
-      "Install with `review-assist-mcp agents --write` (writes TOML agent definitions to " +
-      ".codex/agents/; use ~/.codex/agents/ for personal scope), then ask Codex to delegate the " +
-      "author and reviewer parts to subagents. `/agent` switches between the running threads. " +
-      "Each definition pins REVIEW_ASSIST_ROLE, so the server itself withholds the other role's tools.",
+      "Call this tool again with `install: true` and the definitions are written to " +
+      "~/.codex/agents/. Then ask Codex to delegate the author and reviewer parts to subagents; " +
+      "`/agent` switches between the running threads. Each definition pins REVIEW_ASSIST_ROLE, so " +
+      "the server itself withholds the other role's tools.",
   },
   generic: {
     templates: { author: genericAuthorTpl, reviewer: genericReviewerTpl },
@@ -132,9 +143,30 @@ export function getRoles(opts: { env?: string; role?: RoleName; clientName?: str
           ? `MCP clientInfo.name = ${opts.clientName}`
           : "no client info; defaulted",
     how_to_run: entry.how_to_run,
-    install_dir: entry.install_dir,
+    install_dir: entry.install_dir ? join(homedir(), entry.install_dir) : undefined,
     roles,
   };
+}
+
+/**
+ * Write the rendered definitions where the client will find them.
+ *
+ * The server already knows the environment from the MCP handshake, so doing this here
+ * means the caller never has to re-derive it. Previously the guide told agents to shell
+ * out to `review-assist-mcp agents --write`, which has no handshake, resolved to
+ * `generic`, and refused to write — so every agent fell through to placing the files by
+ * hand, in whatever directory it happened to be in.
+ */
+export function installRoles(bundle: RoleBundle): string[] {
+  if (!bundle.install_dir) return [];
+  mkdirSync(bundle.install_dir, { recursive: true });
+  const written: string[] = [];
+  for (const r of Object.values(bundle.roles)) {
+    const file = join(bundle.install_dir, r.filename);
+    writeFileSync(file, r.definition, "utf8");
+    written.push(file);
+  }
+  return written;
 }
 
 export const KNOWN_ENVS: RoleEnv[] = ["claude", "codex", "generic"];

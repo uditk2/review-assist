@@ -12,9 +12,12 @@ You are producing an Intent Document: a curated, reviewable explanation of a cod
 change, distilled from the authoring session. Follow this protocol.
 
 ## Two-agent distillation
-Call \`get_role_definitions\` FIRST. It returns author and reviewer definitions built for
-your client, plus how to spin them up — for Claude Code they install as subagents whose
-\`tools:\` allowlist enforces the split, so the roles cannot bleed into one another.
+Call \`get_role_definitions\` with \`install: true\` FIRST. The server detects your client
+from the MCP handshake and writes the two role definitions where that client reads them
+(user scope, e.g. \`~/.claude/agents/\`), then tells you how to dispatch them. Do NOT write
+those files yourself and do NOT shell out to install them — the server already knows the
+environment and you do not have to re-derive it. For Claude Code they land as subagents
+whose \`tools:\` allowlist enforces the split, so the roles cannot bleed into one another.
 
 Run this as two roles in separate contexts, so the depleted main session pays nothing.
 The split is the point: the author holds the transcript and cannot submit; the reviewer

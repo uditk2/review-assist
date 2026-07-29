@@ -22,7 +22,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { validate, renderPrDescription } from "@review-assist/validator";
 import { intentDocSchema } from "@review-assist/schema";
-import { getRoles, KNOWN_ENVS, ROLE_TOOLS, activeRole, type RoleName } from "./roles.js";
+import { getRoles, installRoles, KNOWN_ENVS, ROLE_TOOLS, activeRole, type RoleName } from "./roles.js";
 import { GENERATION_GUIDE } from "./guide.js";
 import {
   computeDiff,
@@ -438,18 +438,46 @@ registerTool(
       .enum(["author", "reviewer"])
       .optional()
       .describe("Return just one role; default returns both."),
+    install: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Write the definitions where this client reads them (user scope, e.g. ~/.claude/agents). " +
+          "Do this rather than placing the files yourself: the server knows the environment from " +
+          "the handshake, so it writes the right format to the right place."
+      ),
   },
-  async ({ env, role }) => {
+  async ({ env, role, install }) => {
     const bundle = getRoles({
       env,
       role: role as RoleName | undefined,
       clientName: server.server.getClientVersion()?.name,
     });
+    let installed: string[] | undefined;
+    if (install) {
+      try {
+        installed = installRoles(bundle);
+      } catch (e) {
+        return textResult(`install failed: ${(e as Error).message}`, true);
+      }
+    }
     return {
       content: [
         {
           type: "text" as const,
-          text: JSON.stringify({ ...bundle, known_envs: KNOWN_ENVS }, null, 2),
+          text: JSON.stringify(
+            {
+              ...bundle,
+              known_envs: KNOWN_ENVS,
+              ...(install
+                ? installed?.length
+                  ? { installed }
+                  : { installed: [], note: `${bundle.env} has no agent directory; use the definitions above as-is.` }
+                : {}),
+            },
+            null,
+            2
+          ),
         },
       ],
     };
@@ -481,13 +509,7 @@ function runAgentsCli(argv: string[]): number {
     );
     return 1;
   }
-  const dir = resolve(process.cwd(), bundle.install_dir);
-  mkdirSync(dir, { recursive: true });
-  for (const r of Object.values(bundle.roles)) {
-    const file = resolve(dir, r.filename);
-    writeFileSync(file, r.definition, "utf8");
-    process.stdout.write(`wrote ${file}\n`);
-  }
+  for (const file of installRoles(bundle)) process.stdout.write(`wrote ${file}\n`);
   return 0;
 }
 
