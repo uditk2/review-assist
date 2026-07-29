@@ -22,3 +22,14 @@ jobs:
         run: npx vitest run
       - name: Validate the example document
         run: node packages/validator/dist/cli.js validate packages/schema/src/example.json
+
+      # The build regenerates manifest.json and server.json from package.json. If that
+      # produces a diff, the committed copies were stale — which is how a release once
+      # shipped a server reporting the previous version.
+      - name: Generated files are current
+        run: git diff --exit-code || { echo "Run 'npm run build' and commit the result."; exit 1; }
+
+      # Invariants no generator owns: identifiers that must agree across files, and the
+      # absence of a hand-written version literal.
+      - name: Release consistency
+        run: npm run check:release

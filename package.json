@@ -2,7 +2,7 @@
   "name": "review-assist",
   "version": "0.1.0",
   "private": true,
-  "description": "Intent Document \u2014 an open format for AI change-intent, with a validator, MCP server, and guided-review viewer.",
+  "description": "Intent Document — an open format for AI change-intent, with a validator, MCP server, and guided-review viewer.",
   "license": "Apache-2.0",
   "workspaces": [
     "packages/*",
@@ -13,7 +13,8 @@
     "build": "npm run build -w @review-assist/schema && npm run build -w @review-assist/validator && npm run build -w review-assist-mcp && npm run build -w @review-assist/viewer",
     "docs:architecture": "node scripts/generate-architecture.mjs",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "check:release": "node scripts/check-release-consistency.mjs"
   },
   "devDependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
