@@ -484,32 +484,37 @@ registerTool(
   }
 );
 
-function runAgentsCli(argv: string[]): number {
-  const envArg = argv.includes("--env") ? argv[argv.indexOf("--env") + 1] : undefined;
-  const write = argv.includes("--write");
-  const bundle = getRoles({ env: envArg });
-
-  if (!write) {
-    process.stdout.write(`environment: ${bundle.env} (${bundle.detected_from})\n\n`);
-    process.stdout.write(`${bundle.how_to_run}\n\n`);
-    for (const [name, r] of Object.entries(bundle.roles)) {
-      process.stdout.write(`----- ${name} (${r.filename}) -----\n${r.definition}\n`);
-    }
+/**
+ * Print what would be installed, for every environment. Inspection only.
+ *
+ * There is deliberately no --write: the server installs these itself via
+ * get_role_definitions({ install: true }), where it knows the client from the MCP
+ * handshake. A second write path would be a second thing to keep correct.
+ *
+ * There is no --env either. Standalone there is no handshake to detect from, so the
+ * flag was the only way to get anything but the generic definitions — and forgetting
+ * it silently produced the wrong output. Printing every environment removes the
+ * question.
+ */
+function runAgentsCli(): number {
+  for (const env of KNOWN_ENVS) {
+    const bundle = getRoles({ env });
+    process.stdout.write(`\n=== ${env} ===\n`);
     process.stdout.write(
       bundle.install_dir
-        ? `\nRe-run with --write to install into ${bundle.install_dir}/\n`
-        : `\nThis environment has no agent directory; use the definitions above.\n`
+        ? `installs to: ${bundle.install_dir}/\n`
+        : `no agent directory for this client; use the definitions below as-is\n`
     );
-    return 0;
+    process.stdout.write(`${bundle.how_to_run}\n`);
+    for (const [name, r] of Object.entries(bundle.roles)) {
+      process.stdout.write(`\n----- ${name} (${r.filename}) -----\n${r.definition}\n`);
+    }
   }
-
-  if (!bundle.install_dir) {
-    process.stderr.write(
-      `${bundle.env} has no agent directory to install into — run without --write and use the printed definitions.\n`
-    );
-    return 1;
-  }
-  for (const file of installRoles(bundle)) process.stdout.write(`wrote ${file}\n`);
+  process.stdout.write(
+    "\nThis command only prints. To install, ask your agent to call " +
+      "get_role_definitions with install: true — it detects the client and writes the " +
+      "right format to the right place.\n"
+  );
   return 0;
 }
 
@@ -555,7 +560,7 @@ async function main() {
     process.exit(runConsentCli(argv.slice(1)));
   }
   if (argv[0] === "agents") {
-    process.exit(runAgentsCli(argv.slice(1)));
+    process.exit(runAgentsCli());
   }
   const transport = new StdioServerTransport();
   await server.connect(transport);
