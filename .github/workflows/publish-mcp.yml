@@ -54,6 +54,11 @@ jobs:
       - run: npm run build
       - run: npx vitest run
 
+      # CI on main is advisory — it reports after the push. This is the gate that
+      # matters: refuse to release if the cross-file invariants are broken.
+      - name: Release consistency (pre-bump)
+        run: npm run check:release
+
       # `npm version` run inside a workspace directory bumps package.json but performs
       # NO git operations at all — there is no .git in packages/mcp-server, so it silently
       # skips the commit and tag. That shipped 0.2.3 to npm while main stayed on 0.2.2.
@@ -82,6 +87,11 @@ jobs:
           # annotated tags, so a lightweight one stays in the runner and the release
           # step then fails with "tag exists locally but has not been pushed".
           git tag -a "v$V" -m "review-assist-mcp v$V"
+
+      # Validate what is actually about to ship, after the bump and the regeneration.
+      - name: Release consistency (post-bump)
+        if: ${{ !inputs.dry_run && !inputs.release_only }}
+        run: npm run check:release
 
       - name: Publish to npm
         if: ${{ !inputs.dry_run && !inputs.release_only }}
