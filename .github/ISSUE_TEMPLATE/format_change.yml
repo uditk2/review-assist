@@ -1,0 +1,28 @@
+name: Format change
+description: Propose a change to the Intent Document format.
+labels: ["format"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        SPEC.md is deliberately frozen: a change ripples through the validator,
+        the viewer, and every document already committed. Raise it here first.
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should the format say that it does not say today?
+    validations:
+      required: true
+  - type: textarea
+    id: review-value
+    attributes:
+      label: What it buys a reviewer
+      description: Every section earns its place in a review. What does this one earn?
+    validations:
+      required: true
+  - type: textarea
+    id: migration
+    attributes:
+      label: Existing documents
+      description: What happens to documents already committed against the current schema?

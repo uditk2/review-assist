@@ -1,0 +1,34 @@
+name: Bug report
+description: The guided review read wrong, or the validator disagreed with the diff.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The Intent Document plus the diff that produced it is usually enough to
+        reproduce a bad guided review. Please attach both.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did the review show, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: intent-document
+    attributes:
+      label: Intent Document
+      description: The contents of `.intent/<branch>.json`, or a link to it on the PR.
+      render: json
+    validations:
+      required: true
+  - type: input
+    id: pull-request
+    attributes:
+      label: Pull request
+      description: A link to the PR, if it is public.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `npx review-assist-mcp --version`, or the CLI version.

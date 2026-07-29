@@ -1,6 +1,11 @@
-# Manually publish the MCP server to npm.
-# Trigger: Actions tab → "Publish MCP server" → Run workflow.
-# Requires repo secret: NPM_TOKEN (an npm automation token with publish rights).
+# Publish the MCP server to npm and cut the GitHub release.
+#
+# Auth: npm Trusted Publishing (OIDC). There is no NPM_TOKEN secret — npm verifies
+# this workflow's identity directly, so no long-lived credential is stored anywhere.
+# One-time setup on npmjs.com: package settings -> Trusted Publisher -> GitHub Actions,
+# repository uditk2/review-assist, workflow publish-mcp.yml.
+#
+# Trigger: Actions tab -> "Publish MCP server" -> Run workflow.
 name: Publish MCP server
 on:
   workflow_dispatch:
@@ -10,7 +15,11 @@ on:
         required: true
         default: "patch"
       dry_run:
-        description: "Build and pack only; do not publish"
+        description: "Build and pack only; do not publish or release"
+        type: boolean
+        default: false
+      release_only:
+        description: "Skip the npm publish and bump; just cut the release for the current version"
         type: boolean
         default: false
 
@@ -18,7 +27,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # to push the version-bump commit + tag
+      contents: write   # push the version-bump commit + tag, create the release
+      id-token: write   # OIDC token for npm trusted publishing
     steps:
       - uses: actions/checkout@v5
         with:
@@ -26,31 +36,52 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          registry-url: "https://registry.npmjs.org"
-          cache: npm
+      # Trusted publishing needs npm >= 11.5.1. Note: no registry-url here on purpose —
+      # setup-node would write an _authToken line to .npmrc that breaks OIDC.
+      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
       - run: npx vitest run
 
       - name: Bump version
+        if: ${{ !inputs.release_only }}
         working-directory: packages/mcp-server
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           npm version "${{ inputs.version }}" -m "release(mcp-server): %s"
 
-      - name: Publish
-        if: ${{ !inputs.dry_run }}
+      - name: Resolve version
+        id: v
+        working-directory: packages/mcp-server
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run && !inputs.release_only }}
         working-directory: packages/mcp-server
         run: npm publish --access public
+
+      - name: Pack the desktop extension
+        run: npx --yes @anthropic-ai/mcpb pack packages/mcp-server review-assist-mcp.mcpb
+
+      - name: Push version commit and tag
+        if: ${{ !inputs.dry_run && !inputs.release_only }}
+        run: git push --follow-tags
+
+      - name: Create the GitHub release
+        if: ${{ !inputs.dry_run }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ steps.v.outputs.version }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" review-assist-mcp.mcpb --clobber
+          else
+            gh release create "$TAG" review-assist-mcp.mcpb \
+              --title "$TAG" --generate-notes
+          fi
 
       - name: Pack only (dry run)
         if: ${{ inputs.dry_run }}
         working-directory: packages/mcp-server
         run: npm pack
-
-      - name: Push version commit and tag
-        if: ${{ !inputs.dry_run }}
-        run: git push --follow-tags
