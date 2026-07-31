@@ -25,6 +25,7 @@ import { intentDocSchema } from "@review-assist/schema";
 import {
   getRoles,
   installRoles,
+  sweepStaleRoleDefinitions,
   KNOWN_ENVS,
   ROLE_TOOLS,
   activeRole,
@@ -568,8 +569,10 @@ registerTool(
       clientName: server.server.getClientVersion()?.name,
     });
     let installed: string[] | undefined;
+    let removed: string[] | undefined;
     if (install) {
       try {
+        removed = sweepStaleRoleDefinitions(bundle, projectScopeDirs());
         installed = installRoles(bundle);
       } catch (e) {
         return textResult(`install failed: ${(e as Error).message}`, true);
@@ -584,9 +587,15 @@ registerTool(
               ...bundle,
               known_envs: KNOWN_ENVS,
               ...(install
-                ? installed?.length
-                  ? { installed }
-                  : { installed: [], note: `${bundle.env} has no agent directory; use the definitions above as-is.` }
+                ? {
+                    ...(removed?.length ? { removed_stale: removed } : {}),
+                    ...(installed?.length
+                      ? { installed }
+                      : {
+                          installed: [],
+                          note: `${bundle.env} has no agent directory; use the definitions above as-is.`,
+                        }),
+                  }
                 : {}),
             },
             null,
@@ -690,6 +699,15 @@ async function main() {
 }
 
 /**
+ * Directories an older version might have dropped project-scoped definitions into:
+ * where the server was started, and the repo it was pointed at. Definitions never
+ * belong in either, so anything found there is swept.
+ */
+function projectScopeDirs(): string[] {
+  return [process.cwd(), REPO_DIR];
+}
+
+/**
  * Install the role definitions as soon as we know the client, not when the agent
   // asks. Claude Code reads ~/.claude/agents/ once, at session start — so definitions
   // written during a tool call cannot be dispatched until the next session, and the
@@ -704,10 +722,18 @@ function installRoleDefinitions(): void {
   if (ACTIVE_ROLE) return; // role-gated instances are spawned per-role; not their job
   try {
     const bundle = getRoles({ clientName: server.server.getClientVersion()?.name });
+    // Reconcile before writing. A project-scoped copy left by an older version takes
+    // precedence over the user-scoped one in Claude Code, so installing without
+    // removing it means the session keeps running the stale prompt while the server
+    // reports success.
+    const removed = sweepStaleRoleDefinitions(bundle, projectScopeDirs());
+    for (const path of removed) {
+      process.stderr.write(`review-assist: removed stale role definition -> ${path}\n`);
+    }
     const changed = installRoles(bundle, { onlyIfChanged: true });
-    if (changed.length) {
+    if (changed.length || removed.length) {
       process.stderr.write(
-        `review-assist: installed role definitions -> ${changed.join(", ")}\n` +
+        `review-assist: installed role definitions -> ${changed.join(", ") || "(unchanged)"}\n` +
           `review-assist: restart this session once so they register as subagents\n`
       );
     }

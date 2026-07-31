@@ -20,9 +20,9 @@
  * the allowlist is then belt and braces.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import roleAuthor from "../agents/_roles/author.md";
 import roleReviewer from "../agents/_roles/reviewer.md";
 import roleQuestions from "../agents/_roles/questions.md";
@@ -32,6 +32,20 @@ import codexAuthorTpl from "../agents/codex/author.tpl.toml";
 import codexReviewerTpl from "../agents/codex/reviewer.tpl.toml";
 import genericAuthorTpl from "../agents/generic/author.tpl.md";
 import genericReviewerTpl from "../agents/generic/reviewer.tpl.md";
+
+/**
+ * Stamped into every definition the server writes, so a later sweep can tell its own
+ * output from a file someone put there by hand. Placed by each template in that
+ * client's comment syntax; the token itself is shared so one test recognises both.
+ */
+const MARKER = "review-assist-mcp: generated file — rewritten when the server connects";
+
+/**
+ * Signatures of definitions written before the marker existed. Both are inherent to a
+ * generated file: the Claude template renders a `mcp__review-assist__` allowlist, the
+ * Codex one pins REVIEW_ASSIST_ROLE. Neither appears in prose someone wrote themselves.
+ */
+const LEGACY_SIGNATURES = ["mcp__review-assist__", "REVIEW_ASSIST_ROLE"];
 
 export type RoleEnv = "claude" | "codex" | "generic";
 export type RoleName = "author" | "reviewer";
@@ -97,7 +111,10 @@ const REGISTRY: Record<RoleEnv, EnvEntry> = {
  */
 function render(tpl: string, role: RoleName): string {
   const allowlist = ROLE_TOOLS[role].map((t) => `mcp__review-assist__${t}`).join(", ");
-  return tpl.replace("{{BODY}}", BODY[role].trim()).replace("{{TOOLS}}", allowlist);
+  return tpl
+    .replace("{{BODY}}", BODY[role].trim())
+    .replace("{{TOOLS}}", allowlist)
+    .replace("{{MARKER}}", MARKER);
 }
 
 /**
@@ -174,6 +191,84 @@ export function installRoles(bundle: RoleBundle, opts: { onlyIfChanged?: boolean
     written.push(file);
   }
   return written;
+}
+
+/** Did this server write the file, or did a person? Only the former may be removed. */
+function isGeneratedDefinition(path: string): boolean {
+  try {
+    const content = readFileSync(path, "utf8");
+    return content.includes(MARKER) || LEGACY_SIGNATURES.some((sig) => content.includes(sig));
+  } catch {
+    return false;
+  }
+}
+
+/** Every path any version of this server might have written a definition to. */
+function candidateDefinitionPaths(dirs: string[]): string[] {
+  const paths: string[] = [];
+  for (const dir of dirs) {
+    for (const entry of Object.values(REGISTRY)) {
+      if (!entry.install_dir) continue;
+      for (const role of ["author", "reviewer"] as RoleName[]) {
+        paths.push(join(dir, entry.install_dir, entry.filename(role)));
+      }
+    }
+  }
+  return paths;
+}
+
+/**
+ * Remove definitions this server wrote that should no longer be there, BEFORE writing
+ * the current ones. Installing without this leaves residue that silently wins.
+ *
+ * Two kinds of residue, and they are removed for different reasons:
+ *
+ * PROJECT SCOPE is always wrong. An earlier version told agents to shell out and place
+ * the files themselves, which landed them in whatever directory the agent happened to
+ * be in. Claude Code prefers a project-scoped subagent over a user-scoped one, so a
+ * forgotten copy in a repo does not sit harmlessly beside the real definition — it
+ * shadows it, and the session runs last month's prompt while the server reports having
+ * installed this month's. Swept for every environment, since none of them belong here.
+ *
+ * USER SCOPE is legitimate, so only definitions for roles the current bundle no longer
+ * contains are removed — a rename would otherwise leave the old role installed and
+ * dispatchable forever. Files still in the bundle are left for installRoles to
+ * overwrite, which keeps its onlyIfChanged behaviour meaningful: a steady state must
+ * not churn files, because Claude Code asks the user to restart whenever they change.
+ *
+ * Never touches a file without the marker or a legacy signature.
+ */
+export function sweepStaleRoleDefinitions(
+  bundle: RoleBundle,
+  projectDirs: string[]
+): string[] {
+  const home = homedir();
+  const scoped = projectDirs
+    .map((d) => resolve(d))
+    .filter((d, i, all) => d !== home && all.indexOf(d) === i);
+
+  const keep = new Set(
+    bundle.install_dir
+      ? Object.values(bundle.roles).map((r) => join(bundle.install_dir!, r.filename))
+      : []
+  );
+
+  const targets = [
+    ...candidateDefinitionPaths(scoped),
+    ...candidateDefinitionPaths([home]).filter((p) => !keep.has(p)),
+  ];
+
+  const removed: string[] = [];
+  for (const path of targets) {
+    if (!existsSync(path) || !isGeneratedDefinition(path)) continue;
+    try {
+      rmSync(path, { force: true });
+      removed.push(path);
+    } catch {
+      /* a definition we cannot remove is reported by its absence from this list */
+    }
+  }
+  return removed;
 }
 
 export const KNOWN_ENVS: RoleEnv[] = ["claude", "codex", "generic"];

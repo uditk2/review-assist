@@ -4,4 +4,6 @@ description: Author role for Review Assist distillation. Holds the session trans
 tools: {{TOOLS}}
 ---
 
+<!-- {{MARKER}} -->
+
 {{BODY}}
