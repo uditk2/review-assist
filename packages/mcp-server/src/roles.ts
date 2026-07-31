@@ -113,6 +113,7 @@ function render(tpl: string, role: RoleName): string {
   const allowlist = ROLE_TOOLS[role].map((t) => `mcp__review-assist__${t}`).join(", ");
   return tpl
     .replace("{{BODY}}", BODY[role].trim())
+    .replace("{{ACCESS}}", accessList(role))
     .replace("{{TOOLS}}", allowlist)
     .replace("{{MARKER}}", MARKER);
 }
@@ -282,16 +283,45 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
     "read_transcript",
     "compute_diff",
   ],
+  // `get_role_definitions` and `manage_consent` were granted here and belong to neither
+  // role: the first installs the role definitions (a reviewer already IS one), the second
+  // lists and resets consent across every repo on the machine. Both are the orchestrator's
+  // business. The over-grant was exercised — a reviewer reached for `manage_consent` while
+  // flailing at a submit failure that had nothing to do with consent.
   reviewer: [
     "get_generation_guide",
-    "get_role_definitions",
     "compute_diff",
     "record_interview_round",
     "submit_document",
     "set_consent",
-    "manage_consent",
   ],
 };
+
+/**
+ * One line per tool, for the access list each role prompt opens with.
+ *
+ * That list used to be prose in the role markdown, maintained by hand beside a `tools:`
+ * allowlist generated from ROLE_TOOLS — so the two drifted exactly as the frontmatter and
+ * the allowlist once did, and the reviewer prompt ended up declaring three of the seven
+ * tools it had. Generating both from the same constant closes the second copy.
+ */
+const TOOL_BLURB: Record<string, string> = {
+  get_generation_guide: "the Intent Document schema and the authoring protocol.",
+  list_transcripts: "candidate session transcripts for this repo, ranked.",
+  search_transcript: "passages of a transcript bearing on one question.",
+  read_transcript: "a window of a transcript, for expanding around something you found.",
+  compute_diff:
+    "the change itself. For the reviewer it also OPENS the run and returns `run_id` plus numbered hunks.",
+  record_interview_round: "your questions, the author's answers, whether they resolved.",
+  submit_document: "the gate. Only the reviewer may call it.",
+  set_consent: "record the user's decision about operating in this repository.",
+};
+
+function accessList(role: RoleName): string {
+  return ROLE_TOOLS[role]
+    .map((t) => `- \`${t}\` — ${TOOL_BLURB[t] ?? "see the tool description."}`)
+    .join("\n");
+}
 
 export function activeRole(): RoleName | undefined {
   const v = (process.env.REVIEW_ASSIST_ROLE ?? "").toLowerCase();
