@@ -22,7 +22,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { validate, renderPrDescription } from "@review-assist/validator";
 import { intentDocSchema } from "@review-assist/schema";
-import { getRoles, installRoles, KNOWN_ENVS, ROLE_TOOLS, activeRole, type RoleName } from "./roles.js";
+import {
+  getRoles,
+  installRoles,
+  KNOWN_ENVS,
+  ROLE_TOOLS,
+  activeRole,
+  type RoleName,
+} from "./roles.js";
 import { GENERATION_GUIDE } from "./guide.js";
 import {
   computeDiff,
@@ -33,6 +40,15 @@ import {
   searchTranscript,
   git,
 } from "./git.js";
+import {
+  computeRunId,
+  openRun,
+  getRun,
+  recordRounds,
+  summarizeRun,
+  closeRun,
+  listOpenRuns,
+} from "./runs.js";
 import {
   getConsent,
   setConsent,
@@ -113,7 +129,10 @@ registerTool(
 
 registerTool(
   "compute_diff",
-  "Compute the PR's own unified diff (base...head) plus resolved SHAs. Anchors must use these hunk line numbers and pin to head_sha.",
+  "Compute the PR's own unified diff (base...head), resolve the SHAs, and OPEN THE DISTILLATION RUN. " +
+    "Call this first: the returned `run_id` is the handle every later call needs, and the returned " +
+    "`consent_state` tells you whether this repo is opted in BEFORE you spend a document finding out. " +
+    "Anchors must use these hunk line numbers and pin to head_sha.",
   {
     base: z.string().describe("Base ref/branch/SHA, e.g. origin/main"),
     head: z.string().default("HEAD").describe("Head ref/SHA (default HEAD)"),
@@ -123,7 +142,23 @@ registerTool(
     try {
       const repoDir = repo ? resolve(repo) : REPO_DIR;
       const { diff, baseSha, headSha } = await computeDiff(repoDir, base, head ?? "HEAD");
-      return textResult(JSON.stringify({ base_sha: baseSha, head_sha: headSha, diff }, null, 2));
+      const branch = await currentBranch(repoDir, head ?? "HEAD");
+      const run = openRun({ repo: repoDir, baseSha, headSha, branch });
+      const consent = getConsent(repoDir);
+      return textResult(
+        JSON.stringify(
+          {
+            run_id: run.run_id,
+            repo: run.repo,
+            base_sha: baseSha,
+            head_sha: headSha,
+            consent_state: consent,
+            diff,
+          },
+          null,
+          2
+        )
+      );
     } catch (e) {
       return textResult(`compute_diff failed: ${(e as Error).message}`, true);
     }
@@ -189,30 +224,78 @@ registerTool(
   }
 );
 
-// In-memory, per-repo interview log. The reviewer role records each round here; submit_document
-// stamps meta.interview from these server-side counts (not the agent's self-report). This runs in
-// the same process as the tools both roles call, so a sub-agent reviewer pass shares the state.
-const interviewRounds = new Map<string, { question: string; answer: string; resolved: boolean }[]>();
-
 registerTool(
   "record_interview_round",
-  "Reviewer role: record ONE author\u21c4reviewer interview round — a question you raised about a thin/under-justified spot, the author role's answer, and whether it resolved. The server counts these and stamps meta.interview on submit, so the two-agent interview is server-attested rather than self-reported. Unresolved rounds should also surface as open_questions in the document.",
+  "Reviewer role: record interview rounds against a RUN — each a question you raised about a thin or " +
+    "under-justified spot, the author role's answer, and whether it resolved. Send the whole baseline set " +
+    "in ONE call via `rounds`. Rounds are keyed by question, so re-recording one replaces it rather than " +
+    "duplicating: retrying is free and the count stays honest. The server stamps meta.interview from these, " +
+    "so the interview is server-attested rather than self-reported. Unresolved rounds should also surface " +
+    "as open_questions in the document.",
   {
-    question: z.string().describe("The reviewer's question about a thin spot"),
-    answer: z.string().describe("The author role's answer (fold it into the document fields)"),
-    resolved: z.boolean().default(true).describe("Whether it resolved; false -> also add an open_question"),
-    repo: z.string().optional().describe("Absolute path of the repository. Defaults to REVIEW_ASSIST_REPO or cwd."),
+    run_id: z
+      .string()
+      .describe("Run handle from compute_diff. REQUIRED — rounds belong to a run, not a directory."),
+    rounds: z
+      .array(
+        z.object({
+          question: z.string().describe("The reviewer's question about a thin spot"),
+          answer: z.string().describe("The author role's answer (fold it into the document fields)"),
+          resolved: z.boolean().default(true).describe("false -> also add an open_question"),
+        })
+      )
+      .optional()
+      .describe("One or more rounds. Prefer sending the whole baseline set at once."),
+    // Single-round form, kept so a role definition loaded before this change still works.
+    question: z.string().optional(),
+    answer: z.string().optional(),
+    resolved: z.boolean().optional(),
   },
-  async ({ question, answer, resolved, repo }) => {
-    const key = resolve(repo ? resolve(repo) : REPO_DIR);
-    const log = interviewRounds.get(key) ?? [];
-    log.push({ question, answer, resolved: resolved ?? true });
-    interviewRounds.set(key, log);
+  async ({ run_id, rounds, question, answer, resolved }) => {
+    const batch = rounds?.length
+      ? rounds
+      : question && answer
+        ? [{ question, answer, resolved: resolved ?? true }]
+        : [];
+    if (batch.length === 0) {
+      return textResult("record_interview_round: supply `rounds: [{question, answer, resolved}]`.", true);
+    }
+    const run = recordRounds(run_id, batch);
+    if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
     return textResult(
-      JSON.stringify({ recorded_rounds: log.length, unresolved: log.filter((r) => !r.resolved).length }, null, 2)
+      JSON.stringify({ run_id, repo: run.repo, ...summarizeRun(run) }, null, 2)
     );
   }
 );
+
+/**
+ * An unknown run_id is answered with the runs that DO exist. A wrong handle then costs
+ * one corrective call instead of a guess; previously the equivalent mistake was silent
+ * and only surfaced at submit, as an interview that appeared never to have happened.
+ */
+function unknownRun(runId: string) {
+  return {
+    ok: false,
+    error: `Unknown run_id "${runId}". Open a run by calling compute_diff for the repository you changed.`,
+    open_runs: listOpenRuns().map((r) => ({
+      run_id: r.run_id,
+      repo: r.repo,
+      branch: r.branch,
+      recorded_rounds: Object.keys(r.rounds).length,
+    })),
+  };
+}
+
+/** Branch name for a ref, or undefined when it cannot be resolved (detached HEAD). */
+async function currentBranch(repoDir: string, ref: string): Promise<string | undefined> {
+  try {
+    const name = (await git(repoDir, ["rev-parse", "--abbrev-ref", ref])).trim();
+    return name && name !== "HEAD" ? name : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 
 /** Basenames of files touched by a unified diff (from the `+++ b/<path>` headers). */
 function extractChangedBasenames(diff: string): string[] {
@@ -229,21 +312,25 @@ function extractChangedBasenames(diff: string): string[] {
 
 registerTool(
   "submit_document",
-  "Validate a candidate Intent Document against the diff and head SHA. On pass, write it to .intent/<branch>.json. On failure, returns findings to fix and resubmit.",
+  "Validate a candidate Intent Document against the run's diff and head SHA. On pass, write it to " +
+    ".intent/<branch>.json. Takes `run_id` from compute_diff — repo, base and head come from the run, so " +
+    "the interview and the coverage check cannot disagree about which change this is. On failure, returns " +
+    "findings to fix and resubmit.",
   {
     document: z.union([z.record(z.string(), z.any()), z.string()]).describe("The candidate Intent Document — a JSON object, or a JSON string (which is parsed)."),
-    base: z.string().describe("Base ref/branch/SHA used for the coverage check"),
-    head: z.string().default("HEAD"),
+    run_id: z.string().describe("Run handle from compute_diff. REQUIRED."),
     strict: z.boolean().default(false).describe("Fail coverage on any unexplained hunk"),
     write: z.boolean().default(true).describe("Write the document on success"),
     require_interview: z.boolean().default(false).describe("Reject unless at least one reviewer interview round was recorded (enforces the two-agent pass)."),
-    repo: z.string().optional().describe("Absolute path of the repository to write the document into. Required in multi-repo/container setups; defaults to REVIEW_ASSIST_REPO or cwd."),
   },
-  async ({ document, base, head, strict, write, require_interview, repo }) => {
-    const repoDir = repo ? resolve(repo) : REPO_DIR;
+  async ({ document, run_id, strict, write, require_interview }) => {
+    const run = getRun(run_id);
+    if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    const repoDir = run.repo;
 
-    // Commit-time consent gate. Review Assist is installed globally but must be
-    // opted in per repository; the write below is the point of no return.
+    // Consent gate. compute_diff already reported this state when the run opened, so by
+    // here it is normally settled; the check stays because the write below is the point
+    // of no return and must not depend on the agent having read that field.
     const consent = getConsent(repoDir);
     if (consent === "disabled") {
       return textResult(
@@ -273,7 +360,7 @@ registerTool(
               { decision: "once", label: "Just this time — do it now, ask again next session" },
               { decision: "never", label: "Never — turn it off for this repo (won't ask again)" },
             ],
-            next: "Ask the user to pick one, then call set_consent({ repo, decision }), then call submit_document again with the same document.",
+            next: "Ask the user to pick one, then call set_consent({ repo, decision }), then call submit_document again with the same document and run_id.",
           },
           null,
           2
@@ -289,22 +376,47 @@ registerTool(
       return textResult(`submit_document: document was a string but not valid JSON: ${(e as Error).message}`, true);
     }
 
-    // Server-attested interview: stamp meta.interview from rounds the reviewer recorded via
-    // record_interview_round — authoritative, overriding any self-reported value.
-    const ivKey = resolve(repoDir);
-    const rounds = interviewRounds.get(ivKey) ?? [];
-    const interview = {
-      rounds: rounds.length,
-      questions_asked: rounds.length,
-      unresolved: rounds.filter((r) => !r.resolved).length,
-    };
-    if ((require_interview ?? false) && rounds.length === 0) {
+    // Head drift. The run is identified by its head SHA, so a branch that moved since the
+    // run opened is a DIFFERENT change — caught here, by name, instead of surfacing as a
+    // staleness finding after the whole document has been re-emitted.
+    let liveHead = "";
+    try {
+      liveHead = await resolveHeadSha(repoDir, "HEAD");
+    } catch (e) {
+      return textResult(`could not resolve HEAD for validation: ${(e as Error).message}`, true);
+    }
+    if (liveHead !== run.head_sha) {
+      return textResult(
+        JSON.stringify(
+          {
+            ok: false,
+            error: "The branch moved after this run opened, so the document describes an older change.",
+            run_head: run.head_sha,
+            live_head: liveHead,
+            next: `Call compute_diff again for ${repoDir} to open the run for the new head (run_id will be ${computeRunId(
+              { repo: repoDir, baseSha: run.base_sha, headSha: liveHead }
+            )}), re-anchor against the new diff, then resubmit.`,
+          },
+          null,
+          2
+        ),
+        true
+      );
+    }
+
+    // Server-attested interview: stamped from the rounds recorded against THIS run,
+    // overriding any self-reported value. Rounds are keyed by question, so this counts
+    // distinct questions asked rather than tool calls made.
+    const interview = summarizeRun(run);
+    if ((require_interview ?? false) && interview.rounds === 0) {
       return textResult(
         JSON.stringify(
           {
             ok: false,
             error:
-              "No reviewer interview rounds were recorded. Run the reviewer pass (call record_interview_round per round) before submitting, or set require_interview=false.",
+              "No reviewer interview rounds were recorded for this run. Run the reviewer pass (call record_interview_round with this run_id) before submitting, or set require_interview=false.",
+            run_id,
+            repo: repoDir,
             meta_interview: interview,
           },
           null,
@@ -320,21 +432,23 @@ registerTool(
     }
 
     let diff = "";
-    let headSha = "";
     try {
-      const computed = await computeDiff(repoDir, base, head ?? "HEAD");
-      diff = computed.diff;
-      headSha = computed.headSha;
+      diff = (await computeDiff(repoDir, run.base_sha, run.head_sha)).diff;
     } catch (e) {
       return textResult(`could not compute diff for validation: ${(e as Error).message}`, true);
     }
 
-    const report = validate(doc, { diff, headSha, strictCoverage: strict ?? false });
+    const report = validate(doc, { diff, headSha: run.head_sha, strictCoverage: strict ?? false });
 
     if (!report.ok) {
       return textResult(
         JSON.stringify(
-          { ok: false, findings: report.findings, coverage: report.coverage },
+          {
+            ok: false,
+            run_id,
+            findings: report.findings,
+            coverage: report.coverage,
+          },
           null,
           2
         ),
@@ -345,14 +459,14 @@ registerTool(
     let written: string | null = null;
     if (write ?? true) {
       try {
-        const branch = (await git(repoDir, ["rev-parse", "--abbrev-ref", head ?? "HEAD"]))
-          .trim()
-          .replace(/[/\\]/g, "-") || headSha.slice(0, 12);
+        const branch =
+          (run.branch ?? (await currentBranch(repoDir, "HEAD")) ?? "").replace(/[/\\]/g, "-") ||
+          run.head_sha.slice(0, 12);
         const outPath = join(repoDir, ".intent", `${branch}.json`);
         mkdirSync(dirname(outPath), { recursive: true });
         writeFileSync(outPath, JSON.stringify(doc, null, 2) + "\n", "utf8");
         written = outPath;
-        interviewRounds.delete(ivKey);
+        closeRun(run_id);
       } catch (e) {
         return textResult(`document valid but write failed: ${(e as Error).message}`, true);
       }
@@ -367,8 +481,8 @@ registerTool(
           coverage: report.coverage,
           interview,
           note:
-            rounds.length === 0
-              ? "meta.interview.rounds is server-attested as 0 — no reviewer interview was recorded for this document."
+            interview.rounds === 0
+              ? "meta.interview.rounds is server-attested as 0 — no reviewer interview was recorded for this run."
               : undefined,
           warnings: report.findings,
         },
