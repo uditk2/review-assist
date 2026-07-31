@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
-import { getRoles, installRoles, sweepStaleRoleDefinitions } from "../src/roles.js";
+import { getRoles, installRoles, sweepStaleRoleDefinitions, ROLE_TOOLS } from "../src/roles.js";
 
 const scratch = mkdtempSync(join(tmpdir(), "review-assist-roles-"));
 const projectDir = join(scratch, "my-repo");
@@ -38,6 +38,25 @@ describe("rendered definitions", () => {
   it("still render the tools allowlist that enforces the role split", () => {
     expect(bundle.roles.reviewer!.definition).toContain("mcp__review-assist__submit_document");
     expect(bundle.roles.author!.definition).not.toContain("mcp__review-assist__submit_document");
+  });
+
+  it("generate the access list from ROLE_TOOLS, so prose cannot drift from the allowlist", () => {
+    // The frontmatter allowlist was already generated; the prose list beside it was not,
+    // and the reviewer prompt ended up declaring three of the seven tools it had.
+    for (const role of ["author", "reviewer"] as const) {
+      const def = getRoles({ env: "claude", role }).roles[role]!.definition;
+      for (const tool of ROLE_TOOLS[role]) {
+        expect(def).toContain(`\`${tool}\``);
+        expect(def).toContain(`mcp__review-assist__${tool}`);
+      }
+    }
+  });
+
+  it("do not grant the reviewer tools that belong to the orchestrator", () => {
+    expect(ROLE_TOOLS.reviewer).not.toContain("get_role_definitions");
+    expect(ROLE_TOOLS.reviewer).not.toContain("manage_consent");
+    expect(ROLE_TOOLS.reviewer).toContain("submit_document");
+    expect(ROLE_TOOLS.author).not.toContain("submit_document");
   });
 
   it("leave no unsubstituted placeholders", () => {
