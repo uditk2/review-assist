@@ -1,7 +1,7 @@
 {
   "name": "review-assist-mcp",
   "version": "0.2.11",
-  "description": "MCP server that turns an AI agent's coding session into a reviewable Intent Document — a two-agent author/reviewer distillation, gatekept by a deterministic validator. Works with Claude Code and Codex.",
+  "description": "MCP server that turns an AI agent's coding session into a reviewable Intent Document \u2014 a two-agent author/reviewer distillation, gatekept by a deterministic validator. Works with Claude Code and Codex.",
   "mcpName": "io.github.uditk2/review-assist-mcp",
   "license": "Apache-2.0",
   "type": "module",
@@ -41,7 +41,8 @@
     "build": "node ../../scripts/sync-version.mjs && esbuild src/index.ts --bundle --platform=node --format=esm --target=node18 --loader:.md=text --loader:.toml=text --outfile=dist/index.js",
     "mcpb:pack": "npm run build && npx --yes @anthropic-ai/mcpb pack . ../../review-assist-mcp.mcpb",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@review-assist/schema": "0.1.0",
