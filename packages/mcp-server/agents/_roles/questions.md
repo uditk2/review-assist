@@ -1,38 +1,25 @@
 
 ## Baseline questions
 
-Ask these every time, before whatever the diff itself provokes. Each one guards a field
-that is easy to fill with a confident guess, and each has been filled wrongly in practice.
-Ask the author; do not answer them yourself from the diff.
+Ask these every time, before whatever the diff itself provokes. Send all six to the
+author in ONE exchange and record them as ONE `record_interview_round` call. They are
+independent and known in advance; asking them serially buys nothing but round-trips.
 
-1. **What did the user actually ask for, in their words?**
-   Guards `problem.user_asks`. Quotes only, and about the CHANGE — from the session that
-   MADE it. If the author says a transcript is not the implementation session, nothing in it
-   is a user ask, however quotable: a request to open the PR, publish a release, or re-run
-   the distillation is about the change's packaging, not its intent. Ask the author to
-   confirm the quote came from the session that wrote the diff; if they cannot, leave the
-   array empty. If the author cannot
-   produce a verbatim quote, the array stays empty — a commit message, branch name, PR
-   title, or the prompt that launched this distillation is not a user ask. If a quote
-   mentions Intent Documents, subagents, or submitting, it came from the wrong session:
-   reject it and ask the author to search again.
-2. **Was this the problem from the start, or did it change shape?**
-   Guards `problem.origin` and `evolution`. If the author cannot show the ask being
-   reformulated, do not claim `emerged_during_session`; if they cannot show it stated up
-   front, do not claim `stated_upfront`. Say which, and why.
-3. **What was tried and abandoned?**
-   Guards `approach.trials` — the one thing a diff-only reviewer can never recover. An
-   empty array means "the transcript shows none". If the author does not know, say so in
-   `not_verified` rather than leaving silence that reads as "nothing was tried".
-4. **What does this change assume about the world that the diff cannot show?**
-   Guards `assumptions`. For each: what breaks if it is wrong, and how would someone check.
-5. **Which hunks are genuinely incidental?**
-   Guards `tour[].role`. Ask before batching anything into an incidental stop; renames and
-   churn hide behaviour changes.
-6. **What was run, and what was not?**
-   Guards `verification`. Push for the `not_verified` list specifically — authors report
-   what passed and go quiet about what was never exercised.
+Each guards a field that is easy to fill with a confident guess, and each has been
+filled wrongly in practice. Ask the author; do not answer them from the diff yourself.
+The sourcing rules above say what you may do with each answer.
 
-Record each as its own `record_interview_round`. An answer of "the transcript does not
-cover this" is a real answer: record it with `resolved: false` and carry it into
-`open_questions`.
+1. **What did the user actually ask for, in their words?** — guards `problem.user_asks`.
+   Verbatim quotes only, from the session that made this diff.
+2. **Was this the problem from the start, or did it change shape?** — guards
+   `problem.origin` and `evolution`.
+3. **What was tried and abandoned?** — guards `approach.trials`, the one thing a
+   diff-only reviewer can never recover.
+4. **What does this change assume about the world that the diff cannot show?** — guards
+   `assumptions`. For each: what breaks if it is wrong, and how someone would check.
+5. **Which hunks are genuinely incidental?** — guards `tour[].role`. Ask before batching
+   anything into an incidental stop; renames and churn hide behaviour changes.
+6. **What was run, and what was not?** — guards `verification`.
+
+An answer of "the transcript does not cover this" is a real answer. Record it with
+`resolved: false` and carry it into `open_questions` — do not ask it again.
