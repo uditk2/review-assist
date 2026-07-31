@@ -20,7 +20,7 @@ import { z } from "zod";
 import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { validate, renderPrDescription } from "@review-assist/validator";
+import { validate, renderPrDescription, indexHunks, type IndexedHunk } from "@review-assist/validator";
 import { intentDocSchema } from "@review-assist/schema";
 import {
   getRoles,
@@ -146,6 +146,7 @@ registerTool(
       const branch = await currentBranch(repoDir, head ?? "HEAD");
       const run = openRun({ repo: repoDir, baseSha, headSha, branch });
       const consent = getConsent(repoDir);
+      const hunks = indexHunks(diff);
       return textResult(
         JSON.stringify(
           {
@@ -154,6 +155,15 @@ registerTool(
             base_sha: baseSha,
             head_sha: headSha,
             consent_state: consent,
+            hunks,
+            anchors_note:
+              "Anchor tour stops by hunk id — `\"anchors\": [\"H3\", \"H4\"]` — not by hand-copied line numbers. " +
+              "The server expands them on submit, so the stored document is unchanged. Every hunk with " +
+              "coverage_required=true must appear in some stop; one hunk may serve two stops.",
+            next:
+              consent === "unknown"
+                ? "This repo is not opted in yet. Resolve consent NOW, before writing the document: present the choice to the user and call set_consent({ repo, decision }). Submitting first only wastes the document."
+                : "Pass `run_id` to record_interview_round and submit_document. Do not pass `repo` to those tools — the run already knows it.",
             diff,
           },
           null,
@@ -298,6 +308,74 @@ async function currentBranch(repoDir: string, ref: string): Promise<string | und
 }
 
 
+/**
+ * Resolve `"H7"` anchors into the `{path, hunk}` the schema stores.
+ *
+ * The id is a wire format, nothing more: it exists between compute_diff and here, and
+ * the document on disk looks exactly as it always did. That is deliberate — the whole
+ * change costs no schema revision, no validator revision, and no viewer revision.
+ *
+ * Both forms are accepted, so a document written by hand (or by a role definition loaded
+ * before this change) still validates. Returns the ids it could not resolve; the caller
+ * refuses the submit rather than letting an unresolved string reach the schema, where it
+ * would surface as an unrelated type error.
+ */
+function expandAnchors(doc: unknown, hunks: IndexedHunk[]): string[] {
+  const byId = new Map(hunks.map((h) => [h.id.toUpperCase(), h]));
+  const unknown: string[] = [];
+
+  const resolve = (a: unknown): unknown => {
+    const id =
+      typeof a === "string"
+        ? a
+        : a && typeof a === "object" && typeof (a as { hunk_id?: unknown }).hunk_id === "string"
+          ? ((a as { hunk_id: string }).hunk_id)
+          : undefined;
+    if (id === undefined) return a;
+    const h = byId.get(id.trim().toUpperCase());
+    if (!h) {
+      unknown.push(id);
+      return a;
+    }
+    return {
+      path: h.path,
+      hunk: {
+        old_start: h.old_start,
+        old_lines: h.old_lines,
+        new_start: h.new_start,
+        new_lines: h.new_lines,
+      },
+    };
+  };
+
+  const walk = (holder: unknown): void => {
+    if (!holder || typeof holder !== "object") return;
+    const h = holder as { anchors?: unknown };
+    if (Array.isArray(h.anchors)) h.anchors = h.anchors.map(resolve);
+  };
+
+  if (!doc || typeof doc !== "object") return unknown;
+  const d = doc as { tour?: unknown; verification?: { added_tests?: unknown } };
+  if (Array.isArray(d.tour)) d.tour.forEach(walk);
+  if (Array.isArray(d.verification?.added_tests)) d.verification.added_tests.forEach(walk);
+  return Array.from(new Set(unknown));
+}
+
+/**
+ * Name the uncovered hunks by id. "uncovered: H7, H12" is a fix the reviewer can apply by
+ * adding two strings; "lines 45-51 of src/x.ts are not covered" is one it has to
+ * translate back into an anchor first, which is where the transcription errors came from.
+ */
+function uncoveredIds(
+  coverage: { unexplained: { path: string; hunk: { new_start: number } }[] } | undefined,
+  hunks: IndexedHunk[]
+): string[] {
+  if (!coverage?.unexplained?.length) return [];
+  return coverage.unexplained
+    .map((u) => hunks.find((h: IndexedHunk) => h.path === u.path && h.new_start === u.hunk.new_start)?.id)
+    .filter((id): id is string => Boolean(id));
+}
+
 /** Basenames of files touched by a unified diff (from the `+++ b/<path>` headers). */
 function extractChangedBasenames(diff: string): string[] {
   const names = new Set<string>();
@@ -439,6 +517,28 @@ registerTool(
       return textResult(`could not compute diff for validation: ${(e as Error).message}`, true);
     }
 
+    // Hunk ids are resolved against a diff recomputed from the run's own SHAs, by the
+    // same function that handed them out — so an id always means what it meant when the
+    // reviewer wrote it down.
+    const hunks = indexHunks(diff);
+    const unknown = expandAnchors(doc, hunks);
+    if (unknown.length) {
+      return textResult(
+        JSON.stringify(
+          {
+            ok: false,
+            run_id,
+            error: `Unknown hunk id(s): ${unknown.join(", ")}.`,
+            valid_ids: hunks.map((h) => h.id),
+            hint: "Ids come from compute_diff for THIS run. Re-read them there rather than guessing.",
+          },
+          null,
+          2
+        ),
+        true
+      );
+    }
+
     const report = validate(doc, { diff, headSha: run.head_sha, strictCoverage: strict ?? false });
 
     if (!report.ok) {
@@ -449,6 +549,7 @@ registerTool(
             run_id,
             findings: report.findings,
             coverage: report.coverage,
+            uncovered_hunk_ids: uncoveredIds(report.coverage, hunks),
           },
           null,
           2
