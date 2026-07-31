@@ -4,4 +4,6 @@ description: Reviewer role for Review Assist distillation. Reads the diff cold, 
 tools: {{TOOLS}}
 ---
 
+<!-- {{MARKER}} -->
+
 {{BODY}}
