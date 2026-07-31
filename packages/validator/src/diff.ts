@@ -13,6 +13,19 @@ export interface DiffHunk {
   new_lines: number;
   /** True if any added/removed line has non-whitespace content. */
   substantive: boolean;
+  /**
+   * First substantive added line, trimmed — enough to recognise which hunk this is once
+   * the diff has been read.
+   *
+   * Git also offers a "nearest declaration" hint in the hunk header, and this parser used
+   * to carry it. It was dropped: present on 94% of source hunks but 0% of config, holding
+   * a symbol in normal source and a sentence from inside a template literal in files that
+   * are mostly strings — and where the preview was uninformative (an import, a brace) the
+   * hint was too. A field that needs a caveat wherever it is mentioned costs more prompt
+   * space than it repays. Neither field replaces reading the diff, which the caller has
+   * from the same request.
+   */
+  preview?: string;
 }
 
 export interface DiffFile {
@@ -85,7 +98,12 @@ export function parseUnifiedDiff(diff: string): DiffFile[] {
     if (currentHunk && (line.startsWith("+") || line.startsWith("-"))) {
       // Ignore the +++/--- headers already handled above.
       const content = line.slice(1);
-      if (content.trim().length > 0) currentHunk.substantive = true;
+      if (content.trim().length > 0) {
+        currentHunk.substantive = true;
+        if (currentHunk.preview === undefined && line.startsWith("+")) {
+          currentHunk.preview = content.trim().slice(0, 120);
+        }
+      }
     }
   }
 
@@ -109,4 +127,42 @@ export function newRange(h: DiffHunk): [number, number] {
 /** Do two inclusive integer ranges overlap? */
 export function rangesOverlap(a: [number, number], b: [number, number]): boolean {
   return a[0] <= b[1] && b[0] <= a[1];
+}
+
+/** A hunk with the short handle an agent references it by. */
+export interface IndexedHunk extends DiffHunk {
+  /** Stable within a diff: H1, H2, … in the order the hunks appear. */
+  id: string;
+  path: string;
+  /** False for whitespace-only hunks and for the intent document's own file. */
+  coverage_required: boolean;
+}
+
+/**
+ * Number every hunk in a diff, so a tour stop can say "H7" instead of restating four
+ * line numbers a reviewer had to copy by hand.
+ *
+ * The numbering is positional and covers EVERY hunk, including the ones no stop has to
+ * explain — so reading the raw diff top to bottom and counting gives the same answer the
+ * index does. Skipping the excluded ones would save nothing and make the two disagree.
+ *
+ * This is the single place IDs are assigned. `compute_diff` hands them out and
+ * `submit_document` resolves them from a freshly recomputed diff; if the two ever
+ * derived numbering separately, an anchor could silently point at the wrong hunk.
+ */
+export function indexHunks(diff: string): IndexedHunk[] {
+  const out: IndexedHunk[] = [];
+  let n = 0;
+  for (const file of parseUnifiedDiff(diff)) {
+    const excluded = file.path === ".intent" || file.path.startsWith(".intent/");
+    for (const hunk of file.hunks) {
+      out.push({
+        ...hunk,
+        id: `H${++n}`,
+        path: file.path,
+        coverage_required: hunk.substantive && !excluded,
+      });
+    }
+  }
+  return out;
 }
