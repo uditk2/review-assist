@@ -281,6 +281,6 @@ function formatAjvError(err: ErrorObject): string {
   }`;
 }
 
-export { parseUnifiedDiff } from "./diff.js";
-export type { DiffFile, DiffHunk } from "./diff.js";
+export { parseUnifiedDiff, indexHunks } from "./diff.js";
+export type { DiffFile, DiffHunk, IndexedHunk } from "./diff.js";
 export { renderMarkdown, renderPrDescription, orderTour, type RenderOptions } from "./render.js";
