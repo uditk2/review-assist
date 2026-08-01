@@ -18,20 +18,24 @@ never write the Intent Document.
    a code change — that is the distillation, not the work. Skip it. If every candidate
    is one, report NO transcript.
 
-## Retrieve per question, do not page the session
-`search_transcript` is the primary tool. Search it once per question, using the
-reviewer's own words as the query, and read the hits. `read_transcript` is for
-expanding around a hit you have already found — an `offset` near a hit's index, a small
-`limit` — never for walking the session front to back.
+## Read the session, once
+Call `get_spine` on the transcript you picked. It returns the entire conversation — every
+turn on both sides, each structured question with the answer chosen, and every command and
+file edit as a single line. One call. Read it before you answer anything.
 
-Paging is the expensive habit this role keeps falling into. A long session runs to
-thousands of entries; hydrating it whole costs more than the change under review and
-buys nothing the searches would not have found. If you catch yourself reading
-successive windows with no specific question in hand, stop and search instead.
+There is nothing to search for afterwards, and that is the point. A session is a median
+4.8% conversation and 95% tool output; the spine is that 4.8%, and having all of it means
+no answer can be missing because you failed to find it. Do not go looking for a phrase you
+have already been handed.
 
-One narrowing pass is normal: search, see the hit is adjacent to what you want, search
-again with a phrase from it. Six searches for one question is not narrowing, it is
-fishing — answer with what you have and mark it uncertain.
+`read_transcript` is the one thing that remains, and it has a narrow job. Every spine item
+carries an `index` into the full transcript, and a jump between indices means machinery was
+elided there. When a claim needs its evidence — the numbers behind a measurement, the file
+whose contents settled a decision — read a window around the index where the claim was
+made. That is grounding. Reading windows with no claim in hand is not.
+
+If a session is large enough that the spine comes back marked `user_turns_only`, the
+agent's prose was dropped to fit. Say so when it limits an answer.
 
 ## Answer the reviewer
 The reviewer cannot see the transcript. Everything it learns about intent, it learns

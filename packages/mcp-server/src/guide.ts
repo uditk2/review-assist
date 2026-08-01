@@ -25,12 +25,15 @@ submits and never sees the transcript. Anything the reviewer knows about intent,
 to ask for. Playing both roles yourself produces a document that validates and still
 quietly sources \`user_asks\` from the commit message:
 
-1. **Author role** — hydrate from the FULL session transcript (call \`list_transcripts\` with \`base\` (candidates come back ranked by how much
-   they touch the changed files); pick the one whose \`first_user\` matches how THIS session
-   began — NOT just the newest — then \`read_transcript\` to page through it; the on-disk transcript contains
-   material that was compacted out of live context). Reconstruct: the real problem,
-   how the ask evolved, requirements discovered, alternatives tried and abandoned,
-   and the reasoning behind each group of changes.
+1. **Author role** — call \`list_transcripts\` with \`base\` (candidates come back ranked by how
+   much they touch the changed files; parents only, since a subagent is never a session), pick
+   the one whose \`first_user\` matches how THIS session began rather than the newest, then call
+   \`get_spine\` on it. That returns the whole conversation in one read: both sides, structured
+   questions with their answers, commands and edits as one-liners. The on-disk record holds
+   material compacted out of live context, which is the reason this role exists. Reconstruct
+   the real problem, how the ask evolved, requirements discovered, alternatives tried and
+   abandoned, and the reasoning behind each group of changes. Use \`read_transcript\` around a
+   spine index only to recover the evidence behind a claim.
 
 2. **Reviewer role** — start from the diff (call \`compute_diff\`). Form an independent
    read, then interrogate the author role on thin spots: any tour stop whose "why" is

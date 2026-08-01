@@ -4,7 +4,7 @@
   "display_name": "Review Assist",
   "version": "0.2.11",
   "description": "Turn an AI agent's coding session into a reviewable Intent Document.",
-  "long_description": "Review Assist runs a two-agent author/reviewer distillation over your coding session and produces an Intent Document — the problem, the assumptions, the rejected alternatives, and an anchored walkthrough of every change — gatekept by a deterministic validator. It also generates a ready-made PR description (with optional Mermaid diagrams) and asks per repository before it does anything. Works with Claude Code, Codex, and any MCP-capable agent.",
+  "long_description": "Review Assist runs a two-agent author/reviewer distillation over your coding session and produces an Intent Document \u2014 the problem, the assumptions, the rejected alternatives, and an anchored walkthrough of every change \u2014 gatekept by a deterministic validator. It also generates a ready-made PR description (with optional Mermaid diagrams) and asks per repository before it does anything. Works with Claude Code, Codex, and any MCP-capable agent.",
   "author": {
     "name": "Udit Khandelwal",
     "url": "https://github.com/uditk2"
@@ -49,12 +49,12 @@
       "description": "Locate and rank the session transcript(s) for the repo."
     },
     {
-      "name": "search_transcript",
-      "description": "Search a transcript for the passages that answer a specific reviewer question."
+      "name": "get_spine",
+      "description": "Read a session's whole conversation in one call, each item indexed into the full transcript."
     },
     {
       "name": "read_transcript",
-      "description": "Page through a transcript to hydrate the author role."
+      "description": "Read a window of the full transcript around a spine index, for the tool output behind a claim."
     },
     {
       "name": "record_interview_round",

@@ -279,7 +279,7 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
   author: [
     "get_generation_guide",
     "list_transcripts",
-    "search_transcript",
+    "get_spine",
     "read_transcript",
     "compute_diff",
   ],
@@ -307,9 +307,9 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
  */
 const TOOL_BLURB: Record<string, string> = {
   get_generation_guide: "the Intent Document schema and the authoring protocol.",
-  list_transcripts: "candidate session transcripts for this repo, ranked.",
-  search_transcript: "passages of a transcript bearing on one question.",
-  read_transcript: "a window of a transcript, for expanding around something you found.",
+  list_transcripts: "candidate sessions for this repo, ranked. Parents only; a subagent is never a session.",
+  get_spine: "a session's whole conversation in one call, each item indexed into the full transcript.",
+  read_transcript: "a window of the full transcript around an index, for the tool output behind a claim.",
   compute_diff:
     "the change itself. For the reviewer it also OPENS the run and returns `run_id` plus numbered hunks.",
   record_interview_round: "your questions, the author's answers, whether they resolved.",
