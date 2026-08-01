@@ -1,4 +1,11 @@
 
+## Before the questions: ask for the plan
+
+Your first exchange with the author is not a question from this list. Ask it for the plan
+as agreed, what was learned, and how the plan ended up — with the turns quoted. You need
+that before you can group a single hunk, and it reframes several of the questions below,
+which is why it comes first rather than as a seventh item.
+
 ## Baseline questions
 
 Ask these every time, before whatever the diff itself provokes. Send all six to the

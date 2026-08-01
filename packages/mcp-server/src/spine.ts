@@ -23,6 +23,18 @@
  *   one document cites a trial rejected "by the user's structured scope answer".
  * - Commands and edits as one-liners. The trail of what ran and what was touched, without
  *   the output that makes it enormous.
+ * - The plan, as revisions rather than snapshots. Where a session keeps a todo list, the
+ *   DELTA is the part worth carrying: one session revised its list 31 times across 84
+ *   distinct items, and the diffs show real scope moving — "dropped: Map exact reuse
+ *   interfaces" is an approach being abandoned. Snapshots would drown that. Only additions
+ *   and removals are emitted; a status flipping to done is progress, not a change of plan.
+ *
+ *   Corroboration, never the source. The list appears in 9 of 41 measured sessions, and
+ *   even where it appears the plan it records is downstream of the conversation that set
+ *   it: in the ads-manager session the only item ever added was "Typecheck/lint", while
+ *   the trial its Intent Document records — a tab switcher superseded by the user asking
+ *   for the sidebar restructured — never entered the list at all. An author that reads the
+ *   plan events and stops has missed the plan.
  * - GAPS, marked with what was elided. A summary tells you what a model thought was
  *   there; a spine tells you what is there and where the rest is. `read_transcript`
  *   around a marked gap is how the author substantiates a claim whose evidence lives in
@@ -46,7 +58,7 @@ export interface SpineTurn {
 
 /** A one-line trace of something done rather than said. */
 export interface SpineEvent {
-  kind: "question" | "command" | "edit";
+  kind: "question" | "command" | "edit" | "plan";
   index: number;
   summary: string;
   /** For `question`: the user's answer, which is the decision itself. */
@@ -157,6 +169,14 @@ function stripInjected(text: string): string {
   return t.trim();
 }
 
+/** Todo items as plain strings, for diffing one snapshot against the last. */
+function todoContents(input: Record<string, unknown>): string[] {
+  const todos = Array.isArray(input.todos) ? input.todos : [];
+  return todos
+    .map((t) => String((t as { content?: unknown; activeForm?: unknown }).content ?? (t as { activeForm?: unknown }).activeForm ?? "").trim())
+    .filter(Boolean);
+}
+
 function eventFor(index: number, name: string, input: Record<string, unknown>): SpineEvent | null {
   if (name === "AskUserQuestion") {
     const qs = Array.isArray(input.questions) ? input.questions : [];
@@ -173,6 +193,7 @@ function eventFor(index: number, name: string, input: Record<string, unknown>): 
     const cmd = String(input.command ?? "").replace(/\s+/g, " ").trim();
     return cmd ? { kind: "command", index, summary: cmd.slice(0, 200) } : null;
   }
+  if (name === "TodoWrite") return null; // handled by planEvent, which needs the previous snapshot
   if (name === "Edit" || name === "Write" || name === "MultiEdit" || name === "NotebookEdit") {
     const p = String(input.file_path ?? input.notebook_path ?? "");
     return p ? { kind: "edit", index, summary: basename(p) } : null;
@@ -199,6 +220,28 @@ export function buildSpine(path: string, opts: SpineOptions = {}): Spine {
   };
 
   let pendingQuestion: SpineEvent | null = null;
+  let plan: string[] | null = null;
+
+  /** The first list is the plan as agreed; later ones report only what changed. */
+  const planEvent = (index: number, input: Record<string, unknown>): SpineEvent | null => {
+    const now = todoContents(input);
+    if (now.length === 0) return null;
+    if (plan === null) {
+      plan = now;
+      return { kind: "plan", index, summary: `plan agreed: ${now.join(" | ")}` };
+    }
+    const before = new Set(plan);
+    const after = new Set(now);
+    const added = now.filter((t) => !before.has(t));
+    const dropped = plan.filter((t) => !after.has(t));
+    plan = now;
+    if (added.length === 0 && dropped.length === 0) return null;
+    const parts = [
+      added.length ? `added: ${added.join(" | ")}` : "",
+      dropped.length ? `dropped: ${dropped.join(" | ")}` : "",
+    ].filter(Boolean);
+    return { kind: "plan", index, summary: `plan revised — ${parts.join("; ")}` };
+  };
 
   lines.forEach((line, index) => {
     const e = parse(line);
@@ -215,7 +258,9 @@ export function buildSpine(path: string, opts: SpineOptions = {}): Spine {
     const events: SpineEvent[] = [];
     for (const b of blocks(msg)) {
       if (b.type !== "tool_use") continue;
-      const ev = eventFor(index, String(b.name ?? ""), (b.input ?? {}) as Record<string, unknown>);
+      const name = String(b.name ?? "");
+      const input = (b.input ?? {}) as Record<string, unknown>;
+      const ev = name === "TodoWrite" ? planEvent(index, input) : eventFor(index, name, input);
       if (ev) events.push(ev);
     }
     const failures = isToolResultCarrier(msg) && FAILURE.test(line.slice(0, 8000)) ? 1 : 0;
@@ -256,6 +301,7 @@ export function buildSpine(path: string, opts: SpineOptions = {}): Spine {
         : "This is the session's whole conversation. ") +
       "Every item carries its `index` into the full transcript. A jump between indices means machinery was elided there; " +
       "read_transcript around an index to see the tool output behind a claim, which is where the evidence for a measurement " +
-      "usually lives. `gap` items mark only the stretches worth noticing: one containing a failure, or a long phase of work.",
+      "usually lives. `gap` items mark only the stretches worth noticing: one containing a failure, or a long phase of work. " +
+      "`plan` items are the agreed plan and every later revision to it — a revision is often an approach being abandoned.",
   };
 }

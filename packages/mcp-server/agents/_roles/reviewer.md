@@ -66,6 +66,17 @@ every stop for a competent engineer who does not know this module.
   from the diff in the first clause, then the mechanism. Not "a combined query filtered
   by X returns zero rows when there is no activity, so paused campaigns…" but "paused
   campaigns disappeared from the list entirely — one query cannot ask for both."
+- **Group by what was agreed, not by what sits near what.** Ask the author for the plan
+  before writing any stop, then assign hunk ids to its items: `T3 -> [H3, H4, H9]`. A hunk
+  serving a plan item belongs to the stop named for that item, and the tour's order is the
+  plan's order. Structure is the only thing a diff can tell you on its own, and grouping by
+  it produces stops that are really just filenames — the reason two files changed together
+  is in the conversation you cannot read.
+- **A hunk belonging to no plan item is one of two things, and only the author knows
+  which.** Discovered en route — a root cause found while doing something else, often the
+  most valuable stop in the document — or incidental churn. Ask before you decide. In one
+  real change the bug that had made every campaign invisible since v1 was in neither the
+  plan nor the ask; it was found on the way.
 - **Anchor by hunk id.** `compute_diff` numbers every hunk (H1, H2, …) and returns its
   path, line range and a preview of the first added line — enough to recognise it in the
   diff handed over with it. Write `"anchors": ["H3", "H4"]`. Never

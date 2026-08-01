@@ -105,6 +105,30 @@ describe("buildSpine", () => {
     expect(s.note).toMatch(/exceeded the budget/);
   });
 
+  it("records the plan as agreed, then only what changed about it", () => {
+    // Snapshots would drown the signal — one real session revised its list 31 times. A
+    // status flipping to done is progress; an item appearing or vanishing is a decision.
+    const todo = (items: [string, string][]) => ({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [{ type: "tool_use", name: "TodoWrite", input: { todos: items.map(([status, content]) => ({ status, content })) } }],
+      },
+    });
+    const p = write("plan.jsonl", [
+      user("build the ads manager"),
+      todo([["in_progress", "list campaigns"], ["pending", "pause and resume"]]),
+      todo([["completed", "list campaigns"], ["in_progress", "pause and resume"]]),
+      todo([["completed", "list campaigns"], ["pending", "restructure the sidebar"]]),
+    ]);
+    const plans = buildSpine(p).items.filter((i) => i.kind === "plan") as SpineEvent[];
+    expect(plans).toHaveLength(2);
+    expect(plans[0].summary).toBe("plan agreed: list campaigns | pause and resume");
+    // Progress alone emitted nothing; the third snapshot changed scope, so it did.
+    expect(plans[1].summary).toContain("added: restructure the sidebar");
+    expect(plans[1].summary).toContain("dropped: pause and resume");
+  });
+
   it("reports the whole transcript's size, so read_transcript offsets stay meaningful", () => {
     const s = buildSpine(path);
     expect(s.total_entries).toBe(12);
