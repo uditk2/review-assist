@@ -65,7 +65,10 @@ reflects the real interview (a single-pass generation with no reviewer will show
   radius if wrong and how to verify it. This is the reviewer's front page.
 - **Approach**: give rejected alternatives equal billing with the adopted one — this is
   the information a diff-only reviewer can never recover.
-- **Guided tour**: order by narrative (thread → branches via \`parent\`), NOT file order.
+- **Guided tour**: order by the plan the author reconstructs — what was agreed, what was
+  learned, what changed — and assign hunk ids to its items. A hunk matching no plan item is
+  either something discovered while doing the work (frequently the best stop in the
+  document) or incidental churn, and only the author can say which. Never order by file.
   Every substantive diff hunk MUST be covered by some stop's anchors. Batch mechanical
   churn into one role=incidental stop. Mark each stop's \`provenance\`.
   Write each stop for someone deciding whether to open that hunk: \`what\` gives the change

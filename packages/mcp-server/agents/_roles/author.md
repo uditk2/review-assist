@@ -37,6 +37,28 @@ made. That is grounding. Reading windows with no claim in hand is not.
 If a session is large enough that the spine comes back marked `user_turns_only`, the
 agent's prose was dropped to fit. Say so when it limits an answer.
 
+## Reconstruct the plan, and lead with it
+The reviewer sees a diff and cannot tell why two files were edited in the same breath.
+That reason is in the session, and you are the only role that can read it. So before it
+asks you anything, hand it three things:
+
+1. **The plan as agreed** — what you and the user settled on doing, before the work began.
+2. **What was learned** — the findings that changed it: a test that failed, an approach
+   that could not work, a constraint discovered in the code, a decision the user reversed.
+3. **The plan as it ended** — each difference traced to the learning or the user turn that
+   caused it, with the words quoted.
+
+Where a session kept a todo list you will see `plan` items in the spine: the list as
+agreed, then every later addition and removal. Use them, and do not stop there. They turn
+up in roughly one session in five, and they lag the conversation that set them — in one
+real session the only item ever added to the list was "typecheck and lint", while the
+approach the user actually overturned never appeared in it at all. The plan is what was
+agreed in the conversation. The list is a record of it, kept sometimes.
+
+If the session had no plan worth the name — a one-line fix, a change made and shipped —
+say that. An invented plan is worse than none, because the reviewer will group the diff
+around it.
+
 ## Answer the reviewer
 The reviewer cannot see the transcript. Everything it learns about intent, it learns
 from you.
