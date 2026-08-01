@@ -182,7 +182,11 @@ registerTool(
         {
           candidates,
           how_to_pick:
-            "Choose the candidate whose `first_user` matches how THIS session began. `relevance` counts references to the changed files/branch; ties break by recency. If none match, you may be in a different session than the change.",
+            "Choose the candidate whose `first_user` matches how THIS session began. Skip any with " +
+            "`user_turns: 0` — no human spoke in it, so it is one agent driven by another and holds no " +
+            "ask, no plan and no decision. The count is a floor taken from a bounded read, so treat it as " +
+            "zero-or-not rather than as a total. `relevance` counts references to the changed files/branch; " +
+            "ties break by recency. If none match, you may be in a different session than the change.",
         },
         null,
         2

@@ -10,7 +10,7 @@
  *
  * So it reads everything. The spine of 40 of those 41 sessions fits in a single call —
  * median 11,886 tokens — and being complete, it removes the failure mode retrieval can
- * never rule out: an answer the author simply never found.
+ * never rule out: an answer the author simply did not find.
  *
  * What it keeps and why:
  *
@@ -19,34 +19,27 @@
  *   without the proposal it answers, and the findings that become `trials` are almost
  *   always the agent reporting something. Of 23 trials in seven real documents, only 6
  *   were user redirects.
- * - AskUserQuestion in full. Scope decisions arrive as structured tool calls, not prose —
- *   one document cites a trial rejected "by the user's structured scope answer".
- * - Commands and edits as one-liners. The trail of what ran and what was touched, without
- *   the output that makes it enormous.
- * - The plan, as revisions rather than snapshots. Where a session keeps a todo list, the
- *   DELTA is the part worth carrying: one session revised its list 31 times across 84
- *   distinct items, and the diffs show real scope moving — "dropped: Map exact reuse
- *   interfaces" is an approach being abandoned. Snapshots would drown that. Only additions
- *   and removals are emitted; a status flipping to done is progress, not a change of plan.
+ * - Structured questions with the answer chosen. Scope decisions arrive as tool calls, not
+ *   prose — one document cites a trial rejected "by the user's structured scope answer".
+ * - Commands and edits as one-liners: what ran and what was touched, without the output
+ *   that makes it enormous.
+ * - Plan revisions, where the session kept a todo list. Deltas rather than snapshots: one
+ *   session revised its list 31 times across 84 items, and "dropped: Map exact reuse
+ *   interfaces" is an approach being abandoned. Corroboration only — the list appears in
+ *   9 of 41 sessions and lags the conversation that sets it.
+ * - GAPS, but sparingly. Items carry their own indices, so a turn at 2 followed by one at
+ *   9 already says 3-8 were elided; marking every run produced 193 markers in a 992-entry
+ *   session. Only a gap holding a failure, or long enough to be a phase of work, is named.
  *
- *   Corroboration, never the source. The list appears in 9 of 41 measured sessions, and
- *   even where it appears the plan it records is downstream of the conversation that set
- *   it: in the ads-manager session the only item ever added was "Typecheck/lint", while
- *   the trial its Intent Document records — a tab switcher superseded by the user asking
- *   for the sidebar restructured — never entered the list at all. An author that reads the
- *   plan events and stops has missed the plan.
- * - GAPS, marked with what was elided. A summary tells you what a model thought was
- *   there; a spine tells you what is there and where the rest is. `read_transcript`
- *   around a marked gap is how the author substantiates a claim whose evidence lives in
- *   tool output.
- *
- * Not kept: thinking. Claude Code persists the block and strips its content —
- * `{"type":"thinking","thinking":"","signature":"…"}` — so an agent's private reasoning
- * about why an approach fails is unrecoverable. Nothing here can change that.
+ * This module assembles. It does not know what a transcript looks like — `./transcript`
+ * owns that, one parser per agent, so a session from Claude Code and one from Codex arrive
+ * here in the same shape.
  */
 
 import { readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
+import { parseEntry } from "./transcript/index.js";
+import type { ParsedEntry } from "./transcript/index.js";
 
 /** A turn someone actually wrote. */
 export interface SpineTurn {
@@ -61,19 +54,11 @@ export interface SpineEvent {
   kind: "question" | "command" | "edit" | "plan";
   index: number;
   summary: string;
-  /** For `question`: the user's answer, which is the decision itself. */
+  /** For `question`: the answer chosen, which is the decision itself. */
   answer?: string;
 }
 
-/**
- * A stretch of elided machinery worth mentioning.
- *
- * Most elision needs no marker: consecutive items carry their own indices, so a turn at
- * 2 followed by one at 9 already says 3-8 were dropped. Emitting a marker for every such
- * run produced 193 of them in a 992-entry session, nearly half the spine, each saying
- * nothing the indices did not. A gap is only reported when it carries something the
- * indices cannot — a failure inside it, or a stretch long enough to be a phase of work.
- */
+/** A stretch of elided machinery worth mentioning. */
 export interface SpineGap {
   kind: "gap";
   from: number;
@@ -100,8 +85,8 @@ export interface Spine {
 export interface SpineOptions {
   /**
    * Above this, drop assistant prose and keep user turns plus events. One session in the
-   * 41 measured needed it — 20.6 MB raw, 244k tokens of spine — and its user prose alone
-   * is 61k tokens, so the fallback needs no further machinery.
+   * 41 measured needed it — 20.6 MB raw — and its user prose alone fits comfortably, so
+   * the fallback needs no further machinery.
    */
   maxBytes?: number;
 }
@@ -109,175 +94,106 @@ export interface SpineOptions {
 const DEFAULT_MAX_BYTES = 600_000; // ~150k tokens
 /** Below this an elided run is left to the indices; above it, it is a phase worth naming. */
 const GAP_WORTH_REPORTING = 40;
-const FAILURE = /\b(FAIL|failed|Error:|error TS|Traceback|exit code: [1-9])/;
 
-function parse(line: string): Record<string, unknown> | null {
-  try {
-    return JSON.parse(line) as Record<string, unknown>;
-  } catch {
-    return null;
+function readEntries(path: string): Record<string, unknown>[] {
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter((l) => l.trim().length > 0)
+    .map((l) => {
+      try {
+        return JSON.parse(l) as Record<string, unknown>;
+      } catch {
+        return {};
+      }
+    });
+}
+
+/** Accumulates runs of elided entries and emits only the ones worth a marker. */
+class GapCollector {
+  private open: SpineGap | null = null;
+
+  note(index: number, failures: number): void {
+    this.open ??= { kind: "gap", from: index, to: index, entries: 0, failures: 0 };
+    this.open.to = index;
+    this.open.entries += 1;
+    this.open.failures += failures;
+  }
+
+  flush(into: SpineItem[]): void {
+    const g = this.open;
+    this.open = null;
+    if (g && (g.failures > 0 || g.entries >= GAP_WORTH_REPORTING)) into.push(g);
   }
 }
 
-function blocks(msg: Record<string, unknown> | undefined): Record<string, unknown>[] {
-  const c = msg?.content;
-  return Array.isArray(c) ? (c.filter((b) => b && typeof b === "object") as Record<string, unknown>[]) : [];
-}
+/** Turns successive todo snapshots into the plan as agreed, then only what changed. */
+class PlanTracker {
+  private current: string[] | null = null;
 
-/** Visible prose only. `thinking` blocks are present but empty on disk. */
-function proseOf(msg: Record<string, unknown> | undefined): string {
-  const c = msg?.content;
-  if (typeof c === "string") return c.trim();
-  return blocks(msg)
-    .filter((b) => b.type === "text" && typeof b.text === "string")
-    .map((b) => (b.text as string).trim())
-    .filter(Boolean)
-    .join("\n\n");
-}
-
-function isToolResultCarrier(msg: Record<string, unknown> | undefined): boolean {
-  return blocks(msg).some((b) => b.type === "tool_result");
-}
-
-/** The answer to an AskUserQuestion arrives in the following tool_result. */
-function toolResultText(msg: Record<string, unknown> | undefined): string {
-  for (const b of blocks(msg)) {
-    if (b.type !== "tool_result") continue;
-    const c = b.content;
-    if (typeof c === "string") return c;
-    if (Array.isArray(c)) {
-      return c
-        .map((x) => (x && typeof x === "object" && typeof (x as { text?: unknown }).text === "string" ? (x as { text: string }).text : ""))
-        .join(" ");
+  revision(index: number, snapshot: string[]): SpineEvent | null {
+    if (snapshot.length === 0) return null;
+    if (this.current === null) {
+      this.current = snapshot;
+      return { kind: "plan", index, summary: `plan agreed: ${snapshot.join(" | ")}` };
     }
-  }
-  return "";
-}
-
-/**
- * Client scaffolding prepended to a user turn — an <ide_opened_file> block, a
- * <system-reminder>. Any tag-wrapped block that OPENS the turn is the client talking,
- * not the developer, and leaving it in makes every session's opening look identical.
- */
-function stripInjected(text: string): string {
-  let t = text;
-  for (let i = 0; i < 8; i++) {
-    const next = t.replace(/^\s*<([a-z0-9_-]+)>[\s\S]*?<\/\1>\s*/i, "").replace(/^\s*<[a-z0-9_-]+\/>\s*/i, "");
-    if (next === t) break;
-    t = next;
-  }
-  return t.trim();
-}
-
-/** Todo items as plain strings, for diffing one snapshot against the last. */
-function todoContents(input: Record<string, unknown>): string[] {
-  const todos = Array.isArray(input.todos) ? input.todos : [];
-  return todos
-    .map((t) => String((t as { content?: unknown; activeForm?: unknown }).content ?? (t as { activeForm?: unknown }).activeForm ?? "").trim())
-    .filter(Boolean);
-}
-
-function eventFor(index: number, name: string, input: Record<string, unknown>): SpineEvent | null {
-  if (name === "AskUserQuestion") {
-    const qs = Array.isArray(input.questions) ? input.questions : [];
-    const summary = qs
-      .map((q) => {
-        const o = q as { question?: string; options?: { label?: string }[] };
-        const opts = (o.options ?? []).map((x) => x.label).filter(Boolean).join(" | ");
-        return opts ? `${o.question ?? ""} [${opts}]` : (o.question ?? "");
-      })
-      .join("  ");
-    return { kind: "question", index, summary: summary || "(asked the user to choose)" };
-  }
-  if (name === "Bash") {
-    const cmd = String(input.command ?? "").replace(/\s+/g, " ").trim();
-    return cmd ? { kind: "command", index, summary: cmd.slice(0, 200) } : null;
-  }
-  if (name === "TodoWrite") return null; // handled by planEvent, which needs the previous snapshot
-  if (name === "Edit" || name === "Write" || name === "MultiEdit" || name === "NotebookEdit") {
-    const p = String(input.file_path ?? input.notebook_path ?? "");
-    return p ? { kind: "edit", index, summary: basename(p) } : null;
-  }
-  return null;
-}
-
-export function buildSpine(path: string, opts: SpineOptions = {}): Spine {
-  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
-  const raw = readFileSync(path, "utf8");
-  const lines = raw.split("\n").filter((l) => l.trim().length > 0);
-
-  const items: SpineItem[] = [];
-  let gap: SpineGap | null = null;
-  const flushGap = () => {
-    if (gap && (gap.failures > 0 || gap.entries >= GAP_WORTH_REPORTING)) items.push(gap);
-    gap = null;
-  };
-  const noteGap = (index: number, failures: number) => {
-    gap ??= { kind: "gap", from: index, to: index, entries: 0, failures: 0 };
-    gap.to = index;
-    gap.entries += 1;
-    gap.failures += failures;
-  };
-
-  let pendingQuestion: SpineEvent | null = null;
-  let plan: string[] | null = null;
-
-  /** The first list is the plan as agreed; later ones report only what changed. */
-  const planEvent = (index: number, input: Record<string, unknown>): SpineEvent | null => {
-    const now = todoContents(input);
-    if (now.length === 0) return null;
-    if (plan === null) {
-      plan = now;
-      return { kind: "plan", index, summary: `plan agreed: ${now.join(" | ")}` };
-    }
-    const before = new Set(plan);
-    const after = new Set(now);
-    const added = now.filter((t) => !before.has(t));
-    const dropped = plan.filter((t) => !after.has(t));
-    plan = now;
+    const before = new Set(this.current);
+    const after = new Set(snapshot);
+    const added = snapshot.filter((t) => !before.has(t));
+    const dropped = this.current.filter((t) => !after.has(t));
+    this.current = snapshot;
+    // A status flipping to done is progress, not a change of plan.
     if (added.length === 0 && dropped.length === 0) return null;
     const parts = [
       added.length ? `added: ${added.join(" | ")}` : "",
       dropped.length ? `dropped: ${dropped.join(" | ")}` : "",
     ].filter(Boolean);
     return { kind: "plan", index, summary: `plan revised — ${parts.join("; ")}` };
-  };
+  }
+}
 
-  lines.forEach((line, index) => {
-    const e = parse(line);
-    if (!e) return void noteGap(index, 0);
-    const msg = e.message as Record<string, unknown> | undefined;
-    const role = (msg?.role ?? e.type) as string;
+/** Everything one entry contributes, in order. */
+function itemsFor(index: number, parsed: ParsedEntry, plans: PlanTracker): SpineItem[] {
+  const out: SpineItem[] = [];
+  if (parsed.turn) out.push({ kind: parsed.turn.role, index, text: parsed.turn.text });
+  if (parsed.question) out.push({ kind: "question", index, summary: parsed.question });
+  if (parsed.plan) {
+    const revision = plans.revision(index, parsed.plan);
+    if (revision) out.push(revision);
+  }
+  for (const e of parsed.events) out.push({ kind: e.kind, index, summary: e.summary });
+  return out;
+}
 
-    // The answer to a question the agent asked lands in the next tool_result.
-    if (pendingQuestion && isToolResultCarrier(msg)) {
-      pendingQuestion.answer = toolResultText(msg).replace(/\s+/g, " ").trim().slice(0, 400);
-      pendingQuestion = null;
+export function buildSpine(path: string, opts: SpineOptions = {}): Spine {
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
+  const entries = readEntries(path);
+
+  const items: SpineItem[] = [];
+  const gaps = new GapCollector();
+  const plans = new PlanTracker();
+  let awaitingAnswer: SpineEvent | null = null;
+
+  entries.forEach((entry, index) => {
+    const parsed = parseEntry(entry);
+
+    // The answer to a question the agent asked lands in a later entry.
+    if (awaitingAnswer && parsed.answer !== undefined) {
+      awaitingAnswer.answer = parsed.answer.replace(/\s+/g, " ").trim().slice(0, 400);
+      awaitingAnswer = null;
     }
 
-    const events: SpineEvent[] = [];
-    for (const b of blocks(msg)) {
-      if (b.type !== "tool_use") continue;
-      const name = String(b.name ?? "");
-      const input = (b.input ?? {}) as Record<string, unknown>;
-      const ev = name === "TodoWrite" ? planEvent(index, input) : eventFor(index, name, input);
-      if (ev) events.push(ev);
+    const produced = itemsFor(index, parsed, plans);
+    if (produced.length === 0) {
+      gaps.note(index, parsed.failure ? 1 : 0);
+      return;
     }
-    const failures = isToolResultCarrier(msg) && FAILURE.test(line.slice(0, 8000)) ? 1 : 0;
-
-    const prose = role === "user" && !isToolResultCarrier(msg) ? stripInjected(proseOf(msg)) : role === "assistant" ? proseOf(msg) : "";
-
-    if (!prose && events.length === 0) return void noteGap(index, failures);
-
-    flushGap();
-    if (prose) items.push({ kind: role === "user" ? "user" : "assistant", index, text: prose });
-    for (const ev of events) {
-      items.push(ev);
-      if (ev.kind === "question") pendingQuestion = ev;
-    }
-    if (failures) noteGap(index, failures);
+    gaps.flush(items);
+    items.push(...produced);
+    const question = produced.find((i) => i.kind === "question") as SpineEvent | undefined;
+    if (question) awaitingAnswer = question;
+    if (parsed.failure) gaps.note(index, 1);
   });
-  flushGap();
+  gaps.flush(items);
 
   const size = (list: SpineItem[]) => JSON.stringify(list).length;
   let degraded: Spine["degraded"];
@@ -290,7 +206,7 @@ export function buildSpine(path: string, opts: SpineOptions = {}): Spine {
   return {
     path,
     session: basename(path).replace(/\.jsonl$/, ""),
-    total_entries: lines.length,
+    total_entries: entries.length,
     raw_bytes: statSync(path).size,
     spine_bytes: size(final),
     items: final,

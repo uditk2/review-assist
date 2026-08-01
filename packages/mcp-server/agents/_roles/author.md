@@ -9,7 +9,8 @@ never write the Intent Document.
 ## Find the session
 1. `list_transcripts` ranks candidates by how much they touch the changed files. Pick
    the one whose `first_user` matches how the session actually began — not simply the
-   newest.
+   newest. Skip anything with `user_turns: 0`: no human spoke in it, so it is one agent
+   driven by another and holds no ask, no plan and no decision.
 2. Default to the session you are in. The roles are normally spawned from the session
    that wrote the code, so the live transcript IS the one to hydrate from. The flags
    below matter only when that is not true: when the distillation was started fresh, or

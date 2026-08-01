@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { readFileSync, readdirSync, statSync, existsSync, openSync, readSync, closeSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, dirname, basename, sep } from "node:path";
+import { parseEntry } from "./transcript/index.js";
 
 const exec = promisify(execFile);
 
@@ -250,6 +251,21 @@ export interface TranscriptCandidate {
   lines: number;
   /** Preview of the first user message — use this to recognize THIS session. */
   first_user: string;
+  /**
+   * How many turns a human actually typed.
+   *
+   * Zero means nobody did, and such a session cannot hold intent: it is one agent driven by
+   * another. Claude Code keeps those under <session>/subagents/ and they are filtered out by
+   * path, but Codex writes a sub-agent run as an ordinary top-level rollout — same directory,
+   * same naming, with the role definition in a `developer` message. Layout cannot tell them
+   * apart. This count can.
+   *
+   * A floor, not a total: candidates are scored from a bounded head read, so a long session
+   * is counted only as far as that reaches. Fine for the distinction it exists to draw —
+   * nobody opens a session with a megabyte of preamble before speaking — but do not read it
+   * as "this session had one turn".
+   */
+  user_turns: number;
   /** Preview of the last activity in the session. */
   last_activity: string;
   /** How much this session references the changed files/branch (higher = more likely). */
@@ -306,6 +322,7 @@ export function listTranscriptCandidates(
       cwd: sessionCwd(p),
       lines: lines.length,
       first_user: previewFirstUser(lines),
+      user_turns: countUserTurns(lines),
       looks_like_distillation_run: looksLikeDistillationRun(firstUserText(lines)),
       last_activity: previewLast(lines),
       relevance,
@@ -316,59 +333,51 @@ export function listTranscriptCandidates(
 }
 
 /**
- * The opening ask, with injected boilerplate stripped.
+ * The opening ask. This preview exists so the author can tell one session from another, so
+ * it has to be the words the developer typed — client scaffolding removed, and correct for
+ * whichever agent wrote the file.
  *
- * The whole point of this preview is that the author can tell one session from another.
- * Clients prepend their own scaffolding to the first user turn — Codex leads with a
- * <recommended_plugins> block, so every session looks identical unless it is removed and
- * the previews become worthless for picking the right transcript.
+ * It used to guess the shape inline: `obj.payload?.role ?? obj.message?.role ?? obj.type`.
+ * That never matched a Codex session, whose user turns are `event_msg/user_message` with no
+ * role field at all, so every Codex candidate came back with an empty preview and the
+ * ranking's tie-break was all the author had. The parsers know both shapes; this asks them.
  */
 function previewFirstUser(lines: string[]): string {
-  const t = firstUserText(lines);
-  return t.slice(0, 240);
+  return firstUserText(lines).slice(0, 240);
 }
 
-/** Full text of the first real user turn (boilerplate stripped, not truncated). */
+/** Full text of the first real user turn (scaffolding stripped, not truncated). */
 function firstUserText(lines: string[]): string {
   for (const line of lines) {
-    try {
-      const obj = JSON.parse(line);
-      const role = obj.payload?.role ?? obj.message?.role ?? obj.role ?? obj.type;
-      if (role === "user") {
-        const t = stripInjectedBlocks(flattenText(obj));
-        if (t) return t;
-      }
-    } catch {
-      /* ignore non-JSON line */
-    }
+    const turn = parseLine(line)?.turn;
+    if (turn?.role === "user" && turn.text) return turn.text;
   }
   return "";
 }
 
-/**
- * Remove client-injected wrappers so what remains is what the human actually typed.
- * Tag-agnostic: any <foo>...</foo> block that opens the turn is scaffolding, not an ask.
- */
-function stripInjectedBlocks(text: string): string {
-  let t = text;
-  for (let i = 0; i < 8; i++) {
-    const next = t
-      .replace(/^\s*<([a-z0-9_-]+)>[\s\S]*?<\/\1>\s*/i, "")
-      .replace(/^\s*<[a-z0-9_-]+\/>\s*/i, "");
-    if (next === t) break;
-    t = next;
+/** Turns a human typed, within the scanned head. Zero means another agent drove this one. */
+function countUserTurns(lines: string[]): number {
+  let n = 0;
+  for (const line of lines) {
+    const turn = parseLine(line)?.turn;
+    if (turn?.role === "user" && turn.text) n += 1;
   }
-  return t.trim();
+  return n;
 }
 
+function parseLine(line: string) {
+  try {
+    return parseEntry(JSON.parse(line) as Record<string, unknown>);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The last thing said, by either side — how the session left off. */
 function previewLast(lines: string[]): string {
   for (let i = lines.length - 1; i >= 0; i--) {
-    try {
-      const t = flattenText(JSON.parse(lines[i]));
-      if (t) return t.slice(0, 240);
-    } catch {
-      /* ignore */
-    }
+    const parsed = parseLine(lines[i]);
+    if (parsed?.turn?.text) return parsed.turn.text.slice(0, 240);
   }
   return "";
 }
