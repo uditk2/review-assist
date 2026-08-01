@@ -38,9 +38,9 @@ import {
   findTranscripts,
   listTranscriptCandidates,
   readTranscriptWindow,
-  searchTranscript,
   git,
 } from "./git.js";
+import { buildSpine } from "./spine.js";
 import {
   computeRunId,
   openRun,
@@ -101,32 +101,6 @@ registerTool(
   }
 );
 
-
-registerTool(
-  "search_transcript",
-  "Search a session transcript for the passages that answer a specific question. Use this " +
-    "instead of paging: the reviewer asks about one thing, so retrieve only what bears on it. " +
-    "Returns ranked excerpts with their entry index — follow up with read_transcript around an " +
-    "index when you need the surrounding turns.",
-  {
-    path: z.string().describe("Transcript path (from list_transcripts)"),
-    query: z
-      .string()
-      .describe("The reviewer's question, or the key terms from it — verbatim is fine."),
-    limit: z.number().int().min(1).max(30).default(8),
-    context_chars: z.number().int().min(120).max(4000).default(600),
-  },
-  async ({ path, query, limit, context_chars }) => {
-    try {
-      const res = searchTranscript(path, query, limit, context_chars);
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(res, null, 2) }],
-      };
-    } catch (e) {
-      return textResult(`search failed: ${(e as Error).message}`, true);
-    }
-  }
-);
 
 registerTool(
   "compute_diff",
@@ -218,8 +192,41 @@ registerTool(
 );
 
 registerTool(
+  "get_spine",
+  "Author role: read a session's WHOLE conversation in one call — every turn you and the " +
+    "agent exchanged, each structured question with the answer chosen, and every command and " +
+    "file edit as one line. This replaces searching. A session is a median 4.8% conversation " +
+    "and 95% tool output; the spine is that 4.8%, and it fits in a single read for all but the " +
+    "largest sessions. Being complete, it removes the one thing retrieval can never rule out — " +
+    "an answer you simply did not find. Every item carries an `index` into the full transcript: " +
+    "a jump between indices means machinery was elided there, and read_transcript around an " +
+    "index recovers the tool output behind a claim.",
+  {
+    path: z.string().describe("Transcript path (from list_transcripts)"),
+    max_bytes: z
+      .number()
+      .int()
+      .min(50_000)
+      .optional()
+      .describe(
+        "Budget for the conversation. Above it, assistant prose is dropped and user turns plus " +
+          "events remain — needed by roughly one session in forty."
+      ),
+  },
+  async ({ path, max_bytes }) => {
+    try {
+      return textResult(JSON.stringify(buildSpine(path, { maxBytes: max_bytes }), null, 2));
+    } catch (e) {
+      return textResult(`get_spine failed: ${(e as Error).message}`, true);
+    }
+  }
+);
+
+registerTool(
   "read_transcript",
-  "Read a window of a session transcript as lightweight entries. Page through long transcripts to hydrate a fresh distiller agent.",
+  "Read a window of the FULL transcript — tool calls, results and all — around an index the " +
+    "spine gave you. This is how a claim gets substantiated: the prose says what was decided, " +
+    "the tool output holds the evidence. Not for hydration; get_spine does that in one call.",
   {
     path: z.string().describe("Transcript path (from list_transcripts)"),
     offset: z.number().int().min(0).default(0),
