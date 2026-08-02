@@ -49,6 +49,10 @@
       "description": "Locate and rank the session transcript(s) for the repo."
     },
     {
+      "name": "import_session",
+      "description": "File a session transcript into the repo's store; needed for cloud sessions that leave nothing on this machine."
+    },
+    {
       "name": "get_spine",
       "description": "Read a session's whole conversation in one call, each item indexed into the full transcript."
     },

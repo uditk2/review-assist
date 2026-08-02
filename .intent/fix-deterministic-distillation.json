@@ -1,0 +1,813 @@
+{
+  "schema_version": "0.1",
+  "meta": {
+    "id": "deterministic-distillation",
+    "repo": "uditk2/review-assist",
+    "commit_range": {
+      "base_sha": "9dcd57b5b003aea653e510f1a1d2cca46aaecb9d",
+      "head_sha": "b23585e023c3a815acfdd8948e18423549b3e578"
+    },
+    "session": {
+      "agent": "cowork",
+      "model": "claude-opus-5"
+    },
+    "generated_by": {
+      "pipeline": "review-assist-single-pass",
+      "version": "0.2.11"
+    },
+    "generated_at": "2026-08-01T13:58:47.781Z",
+    "interview": {
+      "rounds": 6,
+      "questions_asked": 6,
+      "unresolved": 2
+    }
+  },
+  "problem": {
+    "statement": "Distilling a change into an Intent Document took minutes of wall clock and repeated full-document resubmits. Profiling three real runs found the cost was almost entirely mechanical: an interview filed under a key the submit never read, consent discovered after the document existed, and an author navigating a transcript blind.",
+    "origin": "stated_upfront",
+    "evolution": [
+      {
+        "at": "after profiling three runs",
+        "formulation": "The interview is being discarded and re-run; fix the identity, not the prompts."
+      },
+      {
+        "at": "after the terseness rule was rejected",
+        "formulation": "Document quality is about jargon and skimmability, not length."
+      },
+      {
+        "at": "after measuring 41 sessions",
+        "formulation": "Stop retrieving from the transcript; hand over the whole conversation."
+      }
+    ],
+    "user_asks": [
+      "In the review assist, the time it takes to build that intent document is high and labourious. How can we reduce the time.",
+      "We need to make this part deterministic to avoid bad rounds and reduce the overall back and forth",
+      "my problem was with the overall data in the final intent document having too much jargon and not being easy to skim through",
+      "Generate separate parsers for codex and claude.. make sure we create necessary interfaces and used solid principles"
+    ],
+    "out_of_scope": [
+      "A scan layer in the renderer",
+      "Publishing a new version"
+    ]
+  },
+  "assumptions": [
+    {
+      "id": "A1",
+      "assumption": "A session's conversation fits one read.",
+      "impact_if_wrong": "The author is back to retrieving, and search is gone.",
+      "how_to_verify": "Measured: 40 of 41 sessions, median 10k tokens.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A2",
+      "assumption": "Requiring run_id makes the lost-interview bug unreachable.",
+      "impact_if_wrong": "Rounds are lost silently again.",
+      "how_to_verify": "End-to-end: an omitted run_id is refused with MCP error -32602.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A3",
+      "assumption": "A subagent transcript holds no developer intent.",
+      "impact_if_wrong": "Reasoning in delegated work is dropped from every document.",
+      "how_to_verify": "Check whether any trial in a real document traces only to a subagent.",
+      "confidence": "confirmed_by_user"
+    },
+    {
+      "id": "A4",
+      "assumption": "The rewritten prompts produce better documents.",
+      "impact_if_wrong": "The mechanical costs are gone and the output reads the same.",
+      "how_to_verify": "Run a two-role distillation and read what comes out.",
+      "confidence": "unverified"
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Does generation actually take less time?",
+      "context": "Unmeasured. The 8.5 minutes profiled was model latency across two role subagents; everything verified here is server-side I/O.",
+      "raised_by": "author_agent"
+    },
+    {
+      "id": "Q2",
+      "question": "Can a cloud Cowork session ever be distilled?",
+      "context": "Its transcript never reaches the developer's machine, so the author has nothing to hydrate from - including for this very document.",
+      "raised_by": "author_agent"
+    }
+  ],
+  "approach": {
+    "requirements": [
+      {
+        "text": "Make round recording deterministic rather than advisory",
+        "source": "user"
+      },
+      {
+        "text": "Separate parsers per agent, behind interfaces, SOLID",
+        "source": "user"
+      },
+      {
+        "text": "Fix jargon and skimmability, not length",
+        "source": "user"
+      }
+    ],
+    "trials": [
+      {
+        "what": "Character budgets on assumptions and tour fields, enforced by the validator",
+        "outcome": "Removed",
+        "why_abandoned": "125 of 190 fields in real documents violated them, and the longest field was the most valuable content in its document. A rule two-thirds of real output breaks is miscalibrated."
+      },
+      {
+        "what": "A git-derived context hint on every hunk",
+        "outcome": "Dropped",
+        "why_abandoned": "Present on 80% of hunks but uninformative exactly where the preview was, and it needed a caveat everywhere it was mentioned."
+      },
+      {
+        "what": "Detecting dispatcher sessions by subagent-to-parent prose ratio",
+        "outcome": "Deleted",
+        "why_abandoned": "Built from a single outlier. A subagent has no human in the loop, so it can hold no ask, plan or decision regardless of size."
+      },
+      {
+        "what": "Chunking the conversation and searching annotations",
+        "outcome": "Abandoned",
+        "why_abandoned": "40 of 41 sessions fit whole in one read, so the retrieval problem the design solved does not exist at this scale."
+      },
+      {
+        "what": "A literal-string find tool to replace ranked search",
+        "outcome": "Not built",
+        "why_abandoned": "The spine's indices already reach the evidence, and no measured case needed more."
+      }
+    ],
+    "adopted": {
+      "summary": "Identify a distillation by a content-addressed run, key interview rounds by question, hand the author the whole conversation in one call, and number the hunks so a tour stop can name them.",
+      "rationale": "Every failure in the traces was mechanical, so the fixes are mechanical: required arguments instead of defaulted ones, idempotent recording instead of append, and one complete read instead of retrieval. Search was deleted rather than improved because a map removes the need to hunt."
+    }
+  },
+  "tour": [
+    {
+      "id": "T1",
+      "title": "Interview answers were filed where nothing would look for them",
+      "role": "core",
+      "what": "Identifies a distillation by a hash of the change and stores its rounds on disk, keyed by question.",
+      "why": "Rounds were filed under the working directory while the submit looked under the repository, so a reviewer asked the same questions three times and re-sent the same document four times.",
+      "attention": "that a retried question replaces rather than appends.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 222
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 150
+          }
+        }
+      ],
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T2",
+      "title": "The tools now demand the run rather than guessing at it",
+      "role": "core",
+      "what": "Threads the run handle through diff, interview and submit, and reports consent when the run opens.",
+      "why": "An argument with a plausible default was omitted and the loss surfaced minutes later; required, the same mistake is refused immediately.",
+      "attention": "whether every path that writes still resolves its repo from the run.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 20,
+            "old_lines": 9,
+            "new_start": 20,
+            "new_lines": 17
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 30,
+            "old_lines": 9,
+            "new_start": 38,
+            "new_lines": 18
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 85,
+            "old_lines": 35,
+            "new_start": 102,
+            "new_lines": 12
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 123,
+            "old_lines": 7,
+            "new_start": 117,
+            "new_lines": 33
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 162,
+            "old_lines": 7,
+            "new_start": 182,
+            "new_lines": 11
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 171,
+            "old_lines": 9,
+            "new_start": 195,
+            "new_lines": 42
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 189,
+            "old_lines": 31,
+            "new_start": 246,
+            "new_lines": 147
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 229,
+            "old_lines": 21,
+            "new_start": 402,
+            "new_lines": 25
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 273,
+            "old_lines": 7,
+            "new_start": 450,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 289,
+            "old_lines": 22,
+            "new_start": 466,
+            "new_lines": 47
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 320,
+            "old_lines": 21,
+            "new_start": 522,
+            "new_lines": 46
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 345,
+            "old_lines": 14,
+            "new_start": 572,
+            "new_lines": 14
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 367,
+            "old_lines": 8,
+            "new_start": 594,
+            "new_lines": 8
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 454,
+            "old_lines": 8,
+            "new_start": 681,
+            "new_lines": 10
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 470,
+            "old_lines": 9,
+            "new_start": 699,
+            "new_lines": 15
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 575,
+            "old_lines": 6,
+            "new_start": 810,
+            "new_lines": 15
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 590,
+            "old_lines": 10,
+            "new_start": 834,
+            "new_lines": 18
+          }
+        }
+      ],
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T3",
+      "title": "The whole conversation, in one read",
+      "role": "core",
+      "what": "Reduces a session to what was said, with commands and edits as one-liners and everything else marked by index.",
+      "why": "A session is a median 4.8% conversation; the author was pulling more than that in scattered pieces and still missing things.",
+      "attention": "that a gap marker never hides a failure.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/spine.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 223
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/spine.test.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 137
+          }
+        }
+      ],
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T4",
+      "title": "Claude Code and Codex read by their own parsers",
+      "role": "core",
+      "what": "One interface, one implementation per agent, routed by entry shape.",
+      "why": "Shared guessing half-worked in silence: 831 Codex entries collapsed to a single item and every Codex preview came back blank.",
+      "attention": "that neither parser claims the other's entries.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/transcript/claude-code.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 131
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/transcript/codex.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 72
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/transcript/index.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 26
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/transcript/text.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 30
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/transcript/types.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 60
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/transcript.test.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 119
+          }
+        }
+      ],
+      "provenance": "inferred_from_code"
+    },
+    {
+      "id": "T5",
+      "title": "Hunks get short names so a stop can point at them",
+      "role": "supporting",
+      "what": "Numbers every hunk and lets an anchor be a name instead of four line numbers.",
+      "why": "Anchors were the one part of authoring that rewarded transcription over judgement, and a wrong number cost a full re-emission.",
+      "attention": "that ids never reach the stored document.",
+      "anchors": [
+        {
+          "path": "packages/validator/src/diff.ts",
+          "hunk": {
+            "old_start": 13,
+            "old_lines": 6,
+            "new_start": 13,
+            "new_lines": 19
+          }
+        },
+        {
+          "path": "packages/validator/src/diff.ts",
+          "hunk": {
+            "old_start": 85,
+            "old_lines": 7,
+            "new_start": 98,
+            "new_lines": 12
+          }
+        },
+        {
+          "path": "packages/validator/src/diff.ts",
+          "hunk": {
+            "old_start": 110,
+            "old_lines": 3,
+            "new_start": 128,
+            "new_lines": 41
+          }
+        },
+        {
+          "path": "packages/validator/src/index.ts",
+          "hunk": {
+            "old_start": 281,
+            "old_lines": 6,
+            "new_start": 281,
+            "new_lines": 6
+          }
+        },
+        {
+          "path": "packages/validator/test/hunks.test.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 92
+          }
+        }
+      ],
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T6",
+      "title": "Installing role definitions now removes the ones it replaces",
+      "role": "supporting",
+      "what": "Sweeps definitions this server wrote, trims the reviewer's tools, and generates each prompt's access list.",
+      "why": "A project-scoped copy shadows the user-scoped one, so sessions ran month-old prompts while the server reported installing current ones.",
+      "attention": "that a hand-written file is never deleted.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/agents/claude/author.tpl.md",
+          "hunk": {
+            "old_start": 4,
+            "old_lines": 4,
+            "new_start": 4,
+            "new_lines": 6
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/claude/reviewer.tpl.md",
+          "hunk": {
+            "old_start": 4,
+            "old_lines": 4,
+            "new_start": 4,
+            "new_lines": 6
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/codex/author.tpl.toml",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 3,
+            "new_start": 1,
+            "new_lines": 5
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/codex/reviewer.tpl.toml",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 3,
+            "new_start": 1,
+            "new_lines": 5
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 20,
+            "old_lines": 9,
+            "new_start": 20,
+            "new_lines": 9
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 33,
+            "old_lines": 6,
+            "new_start": 33,
+            "new_lines": 20
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 97,
+            "old_lines": 7,
+            "new_start": 111,
+            "new_lines": 11
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 176,
+            "old_lines": 6,
+            "new_start": 194,
+            "new_lines": 84
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 183,
+            "old_lines": 21,
+            "new_start": 279,
+            "new_lines": 50
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/roles.test.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 140
+          }
+        }
+      ],
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T7",
+      "title": "Only sessions a human was present for",
+      "role": "supporting",
+      "what": "Returns parent sessions, counts the turns a human typed, and takes previews from the parsers.",
+      "why": "Subagent transcripts were offered as sessions in their own right, and Codex sub-agent runs look like ordinary sessions on disk.",
+      "attention": "whether user_turns can read zero for a real session.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/git.ts",
+          "hunk": {
+            "old_start": 9,
+            "old_lines": 6,
+            "new_start": 9,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/git.ts",
+          "hunk": {
+            "old_start": 65,
+            "old_lines": 23,
+            "new_start": 66,
+            "new_lines": 16
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/git.ts",
+          "hunk": {
+            "old_start": 257,
+            "old_lines": 6,
+            "new_start": 251,
+            "new_lines": 21
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/git.ts",
+          "hunk": {
+            "old_start": 313,
+            "old_lines": 6,
+            "new_start": 322,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/git.ts",
+          "hunk": {
+            "old_start": 323,
+            "old_lines": 152,
+            "new_start": 333,
+            "new_lines": 55
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/git.test.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 46
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview"
+    },
+    {
+      "id": "T8",
+      "title": "Prompts rewritten around reading, converging and provenance",
+      "role": "core",
+      "what": "Rewrites both role prompts and the guide: read the conversation once, close every round, say where each field came from, write the tour for someone deciding where to look.",
+      "why": "The author was told to page a transcript that no longer needs paging, and the field that tells a reviewer what to check was filled on 8 of 40 stops because nothing asked for it.",
+      "attention": "that no prompt names a tool that no longer exists.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/agents/_roles/author.md",
+          "hunk": {
+            "old_start": 4,
+            "old_lines": 35,
+            "new_start": 4,
+            "new_lines": 90
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/questions.md",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 38,
+            "new_start": 1,
+            "new_lines": 32
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 3,
+            "old_lines": 28,
+            "new_start": 3,
+            "new_lines": 121
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 25,
+            "old_lines": 18,
+            "new_start": 25,
+            "new_lines": 23
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 44,
+            "old_lines": 6,
+            "new_start": 49,
+            "new_lines": 15
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 51,
+            "old_lines": 9,
+            "new_start": 65,
+            "new_lines": 17
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 62,
+            "old_lines": 25,
+            "new_start": 84,
+            "new_lines": 49
+          }
+        }
+      ],
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T9",
+      "title": "Packaging and test config",
+      "role": "incidental",
+      "what": "Manifest tool list, a test script, and a vitest text loader.",
+      "why": "The loader is not housekeeping: role prose lives in files esbuild inlines, so the prompts could not be imported under test at all.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/manifest.json",
+          "hunk": {
+            "old_start": 4,
+            "old_lines": 7,
+            "new_start": 4,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/manifest.json",
+          "hunk": {
+            "old_start": 49,
+            "old_lines": 12,
+            "new_start": 49,
+            "new_lines": 12
+          }
+        },
+        {
+          "path": "packages/mcp-server/package.json",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 7,
+            "new_start": 1,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/package.json",
+          "hunk": {
+            "old_start": 41,
+            "old_lines": 7,
+            "new_start": 41,
+            "new_lines": 8
+          }
+        },
+        {
+          "path": "vitest.config.ts",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 6,
+            "new_start": 1,
+            "new_lines": 26
+          }
+        }
+      ],
+      "provenance": "inferred_from_code"
+    }
+  ],
+  "verification": {
+    "performed": [
+      {
+        "kind": "test",
+        "description": "85 unit tests across runs, spine, parsers, roles, selection, hunks and the validator",
+        "result": "pass"
+      },
+      {
+        "kind": "typecheck",
+        "description": "tsc across all workspaces",
+        "result": "pass"
+      },
+      {
+        "kind": "manual",
+        "description": "stdio end-to-end against the built server: run handle, idempotent rounds, hunk-id anchors, consent gate",
+        "result": "pass, 17 checks"
+      },
+      {
+        "kind": "manual",
+        "description": "buildSpine over 40 real sessions in one workspace",
+        "result": "pass, 0 errors, median 10k tokens"
+      }
+    ],
+    "not_verified": [
+      "That generation is faster. No two-role distillation has been run; the 8.5 minutes profiled was model latency.",
+      "That the rewritten prompts produce better documents. This one was written in a single pass with no author/reviewer split.",
+      "That a cloud Cowork session can be distilled at all - its transcript is not on the developer's machine, including for this change."
+    ]
+  }
+}

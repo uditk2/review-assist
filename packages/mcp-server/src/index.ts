@@ -41,6 +41,7 @@ import {
   git,
 } from "./git.js";
 import { buildSpine } from "./spine.js";
+import { importSession, listImported } from "./transcript/export.js";
 import {
   computeRunId,
   openRun,
@@ -192,6 +193,39 @@ registerTool(
         2
       )
     );
+  }
+);
+
+registerTool(
+  "import_session",
+  "File a session transcript into this repo's store so list_transcripts and get_spine can " +
+    "find it. Needed when a session leaves nothing on this machine: a Cowork session running " +
+    "in the CLOUD keeps its transcript inside the container it ran in, and the desktop app " +
+    "holds only a composer draft and an evictable cache of a partial event stream. The " +
+    "container writes the file somewhere reachable and calls this. Re-importing OVERWRITES: a " +
+    "live session keeps growing, so a second export must replace the first rather than leave " +
+    "two near-identical candidates for the ranking to choose between.",
+  {
+    repo: z.string().describe("Absolute path of the repository this session belongs to."),
+    from: z.string().describe("Absolute path of the transcript to file (JSONL)."),
+    session_id: z
+      .string()
+      .optional()
+      .describe("Identifier to store it under. Defaults to the source file's name."),
+  },
+  async ({ repo, from, session_id }) => {
+    try {
+      const res = importSession({ repo: resolve(repo), from, sessionId: session_id });
+      return textResult(
+        JSON.stringify(
+          { ...res, note: res.overwrote ? "Replaced an earlier export of this session." : "Stored.", imported: listImported(resolve(repo)).length },
+          null,
+          2
+        )
+      );
+    } catch (e) {
+      return textResult(`import_session failed: ${(e as Error).message}`, true);
+    }
   }
 );
 
