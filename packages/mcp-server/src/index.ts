@@ -20,7 +20,15 @@ import { z } from "zod";
 import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { validate, renderPrDescription, indexHunks, type IndexedHunk } from "@review-assist/validator";
+import {
+  validate,
+  renderPrDescription,
+  indexHunks,
+  pageDiff,
+  summarizeFiles,
+  DEFAULT_PAGE_BYTES,
+  type IndexedHunk,
+} from "@review-assist/validator";
 import { intentDocSchema } from "@review-assist/schema";
 import {
   getRoles,
@@ -87,6 +95,23 @@ function textResult(text: string, isError = false) {
   return { content: [{ type: "text" as const, text }], isError };
 }
 
+/**
+ * Ceiling on the bytes a single tool result may carry.
+ *
+ * MCP does not tell a server what its client's tool-result cap is, so this is a guess —
+ * but a guess made HERE is worth more than the client's certainty, because the server can
+ * stop on a hunk boundary and hand back a cursor, and the client can only truncate or
+ * spill the whole result to a file. The one time that difference mattered it cost the
+ * flow: a 234,337-character `compute_diff` was spilled whole, and the `run_id` inside it
+ * became unreachable to a reviewer with no file access.
+ *
+ * Override with REVIEW_ASSIST_MAX_RESULT_BYTES when a client is known to allow more.
+ */
+function maxResultBytes(): number {
+  const v = Number(process.env.REVIEW_ASSIST_MAX_RESULT_BYTES);
+  return Number.isFinite(v) && v >= 2_000 ? Math.floor(v) : DEFAULT_PAGE_BYTES;
+}
+
 registerTool(
   "get_generation_guide",
   "Return the Intent Document JSON Schema and the authoring protocol. Call this first.",
@@ -105,10 +130,10 @@ registerTool(
 
 registerTool(
   "compute_diff",
-  "Compute the PR's own unified diff (base...head), resolve the SHAs, and OPEN THE DISTILLATION RUN. " +
-    "Call this first: the returned `run_id` is the handle every later call needs, and the returned " +
-    "`consent_state` tells you whether this repo is opted in BEFORE you spend a document finding out. " +
-    "Anchors must use these hunk line numbers and pin to head_sha.",
+  "Call this first. Resolves the base/head SHAs, OPENS THE DISTILLATION RUN, and returns the " +
+    "`run_id` every later call needs, the numbered hunk index, and `consent_state` — so you learn " +
+    "whether this repo is opted in BEFORE you spend a document finding out. It does NOT return the " +
+    "diff text: read that with `read_diff`, which pages it. Anchors use these hunk ids and pin to head_sha.",
   {
     base: z.string().describe("Base ref/branch/SHA, e.g. origin/main"),
     head: z.string().default("HEAD").describe("Head ref/SHA (default HEAD)"),
@@ -122,31 +147,114 @@ registerTool(
       const run = openRun({ repo: repoDir, baseSha, headSha, branch });
       const consent = getConsent(repoDir);
       const hunks = indexHunks(diff);
-      return textResult(
-        JSON.stringify(
-          {
-            run_id: run.run_id,
-            repo: run.repo,
-            base_sha: baseSha,
-            head_sha: headSha,
-            consent_state: consent,
-            hunks,
-            anchors_note:
-              "Anchor tour stops by hunk id — `\"anchors\": [\"H3\", \"H4\"]` — not by hand-copied line numbers. " +
-              "The server expands them on submit, so the stored document is unchanged. Every hunk with " +
-              "coverage_required=true must appear in some stop; one hunk may serve two stops.",
-            next:
-              consent === "unknown"
-                ? "This repo is not opted in yet. Resolve consent NOW, before writing the document: present the choice to the user and call set_consent({ repo, decision }). Submitting first only wastes the document."
-                : "Pass `run_id` to record_interview_round and submit_document. Do not pass `repo` to those tools — the run already knows it.",
-            diff,
-          },
-          null,
-          2
-        )
-      );
+      const files = summarizeFiles(hunks);
+      const budget = maxResultBytes();
+
+      // `run_id` is serialized FIRST, before anything that grows with the change. The
+      // envelope is bounded by construction now, so this is belt and braces — but a
+      // client that truncates rather than spills keeps the handle, and the handle is the
+      // one field whose loss ends the distillation.
+      const envelope: Record<string, unknown> = {
+        run_id: run.run_id,
+        repo: run.repo,
+        base_sha: baseSha,
+        head_sha: headSha,
+        branch,
+        consent_state: consent,
+        stats: {
+          files: files.length,
+          hunks: hunks.length,
+          coverage_required: hunks.filter((h) => h.coverage_required).length,
+          diff_bytes: diff.length,
+        },
+      };
+
+      // The per-hunk index is small for a normal change and unbounded for a large one —
+      // 66 hunks is a few kilobytes, 800 is not. Send it when it fits; otherwise fall back
+      // to the file-level rollup, which is bounded by file count, and let `read_diff`
+      // hand back per-hunk detail as it pages.
+      if (JSON.stringify(hunks).length <= budget) {
+        envelope.hunks = hunks;
+      } else {
+        envelope.files = files;
+        envelope.hunks_omitted =
+          "Too many hunks to list here. This is the file-level rollup; read_diff returns each " +
+          "hunk's id, path and header as it pages, and accepts `paths` to work a file at a time.";
+      }
+
+      envelope.read_the_diff =
+        `The diff is NOT in this response. Call read_diff({ run_id: "${run.run_id}" }) and keep ` +
+        "calling it with the `next_cursor` it returns until there is none. To go straight at " +
+        "something, pass `hunks: [\"H3\",\"H7\"]` or `paths: [\"src/foo.ts\"]` instead of a cursor.";
+      envelope.anchors_note =
+        "Anchor tour stops by hunk id — `\"anchors\": [\"H3\", \"H4\"]` — not by hand-copied line numbers. " +
+        "The server expands them on submit, so the stored document is unchanged. Every hunk with " +
+        "coverage_required=true must appear in some stop; one hunk may serve two stops.";
+      envelope.next =
+        consent === "unknown"
+          ? "This repo is not opted in yet. Resolve consent NOW, before writing the document: present the choice to the user and call set_consent({ repo, decision }). Submitting first only wastes the document."
+          : "Pass `run_id` to read_diff, record_interview_round and submit_document. Do not pass `repo` to those tools — the run already knows it.";
+
+      return textResult(JSON.stringify(envelope));
     } catch (e) {
       return textResult(`compute_diff failed: ${(e as Error).message}`, true);
+    }
+  }
+);
+
+registerTool(
+  "read_diff",
+  "Read the change itself, a page at a time. `compute_diff` gives you the run handle and the hunk " +
+    "index; the bytes come from here, so no single response can grow with the size of the change. " +
+    "Call it with just the `run_id` to start at H1, then keep passing the `next_cursor` it returns " +
+    "until there is none — that is how you know you have seen the whole diff. To go straight at one " +
+    "thing instead, pass `hunks` or `paths`. Pages break on hunk boundaries, so you never receive " +
+    "half a change; a hunk too large for one page is split by line and labelled with the lines it carries.",
+  {
+    run_id: z.string().describe("Run handle from compute_diff. REQUIRED — the run knows the repo and the SHAs."),
+    cursor: z
+      .string()
+      .optional()
+      .describe('Where to resume: the `next_cursor` from the previous page ("H14", or "H20:180" inside an oversized hunk). Omit to start at the beginning of the selection.'),
+    hunks: z
+      .array(z.string())
+      .optional()
+      .describe('Serve only these hunk ids, e.g. ["H3","H7"]. Use this to substantiate one claim without reading the rest.'),
+    paths: z
+      .array(z.string())
+      .optional()
+      .describe("Serve only hunks in these files. Ignored when `hunks` is given."),
+    max_bytes: z
+      .number()
+      .int()
+      .min(2_000)
+      .optional()
+      .describe("Byte budget for this page's hunk text. Defaults to the server's own ceiling; raise it only if you know your client's cap is higher."),
+  },
+  async ({ run_id, cursor, hunks, paths, max_bytes }) => {
+    const run = getRun(run_id);
+    if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    try {
+      // Recomputed from the run's own SHAs, exactly as submit_document does, rather than
+      // cached against the run id. A cursor then cannot outlive the diff it points into.
+      const { diff } = await computeDiff(run.repo, run.base_sha, run.head_sha);
+      const page = pageDiff(diff, {
+        cursor,
+        ids: hunks,
+        paths,
+        maxBytes: max_bytes ?? maxResultBytes(),
+      });
+      return textResult(
+        JSON.stringify({
+          run_id,
+          ...page,
+          next: page.next_cursor
+            ? `More to read. Call read_diff again with cursor: "${page.next_cursor}".`
+            : "End of the selection — you have seen every hunk it covers.",
+        })
+      );
+    } catch (e) {
+      return textResult(`read_diff failed: ${(e as Error).message}`, true);
     }
   }
 );

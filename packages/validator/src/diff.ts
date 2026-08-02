@@ -22,10 +22,19 @@ export interface DiffHunk {
    * a symbol in normal source and a sentence from inside a template literal in files that
    * are mostly strings — and where the preview was uninformative (an import, a brace) the
    * hint was too. A field that needs a caveat wherever it is mentioned costs more prompt
-   * space than it repays. Neither field replaces reading the diff, which the caller has
-   * from the same request.
+   * space than it repays. Neither field replaces reading the diff, which the caller no
+   * longer has from the same request and fetches with `read_diff`.
    */
   preview?: string;
+  /**
+   * Half-open [start, end) span of this hunk's own lines within `diff.split("\n")` —
+   * the `@@` header line through the last line before the next hunk or file header.
+   *
+   * Recorded here, by the one parser, because the pager has to hand back a hunk's TEXT
+   * and a second walk of the diff to find it would be a second place that decides where
+   * a hunk begins. The ids and the bytes behind them then have exactly one author.
+   */
+  span: [number, number];
 }
 
 export interface DiffFile {
@@ -47,8 +56,13 @@ export function parseUnifiedDiff(diff: string): DiffFile[] {
   let currentHunk: DiffHunk | null = null;
   let renameFrom: string | null = null;
 
-  const flushHunk = () => {
-    if (current && currentHunk) current.hunks.push(currentHunk);
+  // A hunk ends where the next hunk or the next file begins, so its span can only be
+  // closed by whatever displaced it — hence the end index is passed in at flush time.
+  const flushHunk = (end: number) => {
+    if (current && currentHunk) {
+      currentHunk.span[1] = end;
+      current.hunks.push(currentHunk);
+    }
     currentHunk = null;
   };
 
@@ -57,7 +71,7 @@ export function parseUnifiedDiff(diff: string): DiffFile[] {
 
     const fileMatch = FILE_HEADER.exec(line);
     if (fileMatch) {
-      flushHunk();
+      flushHunk(i);
       // Default to the b/ path; may be refined by ---/+++ headers below.
       current = { path: fileMatch[2], hunks: [] };
       files.push(current);
@@ -84,13 +98,14 @@ export function parseUnifiedDiff(diff: string): DiffFile[] {
 
     const hunkMatch = HUNK_HEADER.exec(line);
     if (hunkMatch) {
-      flushHunk();
+      flushHunk(i);
       currentHunk = {
         old_start: Number(hunkMatch[1]),
         old_lines: hunkMatch[2] === undefined ? 1 : Number(hunkMatch[2]),
         new_start: Number(hunkMatch[3]),
         new_lines: hunkMatch[4] === undefined ? 1 : Number(hunkMatch[4]),
         substantive: false,
+        span: [i, lines.length],
       };
       continue;
     }
@@ -107,7 +122,7 @@ export function parseUnifiedDiff(diff: string): DiffFile[] {
     }
   }
 
-  flushHunk();
+  flushHunk(lines.length);
   return files;
 }
 
@@ -118,8 +133,13 @@ function stripPrefix(p: string): string {
   return trimmed;
 }
 
-/** Inclusive [start, end] of the new-side line range of a hunk. */
-export function newRange(h: DiffHunk): [number, number] {
+/**
+ * Inclusive [start, end] of the new-side line range of a hunk.
+ *
+ * Takes only the two fields it reads, so a document's own `{new_start, new_lines}` anchor
+ * can be measured against a parsed hunk without inventing the parser's bookkeeping around it.
+ */
+export function newRange(h: Pick<DiffHunk, "new_start" | "new_lines">): [number, number] {
   if (h.new_lines === 0) return [h.new_start, h.new_start];
   return [h.new_start, h.new_start + h.new_lines - 1];
 }

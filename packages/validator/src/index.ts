@@ -121,7 +121,7 @@ function runCoverage(
     stop.anchors.forEach((a, i) => {
       anchors.push({
         path: a.path,
-        range: newRange({ ...a.hunk, substantive: true }),
+        range: newRange(a.hunk),
         ref: `${stop.id}.anchors[${i}]`,
       });
     });
@@ -283,4 +283,6 @@ function formatAjvError(err: ErrorObject): string {
 
 export { parseUnifiedDiff, indexHunks } from "./diff.js";
 export type { DiffFile, DiffHunk, IndexedHunk } from "./diff.js";
+export { pageDiff, parseCursor, summarizeFiles, DEFAULT_PAGE_BYTES } from "./page.js";
+export type { DiffPage, HunkSlice, PageOptions, DiffFileSummary } from "./page.js";
 export { renderMarkdown, renderPrDescription, orderTour, type RenderOptions } from "./render.js";

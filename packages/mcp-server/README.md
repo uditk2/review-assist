@@ -12,6 +12,15 @@ This server never calls a model. Generation is the calling agent's job; the serv
 supplies ground truth (the diff, the transcript), enforces the role split, and gatekeeps
 the result.
 
+> **Breaking in 0.3.0** — `compute_diff` no longer returns the diff text. It returns the
+> run handle, the numbered hunk index and the SHAs; the change itself now comes from
+> `read_diff`, a page at a time. The two used to travel together, and on a 205,826-byte
+> change that response reached 234,337 characters — past the client's tool-result cap, so
+> it was spilled to a file whole and the twelve characters of `run_id` went with it,
+> leaving a reviewer (which has no file access by design) unable to record a round or
+> submit anything. No response grows with the size of the change any more. Upgrade the
+> server and reinstall the role definitions; nothing about the Intent Document changes.
+
 ## Review Assist is two installs
 
 This package is one half. Installed alone it will author and validate Intent Documents
@@ -81,7 +90,8 @@ Author role:
 | `list_transcripts` | Find this session's transcript, ranked by how much it touches the changed files. |
 | `search_transcript` | Retrieve only the passages bearing on one question. |
 | `read_transcript` | Page through a transcript to hydrate a fresh context. |
-| `compute_diff` | Deterministic `base...head` diff plus resolved SHAs. |
+| `compute_diff` | Opens the run: handle, numbered hunk index, resolved SHAs. No diff text. |
+| `read_diff` | The diff itself, paged by hunk. Follow `next_cursor`, or ask for `hunks`/`paths`. |
 
 Reviewer role:
 
@@ -89,7 +99,8 @@ Reviewer role:
 |---|---|
 | `get_generation_guide` | Schema plus the authoring protocol. |
 | `get_role_definitions` | Author and reviewer subagent definitions for your client. |
-| `compute_diff` | The change, as a reviewer first meets it. |
+| `compute_diff` | Opens the run: handle, numbered hunk index, resolved SHAs. No diff text. |
+| `read_diff` | The change, as a reviewer first meets it — a page at a time. |
 | `record_interview_round` | One question, the author's answer, whether it resolved. The server stamps `meta.interview` from these, so the interview is attested rather than self-reported. |
 | `submit_document` | The gate. Validates, then writes `.intent/<branch>.json`. |
 | `set_consent` / `manage_consent` | Per-repository opt in and out. |

@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "review-assist-mcp",
   "display_name": "Review Assist",
-  "version": "0.2.11",
+  "version": "0.3.0",
   "description": "Turn an AI agent's coding session into a reviewable Intent Document.",
   "long_description": "Review Assist runs a two-agent author/reviewer distillation over your coding session and produces an Intent Document \u2014 the problem, the assumptions, the rejected alternatives, and an anchored walkthrough of every change \u2014 gatekept by a deterministic validator. It also generates a ready-made PR description (with optional Mermaid diagrams) and asks per repository before it does anything. Works with Claude Code, Codex, and any MCP-capable agent.",
   "author": {
@@ -42,7 +42,11 @@
     },
     {
       "name": "compute_diff",
-      "description": "Deterministic PR diff + base/head SHAs (read-only git)."
+      "description": "Open the distillation run: run handle, numbered hunk index and base/head SHAs (read-only git). Returns no diff text."
+    },
+    {
+      "name": "read_diff",
+      "description": "Read the diff a page at a time, broken on hunk boundaries; follow next_cursor, or ask for specific hunks/paths."
     },
     {
       "name": "list_transcripts",

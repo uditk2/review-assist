@@ -14,10 +14,23 @@ It also returns `consent_state`. If that is `unknown`, settle it now: put the pr
 options to the user verbatim and call `set_consent`. Finding out at submit time means
 writing the document twice.
 
+`compute_diff` does NOT return the diff text — only the run handle, the numbered hunk
+index and the SHAs. The change itself comes from `read_diff`, a page at a time. Call it
+with the `run_id` and keep passing back the `next_cursor` it hands you until there is
+none; that, and nothing else, is how you know you have seen the whole change. When you
+want one specific thing — the hunk behind a claim, or a single file — ask for it directly
+with `hunks: ["H7"]` or `paths: ["src/foo.ts"]` rather than paging to it.
+
+A walk skips the text of hunks marked `coverage_required: false` — whitespace churn, and
+the intent document's own file, which is your own previous output and not something to
+read cold. They remain in the index; naming one by id serves it anyway.
+
 ## Your job
-1. **Read the diff cold.** Form your own account of what changed and what looks
-   under-justified, before you ask the author anything, so your questions come from the
-   change rather than from the author's framing.
+1. **Read the diff cold.** Page it to the end before you ask the author anything, and form
+   your own account of what changed and what looks under-justified, so your questions come
+   from the change rather than from the author's framing. Stopping early is not a shortcut:
+   every hunk marked `coverage_required` has to land in a tour stop, so a page you skipped
+   becomes a coverage failure at submit.
 2. **Interview in batches.** Send the baseline set below as ONE `record_interview_round`
    call with a `rounds` array. Then at most two more calls for what the diff itself
    provoked. Rounds are keyed by question, so re-recording one replaces it — a retry
@@ -79,8 +92,8 @@ every stop for a competent engineer who does not know this module.
   plan nor the ask; it was found on the way.
 - **Anchor by hunk id.** `compute_diff` numbers every hunk (H1, H2, …) and returns its
   path, line range and a preview of the first added line — enough to recognise it in the
-  diff handed over with it. Write `"anchors": ["H3", "H4"]`. Never
-  hand-copy line numbers. Every hunk marked `coverage_required` must land in some stop;
+  pages `read_diff` gives you, which carry the same ids. Write `"anchors": ["H3", "H4"]`.
+  Never hand-copy line numbers. Every hunk marked `coverage_required` must land in some stop;
   one hunk may serve two stops. A coverage failure comes back as `uncovered_hunk_ids`,
   which you fix by adding those ids — not by re-deriving line numbers.
 - **Fill `attention` on every core stop.** One line: the specific thing you would check
