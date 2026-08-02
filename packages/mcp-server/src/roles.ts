@@ -282,6 +282,7 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
     "get_spine",
     "read_transcript",
     "compute_diff",
+    "read_diff",
   ],
   // `get_role_definitions` and `manage_consent` were granted here and belong to neither
   // role: the first installs the role definitions (a reviewer already IS one), the second
@@ -291,6 +292,7 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
   reviewer: [
     "get_generation_guide",
     "compute_diff",
+    "read_diff",
     "record_interview_round",
     "submit_document",
     "set_consent",
@@ -311,7 +313,8 @@ const TOOL_BLURB: Record<string, string> = {
   get_spine: "a session's whole conversation in one call, each item indexed into the full transcript.",
   read_transcript: "a window of the full transcript around an index, for the tool output behind a claim.",
   compute_diff:
-    "the change itself. For the reviewer it also OPENS the run and returns `run_id` plus numbered hunks.",
+    "the run handle, the numbered hunk index and the SHAs. Opens the run. Returns no diff text.",
+  read_diff: "the diff itself, paged by hunk. Follow `next_cursor` to the end, or ask for hunks/paths.",
   record_interview_round: "your questions, the author's answers, whether they resolved.",
   submit_document: "the gate. Only the reviewer may call it.",
   set_consent: "record the user's decision about operating in this repository.",

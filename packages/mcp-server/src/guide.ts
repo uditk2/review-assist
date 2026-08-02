@@ -35,8 +35,9 @@ quietly sources \`user_asks\` from the commit message:
    abandoned, and the reasoning behind each group of changes. Use \`read_transcript\` around a
    spine index only to recover the evidence behind a claim.
 
-2. **Reviewer role** — start from the diff (call \`compute_diff\`). Form an independent
-   read, then interrogate the author role on thin spots: any tour stop whose "why" is
+2. **Reviewer role** — start from the diff: \`compute_diff\` for the handle and the hunk
+   index, then \`read_diff\` for the change itself, following \`next_cursor\` to the end.
+   Form an independent read, then interrogate the author role on thin spots: any tour stop whose "why" is
    vague, any change not obviously tied to the problem. Record the rounds with
    \`record_interview_round\` — send the whole baseline set in ONE call via \`rounds\`, then
    one more call for whatever the diff itself provoked. Rounds are keyed by question, so
@@ -85,8 +86,8 @@ reflects the real interview (a single-pass generation with no reviewer will show
   field. The validator will hard-fail them, but do not rely on it.
 
 ## The run handle
-\`compute_diff\` OPENS the run and returns a \`run_id\`. Pass that \`run_id\` to
-\`record_interview_round\` and to \`submit_document\`. Those two take no \`repo\` — the run
+\`compute_diff\` OPENS the run and returns a \`run_id\`. Pass that \`run_id\` to \`read_diff\`,
+\`record_interview_round\` and \`submit_document\`. Those three take no \`repo\` — the run
 already knows it. Pass \`repo\` to \`compute_diff\` itself (the absolute path of the git
 repository you changed) whenever the server spans more than one repo: its working
 directory is the workspace, not your repo.
@@ -98,10 +99,38 @@ calling \`compute_diff\` again. Never invent, shorten, or carry over a \`run_id\
 The document is written to \`<repo>/.intent/<branch>.json\`. The run's own state lives
 outside the repository and is never committed.
 
+## Reading the diff
+\`compute_diff\` returns no diff text. It returns the handle, the SHAs and the hunk index;
+the bytes come from \`read_diff\`, one page at a time.
+
+That split is not a convenience. The two travelled together until a 205,826-byte change
+produced a 234,337-character response, the client spilled the whole thing to a file, and
+the twelve characters of \`run_id\` went with it — leaving a reviewer, which has no file
+access by design, unable to record a round or submit anything. No response may now grow
+with the size of the change.
+
+Call \`read_diff({ run_id })\` and keep passing back the \`next_cursor\` it returns until
+there is none. That is the only way to know you have seen the whole change; a page you did
+not fetch is a hunk no tour stop explains, and coverage will say so at submit. Pages break
+on hunk boundaries, so you never receive half a change unlabelled — and a hunk too large
+for one page (a newly added file is a single hunk) is split by line, told you which lines
+it carries, and resumed with a cursor like \`H20:180\`.
+
+A walk covers the hunks that need explaining. It does not spend pages on the ones marked
+\`coverage_required: false\` — whitespace-only churn, and the intent document's own file,
+which from a branch's second commit onward is your OWN previous output arriving as a
+whole-file addition. They stay in the index with their line numbers; only their text is
+skipped.
+
+To go straight at something instead of paging to it, pass \`hunks: ["H3","H7"]\` or
+\`paths: ["src/foo.ts"]\`. Naming an id also overrides the skip above — being specific is
+the override, there is no flag for it. That is how a claim gets substantiated cheaply: the
+index says where to look, and this fetches only that.
+
 ## Anchoring
 \`compute_diff\` numbers every hunk — H1, H2, … in diff order — and returns each with its
 path, line range and a \`preview\` of the first added line, enough to recognise it in the
-diff you were handed alongside. Anchor a tour stop by id:
+pages \`read_diff\` returns, which carry the same ids. Anchor a tour stop by id:
 
     "anchors": ["H3", "H4"]
 

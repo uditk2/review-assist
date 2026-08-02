@@ -90,4 +90,6 @@ from you.
   Guessing here has produced documents attributing the work to models that were not
   involved.
 - If no transcript exists, say so up front and answer only from the diff, marking every
-  answer as inference.
+  answer as inference. `compute_diff` gives you the hunk index but no diff text; the change
+  itself comes from `read_diff`, which you page with `next_cursor` or ask for a hunk at a
+  time with `hunks` / `paths`.
