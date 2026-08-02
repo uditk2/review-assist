@@ -6,10 +6,10 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFileSync, readdirSync, statSync, existsSync, openSync, readSync, closeSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve, dirname, basename, sep } from "node:path";
+import { readFileSync, existsSync } from "node:fs";
+import { basename } from "node:path";
 import { parseEntry } from "./transcript/index.js";
+import { findSessions, readBounded, safeMtime, sessionCwd, type TranscriptEnv } from "./transcript/sources.js";
 
 const exec = promisify(execFile);
 
@@ -52,137 +52,8 @@ export async function computeDiff(
  * distiller can hydrate from either agent's log.
  */
 export function findTranscripts(repoDir: string, override?: string): string[] {
-  if (override) {
-    return existsSync(override) ? [override] : [];
-  }
-  const repo = resolve(repoDir);
-  const candidates = new Set(ancestorsInclusive(repo, 4)); // repo + up to 4 parents
-  const found: { path: string; mtime: number }[] = [];
-
-  // Claude Code — one directory per cwd-encoded path.
-  const projects = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects");
-  if (existsSync(projects)) {
-    for (const c of candidates) {
-      const dir = join(projects, c.replace(/[/\\]/g, "-"));
-      if (!existsSync(dir)) continue;
-      for (const f of readdirSync(dir, { withFileTypes: true })) {
-        // Parents only. A subagent transcript is never a session: the developer appears
-        // in exactly one place, and a subagent receives its prompt from the parent with no
-        // human in the loop, so it can hold no user ask, no agreed plan, no scope decision.
-        // An earlier version returned <session>/subagents/agent-*.jsonl as PEERS of their
-        // own parent, so the author could be handed one seventh of a delegated session with
-        // no indication of what it belonged to. Delegated output is reachable through
-        // read_transcript when a claim needs substantiating; it is not a source of intent.
-        if (f.isFile() && f.name.endsWith(".jsonl")) {
-          const p = join(dir, f.name);
-          found.push({ path: p, mtime: safeMtime(p) });
-        }
-      }
-    }
-  }
-
-  // Codex — sessions are global; match the cwd recorded in each session's head against
-  // repo-or-ancestor. Bound the content scan to the most-recent files for speed.
-  const codexHome = process.env.CODEX_HOME || join(homedir(), ".codex");
-  // archived_sessions holds sessions Codex has rotated out — old, but old is exactly when a
-  // change's authoring session tends to live by the time anyone reviews it.
-  for (const codexRoot of [join(codexHome, "sessions"), join(codexHome, "archived_sessions")]) {
-  if (existsSync(codexRoot)) {
-    const recent = walkJsonl(codexRoot, 4)
-      .map((p) => ({ p, m: safeMtime(p) }))
-      .sort((a, b) => b.m - a.m)
-      .slice(0, 120);
-    for (const { p } of recent) {
-      const cwd = sessionCwd(p);
-      if (cwd && candidates.has(resolve(cwd))) found.push({ path: p, mtime: safeMtime(p) });
-    }
-  }
-  }
-
-  // Cowork running on this machine. Neither strategy above can work: the transcript is in
-  // Claude Code's format but lives under the desktop app's support directory, and every
-  // session records a sandbox cwd (/sessions/<name>, or …/outputs) rather than the repo, so
-  // both the directory-name encoding and cwd matching miss. Connected folders are mounted
-  // at /sessions/<name>/mnt/<folder>, which IS traceable back to a repo on this disk.
-  for (const root of coworkRoots()) {
-    if (!existsSync(root)) continue;
-    const names = mountNames(repo);
-    // Not bounded by recency, unlike the Codex scan above: a repo's Cowork session is often
-    // old while unrelated newer ones crowd it out — the one on this machine ranked 419th of
-    // 442. Scanning every session with a bounded head read costs ~150ms for that corpus, so
-    // the cap bought nothing and lost the only matching session. The high ceiling is a
-    // runaway guard, not a filter.
-    const sessions = walkJsonl(root, 8)
-      .filter((p) => !p.endsWith("audit.jsonl"))
-      .slice(0, 2000);
-    for (const p of sessions) {
-      if (mentionsMount(p, names)) found.push({ path: p, mtime: safeMtime(p) });
-    }
-  }
-
-  return found.sort((a, b) => b.mtime - a.mtime).map((x) => x.path);
-}
-
-/** [dir, parent, grandparent, …] up to `levels` above `dir` (inclusive of dir). */
-function ancestorsInclusive(dir: string, levels: number): string[] {
-  const out = [dir];
-  let cur = dir;
-  for (let i = 0; i < levels; i++) {
-    const parent = dirname(cur);
-    if (parent === cur) break;
-    out.push(parent);
-    cur = parent;
-  }
-  return out;
-}
-
-function safeMtime(p: string): number {
-  try {
-    return statSync(p).mtimeMs;
-  } catch {
-    return 0;
-  }
-}
-
-/** Recursively collect *.jsonl paths up to `depth` directory levels under `root`. */
-function walkJsonl(root: string, depth: number): string[] {
-  const out: string[] = [];
-  const walk = (dir: string, d: number): void => {
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      return;
-    }
-    for (const name of entries) {
-      const full = join(dir, name);
-      let isDir = false;
-      try {
-        isDir = statSync(full).isDirectory();
-      } catch {
-        continue;
-      }
-      if (isDir) {
-        if (d > 0) walk(full, d - 1);
-      } else if (name.endsWith(".jsonl")) {
-        out.push(full);
-      }
-    }
-  };
-  walk(root, depth);
-  return out;
-}
-
-/** Extract the working directory a Codex session recorded in its meta head, if present. */
-function sessionCwd(path: string): string | null {
-  try {
-    const head = readFileSync(path, "utf8").slice(0, 8192);
-    const m = head.match(/"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-    if (!m) return null;
-    return m[1].replace(/\\\\/g, "\\").replace(/\\"/g, '"');
-  } catch {
-    return null;
-  }
+  if (override) return existsSync(override) ? [override] : [];
+  return findSessions(repoDir).map((s) => s.path);
 }
 
 export interface TranscriptEntry {
@@ -245,7 +116,7 @@ function flattenText(obj: unknown): string {
 
 export interface TranscriptCandidate {
   path: string;
-  agent: "claude-code" | "codex" | "unknown";
+  agent: TranscriptEnv | "unknown";
   mtime: number;
   cwd: string | null;
   lines: number;
@@ -298,20 +169,19 @@ export function listTranscriptCandidates(
   // tight once Cowork sessions joined: a repo with 40 recent Claude Code transcripts pushed
   // all 29 of its mount-matched Cowork sessions out of the window before scoring, so the
   // only sessions that held the work were never ranked.
-  const paths = findTranscripts(repoDir, opts.override).slice(0, 80);
+  const located = opts.override
+    ? (existsSync(opts.override) ? [{ path: opts.override, env: "unknown" as const, mtime: safeMtime(opts.override) }] : [])
+    : findSessions(repoDir);
+  const paths = located.slice(0, 80);
   const basenames = Array.from(new Set((opts.changedBasenames ?? []).filter((b) => b && b.length > 2)));
   const branch = opts.branch?.trim();
-  const cands: TranscriptCandidate[] = paths.map((p) => {
+  const cands: TranscriptCandidate[] = paths.map(({ path: p, env }) => {
     // Bounded read: scoring only needs to know whether the session mentions the changed
     // files, and slurping multi-megabyte sessions whole to then discard most of it made the
     // scan cost scale with session length rather than with the number of candidates.
     let content = readBounded(p, 1_000_000);
     const lines = content.split("\n").filter((l) => l.trim().length > 0);
-    const agent: TranscriptCandidate["agent"] = p.includes(`${sep}.claude${sep}`)
-      ? "claude-code"
-      : p.includes(`${sep}.codex${sep}`)
-      ? "codex"
-      : "unknown";
+    const agent = env;
     let relevance = 0;
     for (const b of basenames) if (content.includes(b)) relevance += 1;
     if (branch && branch.length > 1 && content.includes(branch)) relevance += 2;
@@ -399,59 +269,3 @@ function looksLikeDistillationRun(firstUser: string): boolean {
   return asksForDocument && namesTheMachinery;
 }
 
-/** Where the desktop app keeps on-this-machine Cowork sessions, per platform. */
-function coworkRoots(): string[] {
-  const home = homedir();
-  return [
-    join(home, "Library", "Application Support", "Claude", "local-agent-mode-sessions"),
-    join(home, ".config", "Claude", "local-agent-mode-sessions"),
-    join(home, "AppData", "Roaming", "Claude", "local-agent-mode-sessions"),
-  ];
-}
-
-/**
- * Folder names worth matching a mount against: the repo and its nearest ancestors, since
- * the user connects either the repo itself or a directory containing it. Kept shallow —
- * matching on "Documents" would pull in every unrelated session.
- */
-function mountNames(repo: string): string[] {
-  return ancestorsInclusive(repo, 2).map((p) => basename(p)).filter((n) => n.length > 1);
-}
-
-/**
- * Does this session touch one of those mounts? Reads a bounded head rather than the whole
- * file — mount paths appear early, in the first tool calls, and these sessions run long.
- */
-function mentionsMount(path: string, names: string[]): boolean {
-  if (names.length === 0) return false;
-  let head: string;
-  try {
-    const fd = openSync(path, "r");
-    try {
-      const buf = Buffer.alloc(128 * 1024);
-      const n = readSync(fd, buf, 0, buf.length, 0);
-      head = buf.subarray(0, n).toString("utf8");
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    return false;
-  }
-  return names.some((n) => head.includes(`/mnt/${n}`));
-}
-
-/** Read at most `max` bytes of a file as UTF-8; empty string if unreadable. */
-function readBounded(path: string, max: number): string {
-  try {
-    const fd = openSync(path, "r");
-    try {
-      const buf = Buffer.alloc(max);
-      const n = readSync(fd, buf, 0, max, 0);
-      return buf.subarray(0, n).toString("utf8");
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    return "";
-  }
-}
