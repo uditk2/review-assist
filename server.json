@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.uditk2/review-assist-mcp",
   "description": "Turns an AI coding agent session into a reviewable Intent Document, validated against the diff.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "websiteUrl": "https://github.com/uditk2/review-assist",
   "repository": {
     "url": "https://github.com/uditk2/review-assist",
@@ -13,7 +13,7 @@
     {
       "registryType": "npm",
       "identifier": "review-assist-mcp",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
