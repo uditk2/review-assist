@@ -7,6 +7,8 @@
 
 <p align="center">
   <a href="#install">Install</a> ·
+  <a href="#update">Update</a> ·
+  <a href="#uninstall">Uninstall</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="#developing">Developing</a> ·
@@ -37,41 +39,42 @@ service in transit — if that matters to you, self-host it.
 Two one-time installs — the MCP server on the developer's side, the GitHub App on the repo's.
 
 **1. Register the MCP server with your agent** (so it can author Intent Documents).
+Claude Code and Codex keep separate configs, so registering with one does not register
+with the other — run the section(s) you use.
 
-Claude Code:
+### Claude Code
 
 ```bash
 claude mcp add -s user review-assist -- npx -y review-assist-mcp
 ```
 
-Codex:
-
-```bash
-codex mcp add review-assist -- npx -y review-assist-mcp
-```
-
-Both write the same entry to the agent's own config — for Codex that's
-`~/.codex/config.toml`, shared with the IDE extension. Check it landed with
-`codex mcp list` (or `claude mcp list`).
-
-If you use the **VS Code extension** or a GUI-launched editor, register it without
-`npx` instead. GUI apps on macOS get only `/usr/bin:/bin:/usr/sbin:/sbin`, so a
-Homebrew or nvm `npx` is not on the path; on Windows `npx` is a `.cmd` wrapper that
-fails without a TTY, and the VS Code panel has none. Either way the server shows as
-*not connected* with no error. Invoking `node` directly avoids both:
+The CLI and the VS Code extension share this one `-s user` config — but only when the
+extension inherits your shell's `PATH` (launched via `code .`, not the Dock). Launched
+from the Dock, GUI apps on macOS get just `/usr/bin:/bin:/usr/sbin:/sbin`, so `npx`
+isn't found and the server shows *not connected* with no error. Register without `npx`
+instead:
 
 ```bash
 npm install -g review-assist-mcp
 claude mcp add -s user review-assist -- "$(which node)" "$(npm root -g)/review-assist-mcp/dist/index.js"
 ```
 
-Both `$(...)` expand on your machine, so it is correct for Homebrew, nvm, fnm, Volta
-and Linux alike. nvm users: re-run it after switching Node versions.
+### Codex
 
-If you would rather not install globally, launching VS Code from a terminal with
-`code .` makes it inherit your shell's `PATH`, and the `npx` command above then works.
-That is a habit rather than a setting, though — open the editor from the Dock once and
-the server quietly stops connecting.
+```bash
+codex mcp add review-assist -- npx -y review-assist-mcp
+```
+
+Shared with the IDE extension (`~/.codex/config.toml`) under the same `code .` caveat as
+above. Dock-launched VS Code:
+
+```bash
+npm install -g review-assist-mcp
+codex mcp add review-assist -- "$(which node)" "$(npm root -g)/review-assist-mcp/dist/index.js"
+```
+
+(Skip `npm install -g` if you already ran it for Claude Code — one global install
+serves both extensions; each still needs its own `mcp add`.)
 
 Claude desktop app — one-click, no terminal:
 [download the `.mcpb`](https://github.com/uditk2/review-assist/releases/latest/download/review-assist-mcp.mcpb)
@@ -81,6 +84,25 @@ and open it.
 
 One click. Read-only code + PR comments, no workflow files — it adds the automatic
 check on every PR, the summary comment, and the guided-review viewer.
+
+## Update
+
+Only relevant if you used the global-install form above (`npm install -g`) — `npx -y`
+resolves to the latest release on every launch by itself.
+
+```bash
+npm install -g review-assist-mcp@latest
+```
+
+Restart your agent afterward so it respawns the server process.
+
+## Uninstall
+
+```bash
+claude mcp remove -s user review-assist    # or: codex mcp remove review-assist
+npm uninstall -g review-assist-mcp         # only if you used the global-install form
+rm -rf ~/.review-assist                    # consent decisions and local run state
+```
 
 ## How it works
 
