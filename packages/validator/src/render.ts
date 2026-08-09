@@ -105,7 +105,7 @@ export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): s
   for (const stop of orderTour(doc.tour)) {
     const badge = stop.role === "incidental" ? " _(incidental)_" : stop.role === "supporting" ? " _(supporting)_" : "";
     p(`#### ${stop.id}. ${escape(stop.title)}${badge}`);
-    p(`- **What:** ${escape(stop.what)}`);
+    for (const line of whatMarkdown(stop.what)) p(line);
     p(`- **Why:** ${escape(stop.why)}`);
     if (stop.attention) p(`- **👀 Look here:** ${escape(stop.attention)}`);
     const files = [...new Set(stop.anchors.map((a) => a.path))];
@@ -212,4 +212,28 @@ function resultIcon(result: string): string {
 
 function escape(s: string): string {
   return s.replace(/\r?\n/g, " ");
+}
+
+/**
+ * A tour stop's `what` is authored as a bulleted list of behaviour changes, so it is the
+ * one field that must not be flattened: `escape` would run every bullet into a single
+ * paragraph, which is the prose form the field was rewritten to stop producing.
+ *
+ * Nested under the label rather than replacing it, so the stop keeps its What/Why/Look
+ * here shape. A `what` that is one line — or several lines with no bullet among them —
+ * still renders inline, because indenting a lone fragment under an empty label reads as
+ * a rendering fault rather than a list.
+ */
+function whatMarkdown(what: string): string[] {
+  const lines = what.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const isBullet = (l: string) => /^[-*+]\s+/.test(l.trim());
+  if (lines.length <= 1 || !lines.some(isBullet)) return [`- **What:** ${escape(what)}`];
+  return [
+    `- **What:**`,
+    ...lines.map((l) => {
+      const t = l.trim();
+      // Two spaces indents a bullet under the label; four continues the bullet above it.
+      return isBullet(t) ? `  - ${t.replace(/^[-*+]\s+/, "")}` : `    ${t}`;
+    }),
+  ];
 }

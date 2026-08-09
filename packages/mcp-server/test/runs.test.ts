@@ -124,6 +124,8 @@ describe("recordRounds", () => {
       rounds: 2,
       questions_asked: 2,
       unresolved: 1,
+      author_attested: 0,
+      unanswered: 0,
     });
   });
 
@@ -137,6 +139,90 @@ describe("recordRounds", () => {
     runs.recordRounds(a.run_id, [{ question: "Q", answer: "for A" }]);
     expect(runs.summarizeRun(runs.getRun(a.run_id)!).rounds).toBe(1);
     expect(runs.summarizeRun(runs.getRun(b.run_id)!).rounds).toBe(0);
+  });
+
+  it("records a question with no answer, which is how the interview starts", () => {
+    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    runs.recordRounds(run.run_id, [{ question: "What was tried?" }]);
+    const [round] = runs.runRounds(runs.getRun(run.run_id)!);
+    expect(round.q_id).toMatch(/^[0-9a-f]{16}$/);
+    expect(round.answer).toBe("");
+    expect(round.answered_by).toBeUndefined();
+    expect(runs.summarizeRun(runs.getRun(run.run_id)!).unanswered).toBe(1);
+  });
+});
+
+/**
+ * The interview is worth attesting only if the server heard the author. These pin the one
+ * property that makes `meta.interview` more than self-report: an answer counts as attested
+ * when the author role wrote it, and never otherwise.
+ */
+describe("recordAnswers", () => {
+  const ask = (question: string) => {
+    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    runs.recordRounds(run.run_id, [{ question }]);
+    return { run_id: run.run_id, q_id: runs.runRounds(runs.getRun(run.run_id)!)[0].q_id };
+  };
+
+  it("attests an answer the author wrote itself", () => {
+    const { run_id, q_id } = ask("What did the user ask for?");
+    runs.recordAnswers(run_id, [{ q_id, answer: '"add an ads manager"' }]);
+    const summary = runs.summarizeRun(runs.getRun(run_id)!);
+    expect(summary.author_attested).toBe(1);
+    expect(summary.unanswered).toBe(0);
+    expect(runs.runRounds(runs.getRun(run_id)!)[0].answered_by).toBe("author");
+  });
+
+  it("does not attest an answer the reviewer transcribed", () => {
+    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    runs.recordRounds(run.run_id, [{ question: "Q", answer: "reviewer's account of it" }]);
+    const summary = runs.summarizeRun(runs.getRun(run.run_id)!);
+    expect(summary.rounds).toBe(1);
+    expect(summary.author_attested).toBe(0);
+    expect(runs.runRounds(runs.getRun(run.run_id)!)[0].answered_by).toBe("reviewer");
+  });
+
+  it("lets the author's answer win over the reviewer's transcription of it", () => {
+    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    runs.recordRounds(run.run_id, [{ question: "Q", answer: "roughly what I was told" }]);
+    const { q_id } = runs.runRounds(runs.getRun(run.run_id)!)[0];
+    runs.recordAnswers(run.run_id, [{ q_id, answer: "what I actually said" }]);
+    const [round] = runs.runRounds(runs.getRun(run.run_id)!);
+    expect(round.answer).toBe("what I actually said");
+    expect(round.answered_by).toBe("author");
+  });
+
+  it("does not erase an author answer when the reviewer re-records the question", () => {
+    // The reviewer re-posting its batch is a free retry by design; it must not silently
+    // blank the attestation the author already gave.
+    const { run_id, q_id } = ask("Q");
+    runs.recordAnswers(run_id, [{ q_id, answer: "the author's words" }]);
+    runs.recordRounds(run_id, [{ question: "Q" }]);
+    const [round] = runs.runRounds(runs.getRun(run_id)!);
+    expect(round.answer).toBe("the author's words");
+    expect(round.answered_by).toBe("author");
+    expect(runs.summarizeRun(runs.getRun(run_id)!).author_attested).toBe(1);
+  });
+
+  it("names an unknown q_id rather than dropping the answer silently", () => {
+    const { run_id } = ask("Q");
+    const res = runs.recordAnswers(run_id, [{ q_id: "0000000000000000", answer: "a" }]);
+    expect(res?.unknown).toEqual(["0000000000000000"]);
+    expect(runs.summarizeRun(runs.getRun(run_id)!).author_attested).toBe(0);
+  });
+
+  it("records a non-answer as unresolved, which is a real answer", () => {
+    const { run_id, q_id } = ask("What was tried and abandoned?");
+    runs.recordAnswers(run_id, [
+      { q_id, answer: "the transcript does not cover this", resolved: false },
+    ]);
+    const summary = runs.summarizeRun(runs.getRun(run_id)!);
+    expect(summary.unresolved).toBe(1);
+    expect(summary.author_attested).toBe(1);
+  });
+
+  it("returns undefined for an unknown run", () => {
+    expect(runs.recordAnswers("deadbeef1234", [{ q_id: "x", answer: "a" }])).toBeUndefined();
   });
 });
 

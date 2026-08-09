@@ -46,9 +46,21 @@ const RUNS_DIR = join(
 const MAX_RUN_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface InterviewRound {
+  /** Hash of the normalised question. Relayed to the author, which answers by it. */
+  q_id: string;
   question: string;
+  /** Empty until someone answers. A question may be recorded before it is. */
   answer: string;
   resolved: boolean;
+  /**
+   * Which role put the answer here.
+   *
+   * The reviewer transcribing an answer it received is normal and stays allowed; the
+   * point is that the server can now tell that case apart from an answer the author
+   * wrote itself. Only `author` is attestation — everything else is one role's account
+   * of a conversation the server never witnessed.
+   */
+  answered_by?: "author" | "reviewer";
   at: string;
 }
 
@@ -74,6 +86,10 @@ export interface InterviewSummary {
   rounds: number;
   questions_asked: number;
   unresolved: number;
+  /** Answers the author role wrote itself. The only figure the server can vouch for. */
+  author_attested: number;
+  /** Questions recorded with no answer from either side yet. */
+  unanswered: number;
 }
 
 function sha256(input: string): string {
@@ -146,27 +162,70 @@ export function getRun(runId: string): RunRecord | undefined {
 }
 
 /**
- * Upsert rounds into a run. Returns the run, or undefined when the id is unknown —
- * the caller turns that into an error listing the open runs, so a wrong handle costs
- * one corrective call rather than a silent loss.
+ * Upsert the reviewer's rounds into a run. Returns the run, or undefined when the id is
+ * unknown — the caller turns that into an error listing the open runs, so a wrong handle
+ * costs one corrective call rather than a silent loss.
+ *
+ * `answer` is optional because the reviewer records its questions BEFORE the author has
+ * replied: the q_ids that come back are what the author answers by. An answer supplied
+ * here is kept, but marked `reviewer`, because the server has only ever heard one side of
+ * it. Re-recording a question preserves an answer already on it rather than blanking it —
+ * otherwise a reviewer re-posting its batch would silently erase the author's attestation.
  */
 export function recordRounds(
   runId: string,
-  rounds: { question: string; answer: string; resolved?: boolean }[]
+  rounds: { question: string; answer?: string; resolved?: boolean }[]
 ): RunRecord | undefined {
   const run = readRun(runId);
   if (!run) return undefined;
   const at = new Date().toISOString();
   for (const r of rounds) {
-    run.rounds[questionKey(r.question)] = {
+    const q_id = questionKey(r.question);
+    const prior = run.rounds[q_id];
+    const answer = r.answer ?? prior?.answer ?? "";
+    run.rounds[q_id] = {
+      q_id,
       question: r.question,
-      answer: r.answer,
-      resolved: r.resolved ?? true,
+      answer,
+      resolved: r.resolved ?? prior?.resolved ?? answer.length > 0,
+      answered_by: r.answer ? "reviewer" : prior?.answered_by,
       at,
     };
   }
   writeRun(run);
   return run;
+}
+
+/**
+ * Attach the author's own answers, by q_id. This is the half the server can vouch for:
+ * the role that read the transcript wrote these, in its own tool call, rather than the
+ * reviewer reporting what it says it was told.
+ *
+ * An author answer always wins over a reviewer-transcribed one for the same question.
+ * Unknown ids are returned rather than dropped, so a mis-relayed id is one corrective
+ * call instead of an answer that quietly went nowhere.
+ */
+export function recordAnswers(
+  runId: string,
+  answers: { q_id: string; answer: string; resolved?: boolean }[]
+): { run: RunRecord; unknown: string[] } | undefined {
+  const run = readRun(runId);
+  if (!run) return undefined;
+  const at = new Date().toISOString();
+  const unknown: string[] = [];
+  for (const a of answers) {
+    const round = run.rounds[a.q_id];
+    if (!round) {
+      unknown.push(a.q_id);
+      continue;
+    }
+    round.answer = a.answer;
+    round.resolved = a.resolved ?? true;
+    round.answered_by = "author";
+    round.at = at;
+  }
+  writeRun(run);
+  return { run, unknown: Array.from(new Set(unknown)) };
 }
 
 /** What the server stamps into `meta.interview`. Counts questions, not calls. */
@@ -176,6 +235,8 @@ export function summarizeRun(run: RunRecord): InterviewSummary {
     rounds: rounds.length,
     questions_asked: rounds.length,
     unresolved: rounds.filter((r) => !r.resolved).length,
+    author_attested: rounds.filter((r) => r.answered_by === "author").length,
+    unanswered: rounds.filter((r) => r.answer.length === 0).length,
   };
 }
 

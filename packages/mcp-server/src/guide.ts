@@ -28,8 +28,11 @@ quietly sources \`user_asks\` from the commit message:
 1. **Author role** — call \`list_transcripts\` with \`base\` (candidates come back ranked by how
    much they touch the changed files; parents only, since a subagent is never a session), pick
    the one whose \`first_user\` matches how THIS session began rather than the newest, then call
-   \`get_spine\` on it. That returns the whole conversation in one read: both sides, structured
-   questions with their answers, commands and edits as one-liners. The on-disk record holds
+   \`get_spine\` on it. That returns the whole conversation — both sides, structured questions
+   with their answers, commands and edits as one-liners — a page at a time: follow
+   \`next_cursor\` to the end, and read every page before answering anything. Nothing is
+   dropped to make a page fit, so the only way to lose material is to stop early. Read all
+   of it; be selective in what you report, not in what you read. The on-disk record holds
    material compacted out of live context, which is the reason this role exists. Reconstruct
    the real problem, how the ask evolved, requirements discovered, alternatives tried and
    abandoned, and the reasoning behind each group of changes. Use \`read_transcript\` around a
@@ -37,17 +40,31 @@ quietly sources \`user_asks\` from the commit message:
 
 2. **Reviewer role** — start from the diff: \`compute_diff\` for the handle and the hunk
    index, then \`read_diff\` for the change itself, following \`next_cursor\` to the end.
-   Form an independent read, then interrogate the author role on thin spots: any tour stop whose "why" is
-   vague, any change not obviously tied to the problem. Record the rounds with
-   \`record_interview_round\` — send the whole baseline set in ONE call via \`rounds\`, then
-   one more call for whatever the diff itself provoked. Rounds are keyed by question, so
-   re-recording one replaces it: a retry costs nothing and cannot inflate the count. The
-   server stamps \`meta.interview\` from them itself. Fold answers back into the fields. Do NOT keep the Q&A as a transcript — its only traces are (a) better-filled
-   fields and (b) genuinely unresolved items, which become \`open_questions\`.
+   Form an independent read, then run the interview in exactly two batches:
 
-Cap the interview at a few rounds. The document must converge. Do NOT hand-fill
-\`meta.interview\` — the server stamps it from your \`record_interview_round\` calls, so it
-reflects the real interview (a single-pass generation with no reviewer will show rounds: 0).
+   - **Batch one** — the baseline set plus every question the diff provoked, together in ONE
+     \`record_interview_round\` call. You have already read the diff, so you already have
+     these questions; holding any back only buys a round-trip. Record them BEFORE relaying:
+     each comes back with a \`q_id\`, and the author replies by calling \`answer_questions\`
+     with those ids, so the server records the author's own words. Questions themselves
+     travel as text between the two roles — no tool carries them, and none can.
+   - **Draft the whole document** from the answers, then read your own reasoning back. This
+     is what finds the real gaps: an answer reads fine until you try to write
+     \`approach.adopted.rationale\` out of it and find there is nothing there. Mark every
+     place you asserted rather than sourced.
+   - **Batch two** — everything the draft exposed, in one final call. Never re-ask what the
+     author declined to answer.
+
+   Rounds are keyed by question, so re-recording one replaces it: a retry costs nothing and
+   cannot inflate the count. The server stamps \`meta.interview\` from them itself. Fold
+   answers back into the fields. Do NOT keep the Q&A as a transcript — its only trace is
+   better-filled fields.
+
+Two batches is the cap, and the document must converge. Thin spots that survive the second
+batch are findings, not a third round. Do NOT hand-fill \`meta.interview\` — the server
+stamps it from the two roles' own calls, so it reflects the real interview (a single-pass
+generation with no reviewer will show rounds: 0, and one where the reviewer wrote both
+halves will show author_attested: 0).
 
 ## Content rules
 - **Say it once.** The waste in these documents is not long sentences, it is the same

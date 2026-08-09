@@ -8,7 +8,14 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildSpine, type SpineTurn, type SpineEvent, type SpineGap } from "../src/spine.js";
+import {
+  buildSpine,
+  pageSpine,
+  type SpineItem,
+  type SpineTurn,
+  type SpineEvent,
+  type SpineGap,
+} from "../src/spine.js";
 
 const dir = mkdtempSync(join(tmpdir(), "review-assist-spine-"));
 const write = (name: string, entries: unknown[]) => {
@@ -97,12 +104,20 @@ describe("buildSpine", () => {
     expect(s.items.some((i) => (i as SpineTurn).index === 1)).toBe(false);
   });
 
-  it("drops assistant prose rather than truncating when the conversation is too large", () => {
-    const s = buildSpine(path, { maxBytes: 200 });
-    expect(s.degraded).toBe("user_turns_only");
-    expect(s.items.some((i) => i.kind === "assistant")).toBe(false);
-    expect(s.items.some((i) => i.kind === "user")).toBe(true);
-    expect(s.note).toMatch(/exceeded the budget/);
+  it("keeps assistant prose whatever the size — paging bounds the response, not the material", () => {
+    // The predecessor deleted every assistant turn past a byte ceiling, which is the worst
+    // thing to lose: most trials come from the agent's side of the conversation.
+    const s = buildSpine(path);
+    const whole = JSON.stringify(s.items);
+    let cursor: string | undefined;
+    const seen: SpineItem[] = [];
+    do {
+      const page = pageSpine(s.items, { cursor, maxBytes: 2_000 });
+      seen.push(...page.items);
+      cursor = page.next_cursor;
+    } while (cursor);
+    expect(seen.some((i) => i.kind === "assistant")).toBe(true);
+    expect(JSON.stringify(seen)).toBe(whole);
   });
 
   it("records the plan as agreed, then only what changed about it", () => {
@@ -133,5 +148,81 @@ describe("buildSpine", () => {
     const s = buildSpine(path);
     expect(s.total_entries).toBe(12);
     expect(s.spine_bytes).toBeLessThan(s.raw_bytes);
+  });
+});
+
+/**
+ * Paging is what replaced dropping assistant prose, so these pin the property that made
+ * the replacement worth making: following the cursor to the end yields every item, byte
+ * for byte, at any page size.
+ */
+describe("pageSpine", () => {
+  const drain = (items: SpineItem[], maxBytes: number) => {
+    const seen: SpineItem[] = [];
+    let cursor: string | undefined;
+    let calls = 0;
+    do {
+      const page = pageSpine(items, { cursor, maxBytes });
+      expect(page.returned).toBeGreaterThan(0); // never hand back an empty page
+      seen.push(...page.items);
+      cursor = page.next_cursor;
+      if (++calls > 5_000) throw new Error("cursor did not converge");
+    } while (cursor);
+    return { seen, calls };
+  };
+
+  const turns = (texts: string[]): SpineItem[] =>
+    texts.map((text, index) => ({ kind: "user" as const, index, text }));
+
+  it("cuts on item boundaries when items fit", () => {
+    const items = turns(["a".repeat(500), "b".repeat(500), "c".repeat(500)]);
+    const first = pageSpine(items, { maxBytes: 1_400 });
+    expect(first.returned).toBe(2);
+    expect(first.next_cursor).toBe("2");
+    expect(first.remaining).toBe(1);
+    expect(first.total).toBe(3);
+  });
+
+  it("serves a turn too large for a whole page by slicing it, rather than deadlocking", () => {
+    const items = turns(["x".repeat(10_000)]);
+    const page = pageSpine(items, { maxBytes: 2_000 });
+    expect(page.returned).toBe(1);
+    const only = page.items[0] as SpineTurn;
+    expect(only.text.length).toBeLessThan(10_000);
+    expect(only.text_chars).toBe(10_000);
+    expect(only.chars?.[0]).toBe(1);
+    expect(page.next_cursor).toMatch(/^0:\d+$/);
+  });
+
+  it("reassembles to exactly the input, at every page size", () => {
+    const items: SpineItem[] = [
+      ...turns(["short", "y".repeat(9_000)]),
+      { kind: "command", index: 2, summary: "npm test" },
+      { kind: "gap", from: 3, to: 40, entries: 37, failures: 1 },
+      ...turns(["tail"]),
+    ];
+    for (const budget of [200, 2_000, 20_000]) {
+      const { seen } = drain(items, budget);
+      const rejoined = seen.reduce<SpineItem[]>((acc, item) => {
+        const prev = acc[acc.length - 1] as SpineTurn | undefined;
+        const cur = item as SpineTurn;
+        if (prev && cur.chars && prev.index === cur.index && prev.kind === cur.kind) {
+          acc[acc.length - 1] = { ...prev, text: prev.text + cur.text };
+          return acc;
+        }
+        acc.push(cur.chars ? { ...cur, text: cur.text } : item);
+        return acc;
+      }, []);
+      const normalized = rejoined.map((i) => {
+        const { chars: _c, text_chars: _t, ...rest } = i as SpineTurn;
+        return rest;
+      });
+      expect(normalized).toEqual(items);
+    }
+  });
+
+  it("refuses a malformed cursor rather than silently restarting", () => {
+    expect(() => pageSpine(turns(["a"]), { cursor: "nonsense" })).toThrow(/Malformed cursor/);
+    expect(() => pageSpine(turns(["a"]), { cursor: "9" })).toThrow(/past the end/);
   });
 });

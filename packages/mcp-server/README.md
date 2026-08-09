@@ -88,10 +88,11 @@ Author role:
 |---|---|
 | `get_generation_guide` | Schema plus the authoring protocol. Call first. |
 | `list_transcripts` | Find this session's transcript, ranked by how much it touches the changed files. |
-| `search_transcript` | Retrieve only the passages bearing on one question. |
-| `read_transcript` | Page through a transcript to hydrate a fresh context. |
+| `get_spine` | The session's whole conversation, paged. Follow `next_cursor` to the end; nothing is dropped to make a page fit. |
+| `read_transcript` | A window of the full transcript around a spine index, for the tool output behind a claim. |
 | `compute_diff` | Opens the run: handle, numbered hunk index, resolved SHAs. No diff text. |
 | `read_diff` | The diff itself, paged by hunk. Follow `next_cursor`, or ask for `hunks`/`paths`. |
+| `answer_questions` | The author's own answers, by `q_id`. Its only write, and the half of the interview the server can attest. |
 
 Reviewer role:
 
@@ -101,7 +102,7 @@ Reviewer role:
 | `get_role_definitions` | Author and reviewer subagent definitions for your client. |
 | `compute_diff` | Opens the run: handle, numbered hunk index, resolved SHAs. No diff text. |
 | `read_diff` | The change, as a reviewer first meets it — a page at a time. |
-| `record_interview_round` | One question, the author's answer, whether it resolved. The server stamps `meta.interview` from these, so the interview is attested rather than self-reported. |
+| `record_interview_round` | The reviewer's questions, recorded before they are relayed. Each comes back with a `q_id`; the author answers by that id, so the server hears both sides rather than the reviewer's account of both. |
 | `submit_document` | The gate. Validates, then writes `.intent/<branch>.json`. |
 | `set_consent` / `manage_consent` | Per-repository opt in and out. |
 

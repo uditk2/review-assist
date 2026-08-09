@@ -48,13 +48,15 @@ import {
   readTranscriptWindow,
   git,
 } from "./git.js";
-import { buildSpine } from "./spine.js";
+import { buildSpine, pageSpine } from "./spine.js";
 import { importSession, listImported } from "./transcript/export.js";
 import {
   computeRunId,
   openRun,
   getRun,
   recordRounds,
+  recordAnswers,
+  runRounds,
   summarizeRun,
   closeRun,
   listOpenRuns,
@@ -339,29 +341,43 @@ registerTool(
 
 registerTool(
   "get_spine",
-  "Author role: read a session's WHOLE conversation in one call — every turn you and the " +
-    "agent exchanged, each structured question with the answer chosen, and every command and " +
-    "file edit as one line. This replaces searching. A session is a median 4.8% conversation " +
-    "and 95% tool output; the spine is that 4.8%, and it fits in a single read for all but the " +
-    "largest sessions. Being complete, it removes the one thing retrieval can never rule out — " +
-    "an answer you simply did not find. Every item carries an `index` into the full transcript: " +
-    "a jump between indices means machinery was elided there, and read_transcript around an " +
-    "index recovers the tool output behind a claim.",
+  "Author role: read a session's WHOLE conversation — every turn you and the agent exchanged, " +
+    "each structured question with the answer chosen, and every command and file edit as one " +
+    "line. This replaces searching. A session is a median 4.8% conversation and 95% tool output; " +
+    "the spine is that 4.8%. Being complete, it removes the one thing retrieval can never rule " +
+    "out — an answer you simply did not find. It is served a page at a time: call it with just " +
+    "the `path`, then keep passing back the `next_cursor` it returns until there is none. That, " +
+    "and nothing else, is how you know you have read the whole session. Nothing is ever dropped " +
+    "to make a page fit. Every item carries an `index` into the full transcript: a jump between " +
+    "indices means machinery was elided there, and read_transcript around an index recovers the " +
+    "tool output behind a claim.",
   {
     path: z.string().describe("Transcript path (from list_transcripts)"),
+    cursor: z
+      .string()
+      .optional()
+      .describe('Where to resume: the `next_cursor` from the previous page ("87", or "87:4000" inside an oversized turn). Omit to start at the beginning.'),
     max_bytes: z
       .number()
       .int()
-      .min(50_000)
+      .min(2_000)
       .optional()
-      .describe(
-        "Budget for the conversation. Above it, assistant prose is dropped and user turns plus " +
-          "events remain — needed by roughly one session in forty."
-      ),
+      .describe("Byte budget for this page. Defaults to the server's own ceiling; raise it only if you know your client's cap is higher."),
   },
-  async ({ path, max_bytes }) => {
+  async ({ path, cursor, max_bytes }) => {
     try {
-      return textResult(JSON.stringify(buildSpine(path, { maxBytes: max_bytes }), null, 2));
+      const spine = buildSpine(path);
+      const page = pageSpine(spine.items, { cursor, maxBytes: max_bytes ?? maxResultBytes() });
+      const { items: _all, ...header } = spine;
+      return textResult(
+        JSON.stringify({
+          ...header,
+          ...page,
+          next: page.next_cursor
+            ? `More of this session to read. Call get_spine again with the same path and cursor: "${page.next_cursor}".`
+            : "End of the session — you have read the whole conversation.",
+        })
+      );
     } catch (e) {
       return textResult(`get_spine failed: ${(e as Error).message}`, true);
     }
@@ -391,11 +407,13 @@ registerTool(
 registerTool(
   "record_interview_round",
   "Reviewer role: record interview rounds against a RUN — each a question you raised about a thin or " +
-    "under-justified spot, the author role's answer, and whether it resolved. Send the whole baseline set " +
-    "in ONE call via `rounds`. Rounds are keyed by question, so re-recording one replaces it rather than " +
-    "duplicating: retrying is free and the count stays honest. The server stamps meta.interview from these, " +
-    "so the interview is server-attested rather than self-reported. Unresolved rounds should also surface " +
-    "as open_questions in the document.",
+    "under-justified spot. RECORD THE QUESTIONS FIRST, BEFORE you relay them: each comes back with a `q_id`, " +
+    "and the author answers by that id with `answer_questions`, so the server hears the author's own words " +
+    "rather than your account of them. Include the q_ids when you relay. `answer` is optional here and is " +
+    "only for transcribing an answer you already hold — it is marked reviewer-sourced, and does not count as " +
+    "attested. Send the baseline set and every diff-provoked question together in ONE call via `rounds`; " +
+    "follow up at most once. Rounds are keyed by question, so re-recording one replaces it rather than " +
+    "duplicating: retrying is free, cannot inflate the count, and never erases an answer already recorded.",
   {
     run_id: z
       .string()
@@ -404,12 +422,15 @@ registerTool(
       .array(
         z.object({
           question: z.string().describe("The reviewer's question about a thin spot"),
-          answer: z.string().describe("The author role's answer (fold it into the document fields)"),
-          resolved: z.boolean().default(true).describe("false -> also add an open_question"),
+          answer: z
+            .string()
+            .optional()
+            .describe("Optional. Only to transcribe an answer you already have; recorded as reviewer-sourced. Leave empty and let the author answer by q_id."),
+          resolved: z.boolean().optional().describe("false -> the question stands unresolved"),
         })
       )
       .optional()
-      .describe("One or more rounds. Prefer sending the whole baseline set at once."),
+      .describe("One or more rounds. Send the whole batch at once."),
     // Single-round form, kept so a role definition loaded before this change still works.
     question: z.string().optional(),
     answer: z.string().optional(),
@@ -418,16 +439,86 @@ registerTool(
   async ({ run_id, rounds, question, answer, resolved }) => {
     const batch = rounds?.length
       ? rounds
-      : question && answer
-        ? [{ question, answer, resolved: resolved ?? true }]
+      : question
+        ? [{ question, answer, resolved }]
         : [];
     if (batch.length === 0) {
-      return textResult("record_interview_round: supply `rounds: [{question, answer, resolved}]`.", true);
+      return textResult("record_interview_round: supply `rounds: [{question}]`.", true);
     }
     const run = recordRounds(run_id, batch);
     if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    const summary = summarizeRun(run);
     return textResult(
-      JSON.stringify({ run_id, repo: run.repo, ...summarizeRun(run) }, null, 2)
+      JSON.stringify(
+        {
+          run_id,
+          repo: run.repo,
+          ...summary,
+          questions: runRounds(run).map((r) => ({
+            q_id: r.q_id,
+            question: r.question,
+            answered_by: r.answered_by ?? null,
+          })),
+          relay_these:
+            "Give the author the run_id and each question WITH its q_id, and tell it to reply by calling " +
+            "answer_questions. Answers it writes itself are the only ones the document can attest.",
+        },
+        null,
+        2
+      )
+    );
+  }
+);
+
+registerTool(
+  "answer_questions",
+  "Author role: answer the reviewer's questions, by `q_id`. This is how your answers reach the document as " +
+    "YOUR words: the reviewer records the questions, relays them to you with their ids, and you write the " +
+    "answers here. An answer the reviewer transcribes on your behalf still works, but is marked " +
+    "reviewer-sourced and does not count as attested — so a document whose interview never happened is " +
+    "visible as such rather than indistinguishable from one that did. Answer the whole batch in one call. " +
+    'If the transcript does not cover something, say exactly that and set `resolved: false`; a recorded ' +
+    "non-answer is worth more than an invented one.",
+  {
+    run_id: z
+      .string()
+      .describe("Run handle. Derive it yourself from compute_diff, or take the one the reviewer relayed — they are the same value."),
+    answers: z
+      .array(
+        z.object({
+          q_id: z.string().describe("The question's id, as relayed by the reviewer."),
+          answer: z.string().describe("Your answer, from the transcript. Quote verbatim where the answer turns on what was said."),
+          resolved: z
+            .boolean()
+            .default(true)
+            .describe("false when the transcript does not cover it — a real answer, recorded as unresolved."),
+        })
+      )
+      .min(1)
+      .describe("The whole batch in one call."),
+  },
+  async ({ run_id, answers }) => {
+    const res = recordAnswers(run_id, answers);
+    if (!res) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    const { run, unknown } = res;
+    return textResult(
+      JSON.stringify(
+        {
+          run_id,
+          repo: run.repo,
+          ...summarizeRun(run),
+          ...(unknown.length
+            ? {
+                unknown_q_ids: unknown,
+                hint:
+                  "These ids are not on this run. Ids come from the reviewer's record_interview_round for " +
+                  "THIS run — re-read them from what was relayed rather than guessing. Nothing was stored for them.",
+              }
+            : {}),
+        },
+        null,
+        2
+      )
     );
   }
 );

@@ -276,6 +276,10 @@ export const KNOWN_ENVS: RoleEnv[] = ["claude", "codex", "generic"];
 
 /** Tools each role may reach. Read by index.ts from REVIEW_ASSIST_ROLE. */
 export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
+  // `answer_questions` is the author's only write, and it writes nothing but its own
+  // answers into the run. It is what makes the interview two-sided: without it the server
+  // hears the reviewer's account of both halves and cannot tell a real interview from an
+  // invented one. It still cannot submit — that gate stays the reviewer's alone.
   author: [
     "get_generation_guide",
     "list_transcripts",
@@ -283,6 +287,7 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
     "read_transcript",
     "compute_diff",
     "read_diff",
+    "answer_questions",
   ],
   // `get_role_definitions` and `manage_consent` were granted here and belong to neither
   // role: the first installs the role definitions (a reviewer already IS one), the second
@@ -310,12 +315,13 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
 const TOOL_BLURB: Record<string, string> = {
   get_generation_guide: "the Intent Document schema and the authoring protocol.",
   list_transcripts: "candidate sessions for this repo, ranked. Parents only; a subagent is never a session.",
-  get_spine: "a session's whole conversation in one call, each item indexed into the full transcript.",
+  get_spine: "a session's whole conversation, paged. Follow `next_cursor` to the end; each item is indexed into the full transcript.",
   read_transcript: "a window of the full transcript around an index, for the tool output behind a claim.",
   compute_diff:
     "the run handle, the numbered hunk index and the SHAs. Opens the run. Returns no diff text.",
   read_diff: "the diff itself, paged by hunk. Follow `next_cursor` to the end, or ask for hunks/paths.",
-  record_interview_round: "your questions, the author's answers, whether they resolved.",
+  record_interview_round: "your questions. Records them and hands back a `q_id` each, which you relay to the author.",
+  answer_questions: "your answers, by the `q_id` the reviewer relayed. The only answers the document can attest.",
   submit_document: "the gate. Only the reviewer may call it.",
   set_consent: "record the user's decision about operating in this repository.",
 };
