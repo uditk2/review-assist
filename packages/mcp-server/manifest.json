@@ -66,7 +66,11 @@
     },
     {
       "name": "record_interview_round",
-      "description": "Record one reviewer interview round (server-attests the interview)."
+      "description": "Record the reviewer's questions; each comes back with a q_id to relay to the author."
+    },
+    {
+      "name": "answer_questions",
+      "description": "The author's own answers, by q_id — the half of the interview the server can attest."
     },
     {
       "name": "submit_document",
