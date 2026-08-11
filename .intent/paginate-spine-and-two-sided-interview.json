@@ -1,0 +1,778 @@
+{
+  "schema_version": "0.1",
+  "meta": {
+    "id": "intent-998a7bc-paginate-spine-and-two-sided-interview",
+    "repo": "uditk2/review-assist",
+    "commit_range": {
+      "base_sha": "cd316f0fdfea904344d4f60d224e5469b93e5e7d",
+      "head_sha": "998a7bcfdd324e092c3735c0c12e264bc1580052"
+    },
+    "session": {
+      "agent": "claude-code",
+      "model": "not recorded in transcript",
+      "session_ids": [
+        "a838985f-21d7-44ec-97e6-89588d2e4c78"
+      ]
+    },
+    "generated_by": {
+      "pipeline": "review-assist",
+      "version": "0.3.1"
+    },
+    "generated_at": "2026-08-11T04:06:09Z",
+    "interview": {
+      "rounds": 29,
+      "questions_asked": 29,
+      "unresolved": 7,
+      "author_attested": 29,
+      "unanswered": 0
+    }
+  },
+  "problem": {
+    "statement": "`get_spine` bounded its response by deleting every assistant turn once the spine passed 600 KB, so the largest sessions returned the least useful record; and the interview was written entirely by the reviewer, so `meta.interview` recorded one role's account of both halves and could not distinguish an interview that happened from one a single agent invented.",
+    "origin": "emerged_during_session",
+    "evolution": [
+      {
+        "at": "mid-session, once paging was working",
+        "formulation": "the user proposed letting the author decide what is relevant rather than draining every page; this was pushed back on — the author must still drain `next_cursor` to the end, and selective paging would reintroduce exactly the failure the spine was built to remove"
+      },
+      {
+        "at": "after the commit was made",
+        "formulation": "the commit was found to be un-submittable against its own schema; the fix was written but deliberately left uncommitted so HEAD and the run_id would not move and the interview would not be discarded, leaving the final commit shape undecided"
+      }
+    ],
+    "user_asks": [
+      "let the author decide what is relevant",
+      "no, and it wouldn't help even where it's supported"
+    ],
+    "out_of_scope": [
+      "Selective spine reading — ruled out: the author must still drain `next_cursor` to the end, and selective paging would reintroduce exactly the failure the spine was built to remove.",
+      "An MCP rendezvous to carry questions between the two roles — rejected by the user: \"no, and it wouldn't help even where it's supported\".",
+      "`get_interview(run_id)` for the reviewer — named and deferred. Its absence is the relay gap that forced a 33 KB hand-paste of answers in this very session.",
+      "The `list_transcripts` discovery bug — deferred: this session is invisible to discovery for this repo, and only Codex sessions come back.",
+      "The `sweepStaleRoleDefinitions` bug — deferred and unrelated. `keep` is built from `bundle.install_dir`, which is undefined for the generic environment, so every path under `$HOME` becomes a sweep target. Found by accident when a generic-client probe deleted the installed role definitions. It predates this change and is present in published 0.3.1. The user was asked whether to fix it in the same pass and never answered.",
+      "A cosmetic destructure edit the user declined.",
+      "The schema fix that makes this HEAD submittable — written and deliberately not committed."
+    ]
+  },
+  "assumptions": [
+    {
+      "id": "A1",
+      "assumption": "Draining `next_cursor` to the end reassembles the spine byte for byte, at any page size.",
+      "impact_if_wrong": "The author role silently reads a corrupted or partial conversation and every downstream field is sourced from it — the same class of loss the degrade caused, but invisible.",
+      "how_to_verify": "`npm test -w packages/mcp-server` — the `pageSpine` suite drains at 200/2000/20000 bytes and compares the rejoined items to the input.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A2",
+      "assumption": "Rebuilding the entire spine on every page is cheap enough that an N-page walk is not N expensive re-parses.",
+      "impact_if_wrong": "A multi-megabyte session becomes quadratic to read; the fix that removed a size cliff introduces a slower one.",
+      "how_to_verify": "Time `buildSpine` alone on the largest transcript. No isolated timing was ever taken: the largest session paged end to end is this one — 4 pages, 178 items, ~2.06 MB raw and ~68.6 KB of spine, about 17 KB a page — and the only nearby wall clock is the whole author leg (156 s, 10 tool calls, 55.2k tokens), dominated by model time rather than `buildSpine`.",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A3",
+      "assumption": "The 20 KB default page budget bounds the response the client actually receives.",
+      "impact_if_wrong": "A page overruns the client's cap and spills to a file, which is the precise failure paging exists to remove.",
+      "how_to_verify": "`pageSpine` charges only `JSON.stringify(item).length + PER_ITEM_OVERHEAD` per item against `budget`; measure the serialised response including the spine header, `note` and `next` string, none of which are counted.",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A4",
+      "assumption": "The author role's client will actually follow the cursor to exhaustion.",
+      "impact_if_wrong": "Truncation returns, but silently and without a marker — a page that ends looks exactly like a session that ended, so the last answer of a session (usually the one saying how the plan ended) is the first thing lost.",
+      "how_to_verify": "Nothing in the server enforces draining; it is prompt instruction in author.md, guide.ts and the tool description only.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A5",
+      "assumption": "`author_attested` means a distinct author context wrote the answer, because the tool allowlist is enforced per role via `REVIEW_ASSIST_ROLE`.",
+      "impact_if_wrong": "A single agent calling both `record_interview_round` and `answer_questions` produces `author_attested > 0` with no interview behind it, and the figure the document leans on is worthless.",
+      "how_to_verify": "Check that the client honours the generated allowlist — for Claude Code the subagent `tools:` field — and that the server sees a different `REVIEW_ASSIST_ROLE` for each leg.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A6",
+      "assumption": "The two-batch interview cap is prompt convention only.",
+      "impact_if_wrong": "Nothing; but a reader who expects the server to enforce it will over-trust the round count. Recorded because the rewrite of author.md, reviewer.md and guide.ts is the entire mechanism.",
+      "how_to_verify": "`record_interview_round` is a logging call: it counts questions, never calls, and has no notion of a batch.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A7",
+      "assumption": "Widening `meta.interview` with `author_attested` and `unanswered` is purely additive and cannot affect published 0.3.1, which never emits those fields.",
+      "impact_if_wrong": "An installed 0.3.1 fails validation against the widened schema, or a widened server writes documents an older validator rejects.",
+      "how_to_verify": "Validate a 0.3.1-generated document against both schema versions. The author marks this as inference, not transcript — it was never discussed in the session.",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A8",
+      "assumption": "`packages/validator/src/render.ts` is the only place a tour stop's `what` is rendered.",
+      "impact_if_wrong": "Another consumer still flattens the newlines, so the bulleted `what` the reviewer prompt now mandates renders as a run-on paragraph wherever that consumer is used.",
+      "how_to_verify": "Grep the repo for `stop.what` / `.what`. The only evidence held is a grep scoped to render.ts alone, which cannot establish exclusivity; nobody searched repo-wide.",
+      "confidence": "unverified"
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Does the page budget bound the whole `get_spine` response, or only the items array?",
+      "context": "`pageSpine` charges `JSON.stringify(item).length + PER_ITEM_OVERHEAD` per item against `budget`; nothing counts the spine header, the `note` or the `next` string. The transcript never shows what `smoke.mjs` measured to produce `largest page=16705B`, so whether that figure is the whole response or only the items is unverified.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q2",
+      "question": "Is `PER_ITEM_OVERHEAD` double-charged in `pageSpine`'s unsliceable branch?",
+      "context": "The session's final command was auditing exactly this suspected flaw in the same arithmetic and reached no conclusion before the session ended.",
+      "raised_by": "author_agent"
+    },
+    {
+      "id": "Q3",
+      "question": "What consumes `manifest.json` besides the pre-commit release consistency check?",
+      "context": "The hook's verbatim failure is on record: `release consistency check failed: - tools registered but missing from manifest: answer_questions`. Nothing else was discussed — role definitions install via `roles.ts`/`ROLE_TOOLS` with no manifest involvement mentioned — so the only sourceable consequence of omitting an entry is that the commit is refused.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q4",
+      "question": "Is `render.ts` the only renderer of a tour stop's `what`, and should `trials[].what` get the same treatment?",
+      "context": "No guided viewer is mentioned anywhere in the session; the only stated purpose of the change is the PR body. The single piece of renderer evidence is a grep scoped to render.ts. That same grep output shows `trials[].what` still going through `escape` at line 91, which was never discussed.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q5",
+      "question": "Should the schema fix that makes this HEAD submittable be folded into 998a7bc, or committed as an amend?",
+      "context": "The user was asked and never answered. Every submit against this HEAD fails with two schema errors; the fix exists in the working tree and was deliberately left uncommitted because committing moves HEAD, changes the run_id, and discards the interview.",
+      "raised_by": "user"
+    },
+    {
+      "id": "Q6",
+      "question": "Should the `sweepStaleRoleDefinitions` bug be fixed in this pass?",
+      "context": "`keep` is built from `bundle.install_dir`, undefined for the generic environment, so every path under `$HOME` becomes a sweep target and a generic-client probe deleted the installed role definitions. It predates this change and ships in published 0.3.1. The user was asked and never answered.",
+      "raised_by": "user"
+    }
+  ],
+  "approach": {
+    "requirements": [
+      {
+        "text": "Nothing may be dropped to make a page fit: draining the cursor must yield the spine byte for byte.",
+        "source": "adopted design; pinned by the `pageSpine` reassembly test"
+      },
+      {
+        "text": "The pager must never return an empty page and must always make forward progress, including for a single turn larger than a whole page.",
+        "source": "pinned by the drain helper and the oversized-turn test"
+      },
+      {
+        "text": "A reviewer re-posting its batch must not erase an answer the author already gave.",
+        "source": "the retry-is-free instruction in the reviewer prompt; pinned by a test"
+      },
+      {
+        "text": "The author must be able to write its own answers and still be unable to submit.",
+        "source": "the role split; enforced by ROLE_TOOLS"
+      },
+      {
+        "text": "Every registered tool must appear in manifest.json.",
+        "source": "husky pre-commit release consistency check, which refused the commit until it did"
+      }
+    ],
+    "trials": [
+      {
+        "what": "The `user_turns_only` degrade: past a 600 KB spine, delete every assistant turn and keep user turns plus events.",
+        "outcome": "Bounded the response, but at the cost of the material the author role exists to recover — roughly two thirds of spine prose is the agent's, and 17 of 23 trials across seven real documents came from its side. Only 1 session in 41 measured (20.6 MB raw) ever crossed the ceiling.",
+        "why_abandoned": "The cost fell entirely on the rare large session and took the best material with it. Replaced by paging, which makes a large session cost more calls rather than less material."
+      },
+      {
+        "what": "Selective spine reading — let the author decide which pages are relevant rather than draining all of them.",
+        "outcome": "Proposed by the user and pushed back on in the same exchange.",
+        "why_abandoned": "The author must still drain `next_cursor` to the end; selective paging would reintroduce exactly the failure the spine was built to remove."
+      },
+      {
+        "what": "An MCP rendezvous, so the server itself could carry questions from the reviewer to the author instead of relaying them as text.",
+        "outcome": "Rejected by the user: \"no, and it wouldn't help even where it's supported\".",
+        "why_abandoned": "Not broadly supported, and would not have closed the gap on the clients that do support it. The relay stays out-of-band text; only the ids are shared state."
+      }
+    ],
+    "adopted": {
+      "summary": "Bound the spine response by paging on item boundaries — slicing by character only a turn too large to fit a page alone — instead of deleting assistant prose; and split the interview into two writes, so the reviewer records questions that come back with `q_id`s and the author writes its own answers against those ids, with `author_attested` and `unanswered` counted separately in `meta.interview`.",
+      "rationale": "Paging reuses `read_diff`'s cursor contract rather than inventing a second one, so both walks are drained the same way and the failure mode is uniform: stop early and you lose material, with no other way to lose any. That is a strictly better trade than the degrade it replaces, which was silent, hit only the sessions that most needed reading, and deleted the side of the conversation where most of the recoverable reasoning lives. For the interview, the defect was epistemic rather than functional: every field of `meta.interview` came from one role's account of both halves, so a reviewer that wrote both sides produced a summary indistinguishable from a real interview. Making the author's own tool call the only thing that increments `author_attested` gives a reader one figure the server actually witnessed, while leaving reviewer transcription allowed and visibly marked. A gap worth naming: the two-batch cap this change writes into three prompts is convention only — nothing in the server counts batches — and the session never weighed a server-side cap, so no reasoning about rejecting one is recorded here."
+    }
+  },
+  "tour": [
+    {
+      "id": "T1",
+      "title": "Paging replaces the degrade that deleted assistant prose",
+      "role": "core",
+      "what": "- Removes the `user_turns_only` degrade: `buildSpine` no longer takes `SpineOptions`/`maxBytes` and never filters items, so the spine always carries both sides of the conversation.\n- Adds `pageSpine`, cutting on item boundaries against a 20 KB default (`DEFAULT_SPINE_PAGE_BYTES`) and returning `returned`, `remaining`, `total` and `next_cursor`.\n- Slices a single turn too large to fit a page alone by character, labelling it with `chars` and `text_chars` so a partial turn is distinguishable from a whole one.\n- Adds `parseSpineCursor`, which throws on a malformed cursor or one past the end rather than silently restarting at item 0.\n- Rewrites the spine `note` to say the conversation is served in pages, dropping the \"exceeded the budget\" wording.",
+      "why": "The old ceiling deleted the most valuable part of the record — about two thirds of spine prose is the agent's, and 17 of 23 trials across seven real documents came from its side — while only 1 session in 41 measured ever crossed it, so the loss fell exactly where the reading mattered most.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/spine.ts",
+          "hunk": {
+            "old_start": 31,
+            "old_lines": 6,
+            "new_start": 31,
+            "new_lines": 12
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/spine.ts",
+          "hunk": {
+            "old_start": 47,
+            "old_lines": 6,
+            "new_start": 53,
+            "new_lines": 12
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/spine.ts",
+          "hunk": {
+            "old_start": 77,
+            "old_lines": 21,
+            "new_start": 89,
+            "new_lines": 9
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/spine.ts",
+          "hunk": {
+            "old_start": 164,
+            "old_lines": 8,
+            "new_start": 164,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/spine.ts",
+          "hunk": {
+            "old_start": 195,
+            "old_lines": 29,
+            "new_start": 194,
+            "new_lines": 154
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "`pageSpine` charges only per-item cost against `budget`; the spine header, `note` and `next` string are outside the count, so the budget may not bound the response the client receives."
+    },
+    {
+      "id": "T2",
+      "title": "get_spine becomes a cursor walk",
+      "role": "core",
+      "what": "- Adds an optional `cursor` to `get_spine` and lowers the `max_bytes` floor from 50000 to 2000.\n- Returns one page merged with the spine header, plus a `next` line that either hands back the cursor or states the session is exhausted.\n- Drops the `max_bytes` \"assistant prose is dropped\" description, since no budget now discards anything.",
+      "why": "The tool description is the only instruction most callers read, so the drain-to-the-end contract has to live there and not just in the role prompts; `next` is worded as a sentence because a bare cursor field was easy to stop reading at.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 48,
+            "old_lines": 13,
+            "new_start": 48,
+            "new_lines": 15
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 339,
+            "old_lines": 29,
+            "new_start": 341,
+            "new_lines": 43
+          }
+        }
+      ],
+      "provenance": "inferred_from_code",
+      "attention": "`buildSpine(path)` runs in full on every page and one page is served from it, so an N-page walk re-parses the transcript N times; no isolated timing was taken."
+    },
+    {
+      "id": "T3",
+      "title": "Tests pinning byte-exact reassembly",
+      "role": "supporting",
+      "what": "- Replaces the degrade test with one that drains the cursor at 2000 bytes and asserts assistant turns survive and the pages rejoin to the whole spine.\n- Adds a `pageSpine` suite: item-boundary cuts, slicing an oversized turn instead of deadlocking, exact reassembly at 200/2000/20000-byte budgets, and rejection of malformed or out-of-range cursors.\n- Asserts no page is ever empty and the cursor converges within 5000 calls.",
+      "why": "Reassembly is the single property that makes paging a safe replacement for the degrade — if a drain does not equal the input, the loss is silent and indistinguishable from a short session.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/test/spine.test.ts",
+          "hunk": {
+            "old_start": 8,
+            "old_lines": 7,
+            "new_start": 8,
+            "new_lines": 14
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/spine.test.ts",
+          "hunk": {
+            "old_start": 97,
+            "old_lines": 12,
+            "new_start": 104,
+            "new_lines": 20
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/spine.test.ts",
+          "hunk": {
+            "old_start": 135,
+            "old_lines": 3,
+            "new_start": 150,
+            "new_lines": 79
+          }
+        }
+      ],
+      "provenance": "inferred_from_code"
+    },
+    {
+      "id": "T4",
+      "title": "Run storage learns which role answered",
+      "role": "core",
+      "what": "- Gives every `InterviewRound` a `q_id` (a hash of the normalised question) and an optional `answered_by` of `author` or `reviewer`.\n- Makes `answer` optional in `recordRounds`, so a question is recordable before anyone has answered it.\n- Preserves a prior answer and its `answered_by` when the same question is re-recorded, so a reviewer re-posting its batch cannot blank the author's attestation.\n- Adds `recordAnswers`, which attaches answers by `q_id`, always marks them `author`, overwrites a reviewer transcription, and returns unknown ids rather than dropping them.\n- Adds `author_attested` and `unanswered` to `InterviewSummary`.",
+      "why": "Until now the server only ever heard the reviewer, so a `meta.interview` block written by one agent playing both roles was indistinguishable from a real interview; `author_attested` is the only count the server itself witnessed.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 46,
+            "old_lines": 9,
+            "new_start": 46,
+            "new_lines": 21
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 74,
+            "old_lines": 6,
+            "new_start": 86,
+            "new_lines": 10
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 146,
+            "old_lines": 22,
+            "new_start": 162,
+            "new_lines": 33
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 169,
+            "old_lines": 6,
+            "new_start": 196,
+            "new_lines": 38
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 176,
+            "old_lines": 6,
+            "new_start": 235,
+            "new_lines": 8
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "`resolved` defaults to `answer.length > 0` in `recordRounds` but to `true` in `recordAnswers` — check the two defaults agree with how `unresolved` is read."
+    },
+    {
+      "id": "T5",
+      "title": "answer_questions, and q_ids on the way out",
+      "role": "core",
+      "what": "- `record_interview_round` now accepts a question with no answer, and returns each `q_id` with its `answered_by` plus a `relay_these` instruction.\n- A reviewer-supplied `answer` becomes optional and is recorded as reviewer-sourced rather than attested.\n- Adds `answer_questions`: a batch of `{q_id, answer, resolved}` against a run, naming unknown ids instead of discarding the answers.\n- Drops the old single-round form's requirement that a question arrive with its answer.",
+      "why": "No MCP tool can push a question from one role to another, so the questions travel as text and the ids are the only shared state; giving each question an id is what lets the author's own words reach the run instead of the reviewer's account of them.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 391,
+            "old_lines": 11,
+            "new_start": 407,
+            "new_lines": 13
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 404,
+            "old_lines": 12,
+            "new_start": 422,
+            "new_lines": 15
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 418,
+            "old_lines": 16,
+            "new_start": 439,
+            "new_lines": 86
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "There is still no reviewer-side read of the interview, so answers come back manually — in this session that meant a 33 KB hand-paste."
+    },
+    {
+      "id": "T6",
+      "title": "The author's allowlist gains a write, and only that write",
+      "role": "core",
+      "what": "- Adds `answer_questions` to the author role's `ROLE_TOOLS`, leaving `submit_document` on the reviewer's list alone.\n- Updates the `TOOL_BLURB` entries for `get_spine` and `record_interview_round` and adds one for `answer_questions`, which is the text rendered into the generated role definitions.",
+      "why": "The allowlist is what makes the role split enforceable rather than advisory — for Claude Code it becomes the subagent's `tools:` field — so a new author-side write has to be granted here or the role simply cannot call it.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 276,
+            "old_lines": 6,
+            "new_start": 276,
+            "new_lines": 10
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 283,
+            "old_lines": 6,
+            "new_start": 287,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 310,
+            "old_lines": 12,
+            "new_start": 315,
+            "new_lines": 13
+          }
+        }
+      ],
+      "provenance": "inferred_from_code",
+      "attention": "The author can now write to the run; confirm nothing newly on that list can move HEAD, edit the repo, or submit."
+    },
+    {
+      "id": "T7",
+      "title": "Tests pinning what counts as attested",
+      "role": "supporting",
+      "what": "- Adds a `recordAnswers` suite: an author answer attests, a reviewer transcription does not, the author's answer wins over a transcription, a reviewer retry does not erase it, an unknown `q_id` is named, and a recorded non-answer is unresolved but still attested.\n- Adds a case for a question recorded with no answer at all, and extends the summary assertion with `author_attested` and `unanswered`.",
+      "why": "Attestation is a claim about provenance rather than behaviour, so it can only be defended by test — nothing about a stored answer looks different from an invented one at read time.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 124,
+            "old_lines": 6,
+            "new_start": 124,
+            "new_lines": 8
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 138,
+            "old_lines": 6,
+            "new_start": 140,
+            "new_lines": 90
+          }
+        }
+      ],
+      "provenance": "inferred_from_code"
+    },
+    {
+      "id": "T8",
+      "title": "Manifest entry for the new tool",
+      "role": "supporting",
+      "what": "- Adds `answer_questions` to `manifest.json` and rewords the `record_interview_round` entry to match its new behaviour.",
+      "why": "A husky pre-commit release consistency check compares registered tools against the manifest and refuses the commit on divergence; it fired here with `release consistency check failed: - tools registered but missing from manifest: answer_questions`. Whether anything else reads the manifest was never established, so a refused commit is the only consequence on record.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/manifest.json",
+          "hunk": {
+            "old_start": 66,
+            "old_lines": 7,
+            "new_start": 66,
+            "new_lines": 11
+          }
+        }
+      ],
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T9",
+      "title": "The author role definition: drain the spine, record your own answers",
+      "role": "core",
+      "what": "- Replaces \"Read the session, once\" with a cursor-draining instruction and the warning that a page which ends looks exactly like a session that ended.\n- Deletes the `user_turns_only` guidance, which now describes a state that cannot occur.\n- Requires the author to record answers itself with `answer_questions`, and states plainly that a reviewer transcription is marked reviewer-sourced and does not attest.\n- Sets the expectation of exactly two batches, and that the second is not a repeat but a field that would not write.\n- Adds a length target of roughly a short paragraph per answer.\n- Names `answer_questions` as the author's only write.",
+      "why": "The installed role definition is the entire behavioural surface of the author leg — the server cannot make it drain a cursor or record an answer, so anything not written here does not happen.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/agents/_roles/author.md",
+          "hunk": {
+            "old_start": 19,
+            "old_lines": 10,
+            "new_start": 19,
+            "new_lines": 20
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/author.md",
+          "hunk": {
+            "old_start": 35,
+            "old_lines": 9,
+            "new_start": 45,
+            "new_lines": 6
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/author.md",
+          "hunk": {
+            "old_start": 64,
+            "old_lines": 12,
+            "new_start": 71,
+            "new_lines": 23
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/author.md",
+          "hunk": {
+            "old_start": 82,
+            "old_lines": 7,
+            "new_start": 100,
+            "new_lines": 8
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "Whether \"expect two batches, and only two\" is honourable at all: nothing in the server counts batches, so this is convention held by prompt alone."
+    },
+    {
+      "id": "T10",
+      "title": "The baseline question set drops from six to five",
+      "role": "supporting",
+      "what": "- Removes the separate \"ask for the plan first\" exchange and folds it into the same batch as item 0, used only if the plan never arrives.\n- Deletes the origin/evolution question outright.\n- Restates the unresolved case as \"record it and move on — it is not a follow-up\", rather than carrying it as a further round.",
+      "why": "The plan narrative the author volunteers already contains origin and evolution, so re-asking them as a yes/no invites a guess where a sourced account already exists.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/agents/_roles/questions.md",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 32,
+            "new_start": 1,
+            "new_lines": 31
+          }
+        }
+      ],
+      "provenance": "inferred_from_code"
+    },
+    {
+      "id": "T11",
+      "title": "The reviewer role definition: one batch, a full draft, one follow-up",
+      "role": "core",
+      "what": "- Replaces \"baseline set plus up to two more calls\" with a fixed sequence: ask everything at once, draft the whole document, follow up once.\n- Adds the instruction to record questions before relaying them, to include each `q_id`, and never to record an answer not received.\n- Rewrites the tour guidance so a stop's `what` is a bulleted list of behaviour changes, and restates the worked example in that form.\n- Compresses the run-opening and field-sourcing sections into bullets.",
+      "why": "Drafting is what exposes a thin answer, so the follow-up has to come after the draft rather than after each answer — the previous three-call budget let a reviewer spend rounds before it knew what was missing.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 5,
+            "old_lines": 132,
+            "new_start": 5,
+            "new_lines": 125
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "The worked example now demonstrates the bulleted `what` form that the renderer in T14 has to detect — check the two agree on what counts as a bullet."
+    },
+    {
+      "id": "T12",
+      "title": "The generation guide carries the same protocol",
+      "role": "supporting",
+      "what": "- Rewrites the author step to describe `get_spine` as paged and to require reading every page before answering.\n- Replaces \"cap the interview at a few rounds\" with the explicit two-batch sequence, and notes that `author_attested: 0` reveals a reviewer that wrote both halves.",
+      "why": "`get_generation_guide` is what a client driving the server directly reads instead of the installed role definitions, so a protocol change that lands only in the role files leaves half the callers on the old contract.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 28,
+            "old_lines": 8,
+            "new_start": 28,
+            "new_lines": 11
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 37,
+            "old_lines": 17,
+            "new_start": 40,
+            "new_lines": 31
+          }
+        }
+      ],
+      "provenance": "inferred_from_code"
+    },
+    {
+      "id": "T13",
+      "title": "README tool tables catch up",
+      "role": "supporting",
+      "what": "- Replaces the `search_transcript` row with `get_spine` in the author table and re-describes `read_transcript` as a window around a spine index.\n- Adds an `answer_questions` row and rewrites the `record_interview_round` row to describe recording questions rather than question-and-answer pairs.",
+      "why": "The tables are the published per-role tool list, and a reader comparing them against the allowlist in `roles.ts` would otherwise see the author missing its only write.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/README.md",
+          "hunk": {
+            "old_start": 88,
+            "old_lines": 10,
+            "new_start": 88,
+            "new_lines": 11
+          }
+        },
+        {
+          "path": "packages/mcp-server/README.md",
+          "hunk": {
+            "old_start": 101,
+            "old_lines": 7,
+            "new_start": 102,
+            "new_lines": 7
+          }
+        }
+      ],
+      "provenance": "inferred_from_code"
+    },
+    {
+      "id": "T14",
+      "title": "A bulleted `what` survives rendering",
+      "role": "core",
+      "what": "- Routes a tour stop's `what` through a new `whatMarkdown` instead of `escape`, so its newlines are no longer collapsed.\n- Renders a multi-line `what` containing at least one bullet as a nested list under the **What:** label, indenting continuation lines by four spaces.\n- Leaves a single-line `what`, or a multi-line one with no bullets, rendering inline as before.",
+      "why": "`escape` flattens every newline to a space, so the bulleted `what` the rewritten reviewer prompt now demands would arrive in the PR body as one run-on paragraph — precisely the prose form the field was rewritten to stop producing. The PR body is the only stated consumer.",
+      "anchors": [
+        {
+          "path": "packages/validator/src/render.ts",
+          "hunk": {
+            "old_start": 105,
+            "old_lines": 7,
+            "new_start": 105,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/validator/src/render.ts",
+          "hunk": {
+            "old_start": 213,
+            "old_lines": 3,
+            "new_start": 213,
+            "new_lines": 27
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "`trials[].what` still goes through `escape` at line 91 and was never considered for the same treatment."
+    }
+  ],
+  "verification": {
+    "performed": [
+      {
+        "kind": "test",
+        "description": "Full suite for the workspace.",
+        "result": "passed",
+        "evidence": "124 tests passing at this HEAD."
+      },
+      {
+        "kind": "manual",
+        "description": "A smoke script driving the installed server over real MCP: paged a session to exhaustion, exercised the q_id relay and answer path.",
+        "result": "passed",
+        "evidence": "Ten PASS lines; one session drained in 2 pages / 99 items, largest page reported as 16705 B. The script is a throwaway written to a per-session temp path (`/private/tmp/claude-501/.../scratchpad/smoke.mjs`) — it is outside the working tree, is not among the 36 hunks, was never committed, and is NOT re-runnable by a reader. It also polluted this run with two fake interview rounds, which had to be deleted by hand before the real distillation."
+      },
+      {
+        "kind": "manual",
+        "description": "This session's own spine paged end to end by the author role.",
+        "result": "passed",
+        "evidence": "4 pages, 178 items, ~2.06 MB raw and ~68.6 KB of spine — about 17 KB per page."
+      },
+      {
+        "kind": "lint",
+        "description": "Husky pre-commit release consistency check comparing registered tools against manifest.json.",
+        "result": "failed then passed",
+        "evidence": "`release consistency check failed: - tools registered but missing from manifest: answer_questions`; passed once the manifest entry was added."
+      }
+    ],
+    "added_tests": [
+      {
+        "covers": "Paging reassembles the spine byte for byte at any page size, never returns an empty page, slices rather than deadlocks on an oversized turn, and rejects a malformed cursor. Assistant prose survives a full drain.",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/spine.test.ts",
+            "hunk": {
+              "old_start": 8,
+              "old_lines": 7,
+              "new_start": 8,
+              "new_lines": 14
+            }
+          },
+          {
+            "path": "packages/mcp-server/test/spine.test.ts",
+            "hunk": {
+              "old_start": 97,
+              "old_lines": 12,
+              "new_start": 104,
+              "new_lines": 20
+            }
+          },
+          {
+            "path": "packages/mcp-server/test/spine.test.ts",
+            "hunk": {
+              "old_start": 135,
+              "old_lines": 3,
+              "new_start": 150,
+              "new_lines": 79
+            }
+          }
+        ]
+      },
+      {
+        "covers": "Only an author-written answer sets `answered_by: \"author\"` and increments `author_attested`; a reviewer transcription does not, an author answer overwrites one, a reviewer retry cannot erase one, an unknown q_id is named, and a recorded non-answer is unresolved but attested.",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/runs.test.ts",
+            "hunk": {
+              "old_start": 124,
+              "old_lines": 6,
+              "new_start": 124,
+              "new_lines": 8
+            }
+          },
+          {
+            "path": "packages/mcp-server/test/runs.test.ts",
+            "hunk": {
+              "old_start": 138,
+              "old_lines": 6,
+              "new_start": 140,
+              "new_lines": 90
+            }
+          }
+        ]
+      }
+    ],
+    "not_verified": [
+      "The model that made this change is unsourced: no turn in the transcript names one. `meta.session.model` is required by the schema, so it carries the sentinel `not recorded in transcript` rather than a guess.",
+      "Session start and end times are not recorded. The author's tools surface no per-entry timestamps; the only clock values spoken are mid-session marks (author leg launched 14:30:17, reviewer 14:30:25) with no date, so `started_at`/`ended_at` are omitted.",
+      "The 20.6 MB session — the one that originally justified the deleted degrade — was never paged. It appears only as historical justification (\"1 session out of 41 needed it\"). The largest session actually paged end to end is this one, at ~2.06 MB.",
+      "No isolated timing of `buildSpine` or `pageSpine` was taken, so the per-page re-parse has a page count but no wall-clock price. The nearest measurement is the whole author leg — 156 s, 10 tool calls, 55.2k tokens — dominated by model time.",
+      "Whether the page budget bounds the whole response or only the items array was never measured; what `smoke.mjs` measured to produce `largest page=16705B` is not shown.",
+      "A suspected double-charge of `PER_ITEM_OVERHEAD` in `pageSpine`'s unsliceable branch was still under audit when the session ended, with no conclusion reached.",
+      "The smoke test is not reproducible: it lives outside the working tree at a per-session temp path and was not committed. The only committed test artifact from the session besides the two suites above is the schema regression test in `packages/validator/test/validator.test.ts`.",
+      "No repo-wide search was made for other renderers of a tour stop's `what`; the only grep was scoped to `render.ts`. `trials[].what` is known to still go through `escape` and was left unchanged.",
+      "This HEAD (998a7bc) cannot itself submit an Intent Document: every submit against it fails with two schema errors, because the widened `meta.interview` fields are not in HEAD's schema. This was discovered after the commit and survived all 124 tests, since the failure only appears when the server stamps the summary into a real document and no test does that. The fix exists in the working tree and was deliberately left uncommitted so HEAD, the run_id and the interview would not be discarded.",
+      "Published 0.3.1 was not re-tested against the widened summary. It predates all of this — 12 tools, no `answer_questions`, no `cursor` — and the claim that the widening is purely additive and so cannot affect a build that never emits those fields is the author's inference, not something the session established.",
+      "The `sweepStaleRoleDefinitions` bug is not fixed here and remains in published 0.3.1.",
+      "The final commit shape is undecided: the user was asked whether to fold the schema fix in or amend, and never answered."
+    ]
+  },
+  "diagrams": [
+    {
+      "title": "Who writes which half of the interview",
+      "mermaid": "sequenceDiagram\n    participant R as Reviewer role\n    participant S as Review Assist server\n    participant A as Author role\n    R->>S: record_interview_round with questions only\n    S-->>R: a q_id per question\n    R-->>A: relay questions with their q_ids (plain text, no tool)\n    A->>S: answer_questions by q_id\n    S-->>A: summary including author_attested\n    R->>S: submit_document\n    S-->>R: meta.interview stamped from the run",
+      "caption": "The dashed relay is the only hop the server never witnesses. Answers arriving via answer_questions are the ones counted as author_attested; an answer the reviewer transcribes into record_interview_round is stored and marked reviewer-sourced instead."
+    }
+  ]
+}
