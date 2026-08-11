@@ -53,7 +53,14 @@ export interface Meta {
   };
   generated_by: { pipeline: string; version: string };
   generated_at: string;
-  interview?: { rounds?: number; questions_asked?: number; unresolved?: number };
+  interview?: {
+    rounds?: number;
+    questions_asked?: number;
+    unresolved?: number;
+    /** Answers the author role wrote itself, via `answer_questions`. */
+    author_attested?: number;
+    unanswered?: number;
+  };
 }
 
 export interface Problem {

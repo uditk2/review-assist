@@ -231,3 +231,27 @@ describe("render", () => {
     expect(md).toContain("Not verified");
   });
 });
+
+/**
+ * The server stamps meta.interview from summarizeRun, and the schema is
+ * additionalProperties:false — so the two must agree field for field. They did not: adding
+ * author_attested and unanswered to the summary made EVERY submit fail validation, on a
+ * document that was otherwise correct. Caught by a reviewer reading the diff cold, which is
+ * later than it should have been. This is the check that makes the coupling explicit.
+ */
+describe("meta.interview and the run summary agree", () => {
+  it("accepts every field the server stamps", () => {
+    const doc = JSON.parse(
+      readFileSync(".intent/fix-deterministic-distillation.json", "utf8")
+    );
+    doc.meta.interview = {
+      rounds: 20,
+      questions_asked: 20,
+      unresolved: 0,
+      author_attested: 20,
+      unanswered: 0,
+    };
+    const report = validate(doc, { diff: "", headSha: doc.meta.commit_range.head_sha });
+    expect(report.findings.filter((f) => JSON.stringify(f).includes("interview"))).toEqual([]);
+  });
+});
