@@ -44,6 +44,15 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // www redirects rather than serving: the session cookie is host-only (no Domain=),
+    // so a co-equal www origin would hand signed-in users a second, separate session
+    // and loop them through OAuth. 301 before anything else runs, preserving path and
+    // query. The fragment never reaches the server; browsers carry it across the hop.
+    if (url.hostname === "www.reviewassist.dev") {
+      url.hostname = "reviewassist.dev";
+      return Response.redirect(url.toString(), 301);
+    }
+
     try {
       if (path === "/api/webhook") return handleWebhook(request, url.origin, env, ctx);
       if (path === "/api/login") return handleLogin(url, env);

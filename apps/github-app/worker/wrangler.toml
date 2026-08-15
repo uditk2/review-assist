@@ -6,7 +6,11 @@ compatibility_date = "2024-11-01"
 # record on deploy — there is no separate DNS step. This host is also the schema $id
 # origin, so /schema/0.1/intent-doc.schema.json must stay resolvable here.
 routes = [
-  { pattern = "reviewassist.dev", custom_domain = true }
+  { pattern = "reviewassist.dev", custom_domain = true },
+  # www exists only to 301 to the apex (see the redirect at the top of the fetch
+  # handler). It has to reach the Worker to be redirected, hence a route and not a
+  # bare DNS record.
+  { pattern = "www.reviewassist.dev", custom_domain = true }
 ]
 
 # Pinned, not left to the default. Every PR comment the App has ever posted links to
