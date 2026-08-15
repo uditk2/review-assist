@@ -5,7 +5,9 @@
   "license": "Apache-2.0",
   "private": true,
   "scripts": {
-    "build": "tailwindcss -i ./src/theme.css -o ./styles.css --minify",
+    "build": "npm run build:css && npm run build:schema",
+    "build:css": "tailwindcss -i ./src/theme.css -o ./styles.css --minify",
+    "build:schema": "mkdir -p schema/0.1 && cp ../../../packages/schema/src/intent-doc.schema.json schema/0.1/intent-doc.schema.json",
     "dev": "tailwindcss -i ./src/theme.css -o ./styles.css --watch"
   },
   "devDependencies": {

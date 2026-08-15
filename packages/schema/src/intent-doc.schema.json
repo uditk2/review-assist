@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://review-assist.dev/schema/0.1/intent-doc.schema.json",
+  "$id": "https://reviewassist.dev/schema/0.1/intent-doc.schema.json",
   "title": "Intent Document",
   "description": "An open format for AI change-intent, distilled from an agent coding session.",
   "type": "object",

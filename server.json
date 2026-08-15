@@ -3,7 +3,7 @@
   "name": "io.github.uditk2/review-assist-mcp",
   "description": "Turns an AI coding agent session into a reviewable Intent Document, validated against the diff.",
   "version": "1.0.0",
-  "websiteUrl": "https://github.com/uditk2/review-assist",
+  "websiteUrl": "https://reviewassist.dev",
   "repository": {
     "url": "https://github.com/uditk2/review-assist",
     "source": "github",

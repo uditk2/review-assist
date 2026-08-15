@@ -2,6 +2,19 @@ name = "review-assist-viewer"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
+# Custom domain. The zone is on Cloudflare, so wrangler creates and manages the DNS
+# record on deploy — there is no separate DNS step. This host is also the schema $id
+# origin, so /schema/0.1/intent-doc.schema.json must stay resolvable here.
+routes = [
+  { pattern = "reviewassist.dev", custom_domain = true }
+]
+
+# Pinned, not left to the default. Every PR comment the App has ever posted links to
+# the workers.dev host (see webhook.ts), so that hostname must keep serving — and the
+# docs do not state what adding a custom domain does to it. Stating it removes the
+# question. Flip to false only once no live link points at workers.dev.
+workers_dev = true
+
 # The static viewer SPA is served directly from the edge; the Worker only handles /api/*.
 # Private-repo content flows browser <-> GitHub through /api/document and is never cached.
 [assets]

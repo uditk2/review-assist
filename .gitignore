@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.log
 .wrangler/
+
+# schema copied into the viewer assets at build time so the $id URL resolves
+apps/github-app/viewer/schema/
 scripts/out-*.png
 scripts/frames/
 
