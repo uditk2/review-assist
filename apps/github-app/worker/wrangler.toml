@@ -19,9 +19,17 @@ routes = [
 # question. Flip to false only once no live link points at workers.dev.
 workers_dev = true
 
-# The static viewer SPA is served directly from the edge; the Worker only handles /api/*.
-# Private-repo content flows browser <-> GitHub through /api/document and is never cached.
+# The static viewer SPA still comes out of the asset store; the Worker only handles
+# /api/*. Private-repo content flows browser <-> GitHub through /api/document and is
+# never cached.
+#
+# run_worker_first, because otherwise the asset layer answers before any Worker code
+# runs and the www redirect silently cannot fire for paths that match an asset — "/"
+# above all, which is the case that matters. Measured: without it, www/ returned 200
+# and served the site as a second origin while www/some/path correctly 301'd. The cost
+# is a Worker invocation on every asset request, which at this traffic is noise.
 [assets]
+run_worker_first = true
 directory = "../viewer"
 binding = "ASSETS"
 
