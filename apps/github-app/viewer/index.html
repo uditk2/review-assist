@@ -330,9 +330,12 @@ function renderOverview(doc){
     el("h1",{class:"mb-3"},"Overview"),
     el("blockquote",{class:"border-l-2 border-ink-300 pl-4 text-[1.05rem] leading-relaxed text-ink-800"}, p.statement)));
 
+  // The marker is free text and is often a whole sentence, so it wraps inside a gutter of
+  // its own — unbounded, it eats the row and squeezes the formulation into a narrow column.
   if (p.evolution?.length) f.append(section("How the ask evolved",
-    el("ol",{class:"space-y-1"}, ...p.evolution.map(e=>el("li",{class:"flex gap-3"},
-      el("span",{class:"id-chip shrink-0 pt-0.5"}, e.at), el("span",{}, e.formulation))))));
+    el("ol",{class:"space-y-2"}, ...p.evolution.map(e=>el("li",{class:"flex gap-3"},
+      el("span",{class:"id-chip w-36 shrink-0 break-words pt-0.5"}, e.at),
+      el("span",{class:"min-w-0 flex-1"}, e.formulation))))));
 
   if (p.out_of_scope?.length) f.append(section("Out of scope",
     el("ul",{class:"list-disc space-y-1 pl-5 text-ink-700"}, ...p.out_of_scope.map(x=>el("li",{},x)))));
