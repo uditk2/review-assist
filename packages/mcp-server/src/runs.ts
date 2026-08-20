@@ -12,13 +12,26 @@
  *
  * Two changes make that unreachable rather than unlikely.
  *
- * 1. The handle is content-addressed: sha256(repo | base_sha | head_sha). The author
- *    and the reviewer derive the SAME run id independently, from `compute_diff` alone,
- *    which matters because the two roles are deliberately forbidden from talking to
- *    each other. A reviewer resumed hours later recomputes it rather than remembering
- *    it. And because head_sha is in the hash, a branch that moved mid-session yields a
- *    different id — staleness surfaces when a round is recorded, not after the
- *    document has been written twice.
+ * 1. The handle is content-addressed: sha256(repo | base_sha). The author and the
+ *    reviewer derive the SAME run id independently, from `compute_diff` alone, which
+ *    matters because the two roles are deliberately forbidden from talking to each
+ *    other. A reviewer resumed hours later recomputes it rather than remembering it.
+ *
+ *    head_sha was in that hash and is not any more. It made the id rotate on EVERY
+ *    commit, which is not a stale run but a new one: the interview recorded against the
+ *    old id became unreachable, and — because `openRun` recreates a record for an id it
+ *    cannot find — the author's next `answer_questions` landed on a fresh, empty run
+ *    bearing the same handle and came back `unknown_q_ids`, `rounds: 0`. Nothing errored.
+ *    Committing the Intent Document is itself a commit, so the correction cycle the guide
+ *    promises ("fix the findings and resubmit") destroyed the attestation it was meant to
+ *    preserve, and left a run file behind per commit — four or five per repo, observed.
+ *
+ *    So the head is STATE on the run, not identity. `openRun` moves it forward and keeps
+ *    the prior value in `head_history`; staleness is reported as `head_changed` on the
+ *    call that observes it, which is strictly louder than an id that silently stopped
+ *    matching. The one thing that must not be lost when the head moves is the interview,
+ *    and the one thing that must not survive it is an anchor — hunk ids are reassigned by
+ *    the new diff, so the caller is told to re-anchor.
  *
  * 2. Rounds are keyed by a hash of the question, so recording is an upsert. Retrying
  *    an interview cannot inflate the count, which is what makes `meta.interview`
@@ -42,7 +55,14 @@ const RUNS_DIR = join(
   "runs"
 );
 
-/** Runs older than this are swept on open; a distillation never spans days. */
+/**
+ * Runs untouched for this long are swept on open.
+ *
+ * Measured from `updated_at`, not `created_at`. It could be creation time while the id
+ * carried the head, because a run was born and abandoned within one commit; now a single
+ * run follows a branch from its first `compute_diff` to its merge, and a branch worked on
+ * over a month is a live run, not an abandoned one.
+ */
 const MAX_RUN_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface InterviewRound {
@@ -69,9 +89,14 @@ export interface RunRecord {
   run_id: string;
   repo: string;
   base_sha: string;
+  /** The head this run is currently pointed at. Moves as the branch does. */
   head_sha: string;
+  /** Every head this run has previously been pointed at, oldest first. */
+  head_history?: string[];
   branch?: string;
   created_at: string;
+  /** Last time anything was written to this run. What the sweep measures. */
+  updated_at?: string;
   /** Keyed by question hash, so re-recording a question replaces it. */
   rounds: Record<string, InterviewRound>;
 }
@@ -80,6 +105,15 @@ export interface RunKey {
   repo: string;
   baseSha: string;
   headSha: string;
+}
+
+/** What `openRun` observed, as distinct from what it stored. */
+export interface OpenRunResult {
+  run: RunRecord;
+  /** The branch moved since this run was last opened. Anchors are stale; rounds are not. */
+  head_changed: boolean;
+  /** The head it moved from, when it moved. */
+  previous_head?: string;
 }
 
 export interface InterviewSummary {
@@ -97,11 +131,12 @@ function sha256(input: string): string {
 }
 
 /**
- * The run's identity. Derived only from what the change IS, so two agents that never
- * speak arrive at the same value.
+ * The run's identity: the repository and what this work branched FROM. Derived only from
+ * what the change is, so two agents that never speak arrive at the same value — and
+ * deliberately not from where the branch has got to, so that value survives a commit.
  */
-export function computeRunId({ repo, baseSha, headSha }: RunKey): string {
-  return sha256(`${resolve(repo)}|${baseSha}|${headSha}`).slice(0, 12);
+export function computeRunId({ repo, baseSha }: Pick<RunKey, "repo" | "baseSha">): string {
+  return sha256(`${resolve(repo)}|${baseSha}`).slice(0, 12);
 }
 
 /**
@@ -129,20 +164,41 @@ function readRun(runId: string): RunRecord | undefined {
 
 function writeRun(run: RunRecord): void {
   mkdirSync(RUNS_DIR, { recursive: true });
+  run.updated_at = new Date().toISOString();
   writeFileSync(runPath(run.run_id), JSON.stringify(run, null, 2) + "\n", "utf8");
 }
 
 /**
- * Open the run for a change, or return the one already open for it.
+ * Open the run for a change, or return the one already open for it — moved forward to
+ * the head just observed.
  *
- * Idempotent by construction: the id is a hash of the change, so calling this twice —
- * once from the author, once from the reviewer — yields one record, not two.
+ * Idempotent by construction: the id is a hash of the repo and the base, so calling this
+ * twice — once from the author, once from the reviewer — yields one record, not two.
+ *
+ * When the head has moved, the rounds are carried over UNCHANGED and the move is reported
+ * back. Those are the two halves of the same decision: an interview is about the work, and
+ * survives a commit; an anchor is about a diff, and does not. The caller is the only place
+ * that can act on the second, so it is told rather than guessed at here.
  */
-export function openRun(key: RunKey & { branch?: string }): RunRecord {
+export function openRun(key: RunKey & { branch?: string }): OpenRunResult {
   sweepStaleRuns();
   const runId = computeRunId(key);
   const existing = readRun(runId);
-  if (existing) return existing;
+
+  if (existing) {
+    const previous_head = existing.head_sha;
+    const head_changed = previous_head !== key.headSha;
+    if (head_changed) {
+      existing.head_history = [...(existing.head_history ?? []), previous_head];
+      existing.head_sha = key.headSha;
+    }
+    // A branch rename (or a detached HEAD resolving to nothing) must not blank a name the
+    // run already has — the submit writes .intent/<branch>.json from it.
+    if (key.branch) existing.branch = key.branch;
+    writeRun(existing);
+    return { run: existing, head_changed, previous_head: head_changed ? previous_head : undefined };
+  }
+
   const run: RunRecord = {
     version: 1,
     run_id: runId,
@@ -154,7 +210,7 @@ export function openRun(key: RunKey & { branch?: string }): RunRecord {
     rounds: {},
   };
   writeRun(run);
-  return run;
+  return { run, head_changed: false };
 }
 
 export function getRun(runId: string): RunRecord | undefined {
@@ -266,15 +322,20 @@ export function listOpenRuns(): RunRecord[] {
     const run = readRun(name.slice(0, -5));
     if (run) runs.push(run);
   }
-  return runs.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return runs.sort((a, b) => lastTouched(b).localeCompare(lastTouched(a)));
 }
 
-/** A distillation takes minutes; anything older is abandoned. */
+/** When this run was last written. Falls back for records predating `updated_at`. */
+function lastTouched(run: RunRecord): string {
+  return run.updated_at ?? run.created_at;
+}
+
+/** A run follows one branch; one untouched for a month is abandoned. */
 function sweepStaleRuns(): void {
   if (!existsSync(RUNS_DIR)) return;
   const cutoff = Date.now() - MAX_RUN_AGE_MS;
   for (const run of listOpenRuns()) {
-    if (Date.parse(run.created_at) < cutoff) closeRun(run.run_id);
+    if (Date.parse(lastTouched(run)) < cutoff) closeRun(run.run_id);
   }
 }
 

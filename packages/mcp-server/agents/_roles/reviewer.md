@@ -123,6 +123,12 @@ Worked example — the same stop, before and after:
 Submit with your `run_id` and `require_interview: true`. Fix the ERRORS the validator
 returns; do not argue with it. Warnings are not errors.
 
+If the branch has moved under you — a commit, or the document itself being committed —
+submit says so and the fix is cheap: the `run_id` is unchanged and your interview is still
+on it, so call `compute_diff` again and resubmit. Nothing is re-asked. The one thing that
+does not survive is your anchors: the diff is renumbered from H1, so take the hunk ids from
+that response rather than the ones you were holding.
+
 ## Hard rules
 - Never call `read_transcript`, `search_transcript` or `list_transcripts`. If you want the
   transcript, that is a question for the author.

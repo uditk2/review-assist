@@ -51,7 +51,6 @@ import {
 import { buildSpine, pageSpine } from "./spine.js";
 import { importSession, listImported } from "./transcript/export.js";
 import {
-  computeRunId,
   openRun,
   getRun,
   recordRounds,
@@ -146,7 +145,8 @@ registerTool(
       const repoDir = repo ? resolve(repo) : REPO_DIR;
       const { diff, baseSha, headSha } = await computeDiff(repoDir, base, head ?? "HEAD");
       const branch = await currentBranch(repoDir, head ?? "HEAD");
-      const run = openRun({ repo: repoDir, baseSha, headSha, branch });
+      const { run, head_changed, previous_head } = openRun({ repo: repoDir, baseSha, headSha, branch });
+      const recorded_rounds = Object.keys(run.rounds).length;
       const consent = getConsent(repoDir);
       const hunks = indexHunks(diff);
       const files = summarizeFiles(hunks);
@@ -163,6 +163,21 @@ registerTool(
         head_sha: headSha,
         branch,
         consent_state: consent,
+        // The run outlives a commit; the hunk ids in it do not. Reported first because a
+        // reviewer that misses this re-anchors nothing and ships stops pointing at the
+        // wrong code — which is exactly what a silent id rotation used to cause.
+        ...(head_changed
+          ? {
+              head_changed: true,
+              previous_head,
+              re_anchor:
+                `This run has moved from ${previous_head} to ${headSha}. Your interview survived — ` +
+                `${recorded_rounds} round(s) are still on it — but the diff was recomputed, so every ` +
+                "hunk id below has been reassigned. Discard every anchor you were holding and take " +
+                "the ids from THIS response.",
+            }
+          : {}),
+        interview: { recorded_rounds },
         stats: {
           files: files.length,
           hunks: hunks.length,
@@ -716,9 +731,12 @@ registerTool(
             error: "The branch moved after this run opened, so the document describes an older change.",
             run_head: run.head_sha,
             live_head: liveHead,
-            next: `Call compute_diff again for ${repoDir} to open the run for the new head (run_id will be ${computeRunId(
-              { repo: repoDir, baseSha: run.base_sha, headSha: liveHead }
-            )}), re-anchor against the new diff, then resubmit.`,
+            interview_preserved: summarizeRun(run),
+            next:
+              `Call compute_diff again for ${repoDir}. The run_id does NOT change — it stays ${run_id}, ` +
+              "and your recorded interview stays on it, so there is nothing to re-ask. That call moves " +
+              "the run to the new head and renumbers the hunks; re-anchor every stop against the ids it " +
+              "returns, then resubmit.",
           },
           null,
           2

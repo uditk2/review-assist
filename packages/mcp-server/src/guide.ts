@@ -109,9 +109,19 @@ already knows it. Pass \`repo\` to \`compute_diff\` itself (the absolute path of
 repository you changed) whenever the server spans more than one repo: its working
 directory is the workspace, not your repo.
 
-The id is a hash of repo + base + head, so the author and the reviewer derive the same
-handle independently without coordinating, and a role resumed later recomputes it by
-calling \`compute_diff\` again. Never invent, shorten, or carry over a \`run_id\`.
+The id is a hash of repo + base, so the author and the reviewer derive the same handle
+independently without coordinating, and a role resumed later recomputes it by calling
+\`compute_diff\` again. Never invent or shorten a \`run_id\`.
+
+The head is NOT in that hash, which is what makes a correction cycle possible. Commit the
+document, fix a finding, let the branch move — the run and the interview on it are still
+there under the same handle, so nothing has to be re-asked. Call \`compute_diff\` again and
+it moves the run to the new head, reporting \`head_changed\` with the head it moved from.
+
+What does NOT survive a moved head is your anchors. The new head means a new diff, and the
+diff is renumbered from H1, so every hunk id you were holding now means something else.
+When you see \`head_changed\`, discard them and re-anchor from the ids that response
+carries. This is the one part of a resubmit you have to redo.
 
 The document is written to \`<repo>/.intent/<branch>.json\`. The run's own state lives
 outside the repository and is never committed.
