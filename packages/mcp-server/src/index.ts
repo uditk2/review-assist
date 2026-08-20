@@ -57,7 +57,7 @@ import {
   recordAnswers,
   runRounds,
   summarizeRun,
-  closeRun,
+  markSubmitted,
   listOpenRuns,
 } from "./runs.js";
 import {
@@ -144,7 +144,10 @@ registerTool(
     try {
       const repoDir = repo ? resolve(repo) : REPO_DIR;
       const { diff, baseSha, headSha } = await computeDiff(repoDir, base, head ?? "HEAD");
-      const branch = await currentBranch(repoDir, head ?? "HEAD");
+      // From the CHECKOUT, not from `head`. The branch is part of the run's identity, and
+      // `rev-parse --abbrev-ref <sha>` yields no name — so resolving it from a caller-named
+      // SHA would give the author and the reviewer different ids for the same work.
+      const branch = await currentBranch(repoDir, "HEAD");
       const { run, head_changed, previous_head } = openRun({ repo: repoDir, baseSha, headSha, branch });
       const recorded_rounds = Object.keys(run.rounds).length;
       const consent = getConsent(repoDir);
@@ -820,6 +823,11 @@ registerTool(
       );
     }
 
+    // Captured BEFORE the write: whether a document has already been produced from this
+    // run. That is the difference between a first submit and a correction, and the run
+    // survives either way.
+    const previously_submitted_at = run.submitted_at;
+
     let written: string | null = null;
     if (write ?? true) {
       try {
@@ -830,7 +838,10 @@ registerTool(
         mkdirSync(dirname(outPath), { recursive: true });
         writeFileSync(outPath, JSON.stringify(doc, null, 2) + "\n", "utf8");
         written = outPath;
-        closeRun(run_id);
+        // The run is kept, with its interview attached. Submitting is not the end of a
+        // distillation: a finding spotted after the document lands is fixed by editing and
+        // resubmitting, and that must not cost the attestation.
+        markSubmitted(run_id, outPath);
       } catch (e) {
         return textResult(`document valid but write failed: ${(e as Error).message}`, true);
       }
@@ -841,6 +852,12 @@ registerTool(
         {
           ok: true,
           written,
+          run_id,
+          ...(previously_submitted_at ? { resubmit: true, previously_submitted_at } : {}),
+          run_still_open:
+            "This run and its interview are still open. If you spot a finding, fix the document and " +
+            "submit again with the same run_id — nothing needs re-asking. If the branch has moved, call " +
+            "compute_diff first and re-anchor: the id is unchanged but the hunk ids are not.",
           pr_description: renderPrDescription(doc as never),
           coverage: report.coverage,
           interview,

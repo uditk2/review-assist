@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -72,8 +72,9 @@ describe("computeRunId", () => {
 
 describe("openRun", () => {
   it("is idempotent: the author and the reviewer opening the same change get one run", () => {
+    // Both roles resolve the branch the same way, from the checkout — see computeRunId.
     const first = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "feat/ads-manager" });
-    const second = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const second = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "feat/ads-manager" });
     expect(second.run_id).toBe(first.run_id);
     expect(second.created_at).toBe(first.created_at);
     expect(second.branch).toBe("feat/ads-manager");
@@ -107,11 +108,46 @@ describe("openRun", () => {
     expect(again.run.head_history).toBeUndefined();
   });
 
-  it("does not blank a branch name it already has when none is supplied", () => {
+  it("keeps the branch name across a head move", () => {
     open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "feat/ads-manager" });
-    // Detached HEAD resolves to no branch; the submit path writes .intent/<branch>.json.
-    const moved = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD_2 });
+    const moved = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD_2, branch: "feat/ads-manager" });
+    // The submit path writes .intent/<branch>.json from this field.
     expect(moved.branch).toBe("feat/ads-manager");
+  });
+});
+
+/**
+ * Two branches cut from one commit have identical base SHAs however far they diverge. While
+ * the head was in the id it separated them as a side effect; taking it out to survive
+ * commits took that separation with it, and they silently shared a rounds map and fought
+ * over the `branch` field that names the output document.
+ */
+describe("two branches off one base", () => {
+  it("get different run ids", () => {
+    const alpha = runs.computeRunId({ repo: REPO_A, baseSha: BASE, branch: "feat/alpha" });
+    const beta = runs.computeRunId({ repo: REPO_A, baseSha: BASE, branch: "feat/beta" });
+    expect(alpha).not.toBe(beta);
+  });
+
+  it("do not share an interview, and do not overwrite each other's branch name", () => {
+    const alpha = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "feat/alpha" });
+    runs.recordRounds(alpha.run_id, [{ question: "Why two queries?" }]);
+
+    const beta = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD_2, branch: "feat/beta" });
+
+    expect(beta.run_id).not.toBe(alpha.run_id);
+    expect(runs.summarizeRun(runs.getRun(beta.run_id)!).rounds).toBe(0);
+    expect(runs.getRun(alpha.run_id)!.branch).toBe("feat/alpha");
+    expect(runs.getRun(beta.run_id)!.branch).toBe("feat/beta");
+    expect(readdirSync(runs.runsDir())).toHaveLength(2);
+  });
+
+  it("still separates successive changes on one long-lived branch", () => {
+    // Why base_sha stays in the id: otherwise every change ever distilled on main would
+    // share one run and one rounds map.
+    const first = runs.computeRunId({ repo: REPO_A, baseSha: BASE, branch: "main" });
+    const second = runs.computeRunId({ repo: REPO_A, baseSha: HEAD, branch: "main" });
+    expect(first).not.toBe(second);
   });
 });
 
@@ -290,10 +326,87 @@ describe("recordAnswers", () => {
 });
 
 describe("closeRun", () => {
-  it("removes the run once its document is written", () => {
+  it("removes a run outright, for the sweep and for an explicit discard", () => {
     const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.closeRun(run.run_id);
     expect(runs.getRun(run.run_id)).toBeUndefined();
     expect(runs.listOpenRuns()).toHaveLength(0);
+  });
+});
+
+/**
+ * Submit used to call `closeRun`, which destroyed the interview at the one moment the
+ * guide tells a reviewer it will need it again — "if it returns validation findings, FIX
+ * them and resubmit". These pin the run surviving its own document.
+ */
+describe("markSubmitted", () => {
+  const ask = (question: string) => {
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    runs.recordRounds(run.run_id, [{ question }]);
+    return { run_id: run.run_id, q_id: runs.runRounds(runs.getRun(run.run_id)!)[0].q_id };
+  };
+
+  it("keeps the run, and its interview, after the document is written", () => {
+    const { run_id, q_id } = ask("What was tried and abandoned?");
+    runs.recordAnswers(run_id, [{ q_id, answer: "two schemas, one dropped" }]);
+
+    const submitted = runs.markSubmitted(run_id, "/repo/.intent/main.json");
+    expect(submitted?.submitted_at).toBeTruthy();
+    expect(submitted?.document_path).toBe("/repo/.intent/main.json");
+
+    // The whole point: the attestation is still reachable under the same handle.
+    const after = runs.getRun(run_id);
+    expect(after).toBeDefined();
+    expect(runs.summarizeRun(after!).author_attested).toBe(1);
+  });
+
+  it("lets the author keep answering after a document has been written", () => {
+    // The correction cycle: submit, spot a finding, ask one more thing, resubmit.
+    const { run_id } = ask("Q1");
+    runs.markSubmitted(run_id, "/repo/.intent/main.json");
+    runs.recordRounds(run_id, [{ question: "Q2, raised by the draft" }]);
+    const q2 = runs.runRounds(runs.getRun(run_id)!).find((r) => r.question.startsWith("Q2"))!;
+    const res = runs.recordAnswers(run_id, [{ q_id: q2.q_id, answer: "answered post-submit" }]);
+    expect(res?.unknown).toEqual([]);
+    expect(runs.summarizeRun(runs.getRun(run_id)!).rounds).toBe(2);
+  });
+
+  it("returns undefined for an unknown run", () => {
+    expect(runs.markSubmitted("deadbeef1234", "/tmp/x.json")).toBeUndefined();
+  });
+});
+
+/**
+ * The sweep is the reason keeping the run is affordable: a submitted run is reaped on a
+ * short clock, so "do not delete on submit" does not mean "accumulate forever".
+ */
+describe("sweeping", () => {
+  const backdate = (runId: string, daysAgo: number, submitted: boolean) => {
+    const path = join(runs.runsDir(), `${runId}.json`);
+    const rec = JSON.parse(readFileSync(path, "utf8"));
+    const stamp = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
+    rec.updated_at = stamp;
+    if (submitted) rec.submitted_at = stamp;
+    writeFileSync(path, JSON.stringify(rec), "utf8");
+  };
+
+  it("reaps a submitted run after a week, but keeps an unsubmitted one", () => {
+    const submitted = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const working = open({ repo: REPO_B, baseSha: BASE, headSha: HEAD });
+    backdate(submitted.run_id, 10, true);
+    backdate(working.run_id, 10, false);
+
+    // openRun sweeps; a third repo is used so neither run under test is the one opening.
+    open({ repo: "/tmp/workspace/third", baseSha: BASE, headSha: HEAD });
+
+    expect(runs.getRun(submitted.run_id)).toBeUndefined();
+    expect(runs.getRun(working.run_id)).toBeDefined();
+  });
+
+  it("keeps a submitted run that is still being worked on", () => {
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    backdate(run.run_id, 2, true);
+    open({ repo: "/tmp/workspace/third", baseSha: BASE, headSha: HEAD });
+    expect(runs.getRun(run.run_id)).toBeDefined();
   });
 });
