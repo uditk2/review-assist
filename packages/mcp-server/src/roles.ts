@@ -287,6 +287,7 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
     "read_transcript",
     "compute_diff",
     "read_diff",
+    "get_questions",
     "answer_questions",
   ],
   // `get_role_definitions` and `manage_consent` were granted here and belong to neither
@@ -299,6 +300,7 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
     "compute_diff",
     "read_diff",
     "record_interview_round",
+    "get_answers",
     "submit_document",
     "set_consent",
   ],
@@ -320,7 +322,9 @@ const TOOL_BLURB: Record<string, string> = {
   compute_diff:
     "the run handle, the numbered hunk index and the SHAs. Opens the run. Returns no diff text.",
   read_diff: "the diff itself, paged by hunk. Follow `next_cursor` to the end, or ask for hunks/paths.",
-  record_interview_round: "your questions. Records them and hands back a `q_id` each, which you relay to the author.",
+  record_interview_round: "your questions. Records them and hands back a `q_id` each; the author reads them off the run itself.",
+  get_questions: "the reviewer's questions, with their `q_id`s. Read them here rather than waiting to be told them.",
+  get_answers: "the author's answers, in the author's own words. This is where the interview reaches you.",
   answer_questions: "your answers, by the `q_id` the reviewer relayed. The only answers the document can attest.",
   submit_document: "the gate. Only the reviewer may call it.",
   set_consent: "record the user's decision about operating in this repository.",

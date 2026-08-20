@@ -69,8 +69,16 @@
       "description": "Record the reviewer's questions; each comes back with a q_id to relay to the author."
     },
     {
+      "name": "get_questions",
+      "description": "Author role: read the reviewer's questions, with their q_ids, straight off the run."
+    },
+    {
       "name": "answer_questions",
       "description": "The author's own answers, by q_id — the half of the interview the server can attest."
+    },
+    {
+      "name": "get_answers",
+      "description": "Reviewer role: read the author's answers, in the author's own words, straight off the run."
     },
     {
       "name": "submit_document",

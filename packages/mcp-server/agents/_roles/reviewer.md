@@ -27,11 +27,16 @@ You write the Intent Document. You cannot see the session transcript — by desi
    so you already have the question.
    - **Record the questions first, then relay them.** ONE `record_interview_round` call with
      a `rounds` array of questions. It hands back a `q_id` per question.
-   - Your questions do not travel through a tool. You write them out; whoever dispatched you
-     carries them to the author. Include each `q_id` beside its question.
-   - The author replies by calling `answer_questions` with those ids, so the server records
+   - The questions travel through the run, not through you. The author reads them with
+     `get_questions` and replies with `answer_questions` by those ids, so the server records
      its words rather than yours. Only fill `answer` yourself if the author has already
-     replied and cannot record it — that is marked reviewer-sourced and does not attest.
+     replied and genuinely cannot record it — that is marked reviewer-sourced and does not
+     attest.
+   - **Read the answers with `get_answers`.** That is where the interview reaches you, in
+     the author's own words. Write the document from those, not from a summary someone
+     relayed: `answered_by: "author"` is the only value that attests, `reviewer` is your own
+     transcription, and `null` means nobody has answered yet. If the answers are not there,
+     the author has not run — say so rather than proceeding on inference.
    - Never record an answer you have not received. `meta.interview` is what tells a reader
      the interview happened; an invented answer there is a forged one.
 3. **Draft the whole document, then read your own reasoning.** Fill every field before you

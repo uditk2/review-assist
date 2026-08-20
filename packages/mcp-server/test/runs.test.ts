@@ -325,6 +325,62 @@ describe("recordAnswers", () => {
   });
 });
 
+/**
+ * The round-trip the two read tools serve. Neither role can see the other's context, so the
+ * run file is the only channel between them; these pin that everything each side needs is
+ * actually on it, rather than living in the orchestrator's chat history.
+ */
+describe("the run as the channel between the roles", () => {
+  it("carries the reviewer's questions to the author and the author's answers back", () => {
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "main" });
+
+    // Reviewer's half.
+    runs.recordRounds(run.run_id, [
+      { question: "Why two queries?" },
+      { question: "What was tried and abandoned?" },
+    ]);
+
+    // What get_questions serves the author: the wording and the ids, nothing hand-carried.
+    const asked = runs.runRounds(runs.getRun(run.run_id)!);
+    expect(asked.map((r) => r.question)).toEqual(["Why two queries?", "What was tried and abandoned?"]);
+    expect(asked.every((r) => /^[0-9a-f]{16}$/.test(r.q_id))).toBe(true);
+    expect(asked.every((r) => r.answer === "")).toBe(true);
+
+    // Author's half, keyed by the ids it just read.
+    runs.recordAnswers(run.run_id, [
+      { q_id: asked[0].q_id, answer: "a combined query drops the whole row" },
+      { q_id: asked[1].q_id, answer: "the transcript does not cover this", resolved: false },
+    ]);
+
+    // What get_answers serves the reviewer: the author's own words, attributed.
+    const answered = runs.runRounds(runs.getRun(run.run_id)!);
+    expect(answered.map((r) => r.answer)).toEqual([
+      "a combined query drops the whole row",
+      "the transcript does not cover this",
+    ]);
+    expect(answered.every((r) => r.answered_by === "author")).toBe(true);
+    expect(runs.summarizeRun(runs.getRun(run.run_id)!)).toEqual({
+      rounds: 2,
+      questions_asked: 2,
+      unresolved: 1,
+      author_attested: 2,
+      unanswered: 0,
+    });
+  });
+
+  it("tells the author what it still owes, and the reviewer what is still missing", () => {
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "main" });
+    runs.recordRounds(run.run_id, [{ question: "Q1" }, { question: "Q2" }]);
+    const [q1] = runs.runRounds(runs.getRun(run.run_id)!);
+    runs.recordAnswers(run.run_id, [{ q_id: q1.q_id, answer: "answered" }]);
+
+    // get_questions({only_unanswered: true}) / get_answers both filter on this.
+    const rounds = runs.runRounds(runs.getRun(run.run_id)!);
+    expect(rounds.filter((r) => r.answer.length === 0).map((r) => r.question)).toEqual(["Q2"]);
+    expect(runs.summarizeRun(runs.getRun(run.run_id)!).unanswered).toBe(1);
+  });
+});
+
 describe("closeRun", () => {
   it("removes a run outright, for the sweep and for an explicit discard", () => {
     const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
