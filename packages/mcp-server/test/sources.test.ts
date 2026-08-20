@@ -34,6 +34,38 @@ describe("the source registry", () => {
   });
 });
 
+/**
+ * Claude Code replaces more than the path separators when it flattens a cwd into a
+ * directory name. Every session for a repo whose path contains a space was invisible: the
+ * lookup built a directory name that did not exist, `list_transcripts` returned nothing,
+ * and the author role hydrated from an empty set rather than reporting it could not see
+ * the session. Observed on a real repo, ".../engagement apps/review-assist".
+ */
+describe("finding Claude Code sessions when the repo path is awkward", () => {
+  const spaced = join(scratch, "engagement apps", "review-assist");
+
+  it("finds the session even though the directory name is not a naive slash-swap", () => {
+    mkdirSync(spaced, { recursive: true });
+    // How Claude Code actually names it: separators AND the space become dashes.
+    const claudeDir = join(
+      process.env.CLAUDE_CONFIG_DIR!,
+      "projects",
+      resolve(spaced).replace(/[^a-zA-Z0-9]+/g, "-")
+    );
+    mkdirSync(claudeDir, { recursive: true });
+    const session = join(claudeDir, "a-session.jsonl");
+    writeFileSync(session, JSON.stringify({ type: "user", message: { role: "user", content: "hi" } }) + "\n");
+
+    // The naive encoding keeps the space, so this is the path the old code looked for.
+    expect(encodeRepoDir(spaced)).toContain("engagement apps");
+    expect(existsSync(join(process.env.CLAUDE_CONFIG_DIR!, "projects", encodeRepoDir(spaced)))).toBe(false);
+
+    expect(findSessions(spaced).map((x) => x.path)).toContain(session);
+
+    rmSync(claudeDir, { recursive: true, force: true });
+  });
+});
+
 describe("importing a session with no home on this machine", () => {
   it("files it where the exported source will find it", () => {
     const res = importSession({ repo, from: container, sessionId: "cse-abc" });

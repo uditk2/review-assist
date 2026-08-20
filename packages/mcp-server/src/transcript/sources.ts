@@ -124,16 +124,51 @@ export class ClaudeCodeSource implements TranscriptSource {
   find(repo: string): string[] {
     const root = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects");
     if (!existsSync(root)) return [];
+    const byKey = projectDirsByKey(root);
     const out: string[] = [];
     for (const candidate of ancestorsInclusive(resolve(repo), 4)) {
-      const dir = join(root, encodeRepoDir(candidate));
-      if (!existsSync(dir)) continue;
-      for (const f of readdirSync(dir, { withFileTypes: true })) {
-        if (f.isFile() && f.name.endsWith(".jsonl")) out.push(join(dir, f.name));
+      for (const dir of byKey.get(pathKey(encodeRepoDir(candidate))) ?? []) {
+        for (const f of readdirSync(dir, { withFileTypes: true })) {
+          if (f.isFile() && f.name.endsWith(".jsonl")) out.push(join(dir, f.name));
+        }
       }
     }
     return out;
   }
+}
+
+/**
+ * Claude Code flattens a cwd into a directory name, and it replaces MORE than the path
+ * separators: a repo at ".../engagement apps/review-assist" lives under
+ * "...-engagement-apps-review-assist", the space collapsed to a dash as well.
+ *
+ * `encodeRepoDir` replaced only / and \\, so any repo whose path contains a space resolved
+ * to a directory that does not exist. The failure is silent in the worst way — the lookup
+ * finds nothing, `list_transcripts` returns no candidates, and the author role hydrates
+ * from an empty set instead of reporting that it cannot see the session. Observed here:
+ * every session for this repository was invisible to its own tooling.
+ *
+ * Rather than reconstruct someone else's encoder — a guess that fails silently again the
+ * next time it takes a character we did not predict — match on a key that does not care
+ * WHICH characters were replaced: collapse every run of non-alphanumerics to a single dash
+ * on both sides. Two repos differing only in punctuation would collide, but Claude Code
+ * already files those under one directory, so that ambiguity is inherited, not introduced.
+ */
+function pathKey(name: string): string {
+  return name.replace(/[^a-zA-Z0-9]+/g, "-");
+}
+
+/** Project directories under `root`, grouped by the key above. */
+function projectDirsByKey(root: string): Map<string, string[]> {
+  const byKey = new Map<string, string[]>();
+  for (const e of readdirSync(root, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue;
+    const key = pathKey(e.name);
+    const dirs = byKey.get(key);
+    if (dirs) dirs.push(join(root, e.name));
+    else byKey.set(key, [join(root, e.name)]);
+  }
+  return byKey;
 }
 
 /**
