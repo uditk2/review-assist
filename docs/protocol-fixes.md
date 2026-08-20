@@ -50,7 +50,8 @@ property that counting the raw diff reproduces the index.
 
 **Fix 2 — run identity** (`fa39bfb`)
 
-- Run id is now `sha256(repo | base)`. The head is state on the record, not identity.
+- Run id became `sha256(repo | base)`. The head is state on the record, not identity.
+  (Superseded below: the branch was added to the key to fix a collision this introduced.)
 - `openRun` moves an existing run to the observed head, keeps the prior value in
   `head_history`, and carries the rounds over untouched.
 - The move is reported as `head_changed` / `previous_head` on the call that observes it,
