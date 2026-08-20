@@ -71,7 +71,11 @@ around it.
 The reviewer cannot see the transcript. Everything it learns about intent, it learns
 from you.
 
-- **Record your answers yourself, with `answer_questions`.** Each question arrives with a
+- **Read the questions yourself, with `get_questions`.** They are on the run, with their
+  `q_id`s — you do not have to wait to be told them, and you should not work from a relayed
+  paraphrase when the reviewer's own wording is one call away. When you think you are done,
+  call it again with `only_unanswered: true`; anything still listed is a question you owe.
+- **Record your answers yourself, with `answer_questions`.** Each question carries a
   `q_id`. Answer the whole batch in ONE call, keyed by those ids. This is not bookkeeping:
   an answer you write is the only kind the document can attest to. One the reviewer
   transcribes for you is marked reviewer-sourced, and a reader cannot tell it from an

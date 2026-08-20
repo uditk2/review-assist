@@ -59,6 +59,17 @@ describe("rendered definitions", () => {
     expect(ROLE_TOOLS.author).not.toContain("submit_document");
   });
 
+  it("let each role read the other's half of the interview, and only that half", () => {
+    // The run is the channel between two agents that cannot talk. Before these, the
+    // questions and the answers both had to be hand-carried as chat text by whoever
+    // dispatched the roles — 25,567 and 28,943 bytes across two real runs.
+    expect(ROLE_TOOLS.author).toContain("get_questions");
+    expect(ROLE_TOOLS.reviewer).toContain("get_answers");
+    // Each reads what the other WROTE; neither gets a second way to write.
+    expect(ROLE_TOOLS.author).not.toContain("record_interview_round");
+    expect(ROLE_TOOLS.reviewer).not.toContain("answer_questions");
+  });
+
   it("leave no unsubstituted placeholders", () => {
     for (const role of Object.values(bundle.roles)) {
       expect(role.definition).not.toMatch(/\{\{[A-Z]+\}\}/);
