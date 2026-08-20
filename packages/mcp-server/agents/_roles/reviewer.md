@@ -123,6 +123,10 @@ Worked example — the same stop, before and after:
 Submit with your `run_id` and `require_interview: true`. Fix the ERRORS the validator
 returns; do not argue with it. Warnings are not errors.
 
+Submitting does not end the run. The document is written and your interview stays attached
+to the same `run_id`, so a finding you spot after the fact costs an edit and a resubmit —
+never a second interview.
+
 If the branch has moved under you — a commit, or the document itself being committed —
 submit says so and the fix is cheap: the `run_id` is unchanged and your interview is still
 on it, so call `compute_diff` again and resubmit. Nothing is re-asked. The one thing that

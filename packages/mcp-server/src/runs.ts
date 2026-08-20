@@ -65,6 +65,17 @@ const RUNS_DIR = join(
  */
 const MAX_RUN_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * Submitted runs are reaped sooner. A run whose document is written is probably finished —
+ * but "probably" is the whole point: it is kept so a finding spotted after the fact can be
+ * fixed and resubmitted against the same attested interview. A week is long enough for
+ * that and short enough that finished work does not accumulate.
+ *
+ * Measured from the last touch, not from the submit, so a run that is still being worked
+ * on keeps extending its own life.
+ */
+const MAX_SUBMITTED_RUN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
 export interface InterviewRound {
   /** Hash of the normalised question. Relayed to the author, which answers by it. */
   q_id: string;
@@ -95,6 +106,10 @@ export interface RunRecord {
   head_history?: string[];
   branch?: string;
   created_at: string;
+  /** When a document was last written from this run. Absent until one is. */
+  submitted_at?: string;
+  /** Where that document went. */
+  document_path?: string;
   /** Last time anything was written to this run. What the sweep measures. */
   updated_at?: string;
   /** Keyed by question hash, so re-recording a question replaces it. */
@@ -105,6 +120,11 @@ export interface RunKey {
   repo: string;
   baseSha: string;
   headSha: string;
+  /**
+   * The branch this work sits on, taken from the repository's CHECKOUT rather than from
+   * whatever ref the caller named as `head`. Part of the identity — see `computeRunId`.
+   */
+  branch?: string;
 }
 
 /** What `openRun` observed, as distinct from what it stored. */
@@ -131,12 +151,38 @@ function sha256(input: string): string {
 }
 
 /**
- * The run's identity: the repository and what this work branched FROM. Derived only from
- * what the change is, so two agents that never speak arrive at the same value — and
- * deliberately not from where the branch has got to, so that value survives a commit.
+ * The run's identity: the repository, what this work branched FROM, and which branch it is.
+ * Derived only from what the change IS, so two agents that never speak arrive at the same
+ * value — and deliberately not from where the branch has got to, so that value survives a
+ * commit.
+ *
+ * Each of the three components earns its place, and the two that are NOT here matter too:
+ *
+ * - `base_sha` separates successive changes on one long-lived branch. Without it every
+ *   change ever distilled on `main` would share one run and one rounds map.
+ * - `branch` separates concurrent branches cut from the SAME base. Two branches off one
+ *   commit have identical base SHAs however far they diverge, so without this they collide:
+ *   one shared rounds map, and a `branch` field — which names `.intent/<branch>.json` —
+ *   flipping to whichever role opened the run last. The head used to prevent that as a side
+ *   effect; taking the head out to survive commits took the separation with it.
+ * - `head_sha` is deliberately absent: it rotated the id on every commit, which is the
+ *   regression this module's docblock opens with.
+ *
+ * The branch MUST be resolved from the repository's checkout, not from the `head` argument
+ * a caller happens to pass. `git rev-parse --abbrev-ref <sha>` returns empty rather than a
+ * name, so a reviewer naming an explicit SHA and an author naming HEAD would otherwise
+ * derive different ids and silently stop sharing a run.
+ *
+ * Detached HEAD has no branch and contributes an empty component, so two detached
+ * distillations off one base still collide. Rare enough to leave, but not silent: it is
+ * written down here rather than discovered later.
  */
-export function computeRunId({ repo, baseSha }: Pick<RunKey, "repo" | "baseSha">): string {
-  return sha256(`${resolve(repo)}|${baseSha}`).slice(0, 12);
+export function computeRunId({
+  repo,
+  baseSha,
+  branch,
+}: Pick<RunKey, "repo" | "baseSha" | "branch">): string {
+  return sha256(`${resolve(repo)}|${baseSha}|${branch ?? ""}`).slice(0, 12);
 }
 
 /**
@@ -172,15 +218,17 @@ function writeRun(run: RunRecord): void {
  * Open the run for a change, or return the one already open for it — moved forward to
  * the head just observed.
  *
- * Idempotent by construction: the id is a hash of the repo and the base, so calling this
- * twice — once from the author, once from the reviewer — yields one record, not two.
+ * Idempotent by construction: the id is a hash of the repo, the base and the branch, so
+ * calling this twice — once from the author, once from the reviewer — yields one record,
+ * not two. That holds only while both roles resolve the branch the same way; see
+ * `computeRunId` on why it comes from the checkout.
  *
  * When the head has moved, the rounds are carried over UNCHANGED and the move is reported
  * back. Those are the two halves of the same decision: an interview is about the work, and
  * survives a commit; an anchor is about a diff, and does not. The caller is the only place
  * that can act on the second, so it is told rather than guessed at here.
  */
-export function openRun(key: RunKey & { branch?: string }): OpenRunResult {
+export function openRun(key: RunKey): OpenRunResult {
   sweepStaleRuns();
   const runId = computeRunId(key);
   const existing = readRun(runId);
@@ -192,8 +240,9 @@ export function openRun(key: RunKey & { branch?: string }): OpenRunResult {
       existing.head_history = [...(existing.head_history ?? []), previous_head];
       existing.head_sha = key.headSha;
     }
-    // A branch rename (or a detached HEAD resolving to nothing) must not blank a name the
-    // run already has — the submit writes .intent/<branch>.json from it.
+    // Defensive only, now that the branch is part of the identity: a record reached by this
+    // id was opened under this same branch, so this cannot overwrite one branch's name with
+    // another's. It still guards the record against being blanked by a caller that omits it.
     if (key.branch) existing.branch = key.branch;
     writeRun(existing);
     return { run: existing, head_changed, previous_head: head_changed ? previous_head : undefined };
@@ -301,7 +350,32 @@ export function runRounds(run: RunRecord): InterviewRound[] {
   return Object.values(run.rounds).sort((a, b) => a.at.localeCompare(b.at));
 }
 
-/** Drop a run once its document is written. */
+/**
+ * Record that a document was written from this run, and KEEP the run.
+ *
+ * Submit used to call `closeRun` here. That destroyed the interview at the one moment it
+ * was most likely to be needed again: the guide tells a reviewer to fix findings and
+ * resubmit, and committing the document is itself a commit, so the ordinary correction
+ * cycle ran straight into a deleted run. Worse than an error — `openRun` recreates a
+ * record for an id it cannot find, so the next `answer_questions` landed on a fresh, empty
+ * run under the same handle and came back `unknown_q_ids`, `rounds: 0`, silently.
+ *
+ * Keeping it costs one file per branch for a week (see MAX_SUBMITTED_RUN_AGE_MS). Closing
+ * it cost the whole resubmit path.
+ */
+export function markSubmitted(runId: string, documentPath: string): RunRecord | undefined {
+  const run = readRun(runId);
+  if (!run) return undefined;
+  run.submitted_at = new Date().toISOString();
+  run.document_path = documentPath;
+  writeRun(run);
+  return run;
+}
+
+/**
+ * Delete a run outright. The sweep's tool, and available for an explicit discard — NOT
+ * called on submit; see `markSubmitted` for why.
+ */
 export function closeRun(runId: string): void {
   try {
     rmSync(runPath(runId), { force: true });
@@ -330,12 +404,16 @@ function lastTouched(run: RunRecord): string {
   return run.updated_at ?? run.created_at;
 }
 
-/** A run follows one branch; one untouched for a month is abandoned. */
+/**
+ * A run follows one branch. One untouched for a month is abandoned; one whose document was
+ * already written is kept a week, long enough to resubmit against the same interview.
+ */
 function sweepStaleRuns(): void {
   if (!existsSync(RUNS_DIR)) return;
-  const cutoff = Date.now() - MAX_RUN_AGE_MS;
+  const now = Date.now();
   for (const run of listOpenRuns()) {
-    if (Date.parse(lastTouched(run)) < cutoff) closeRun(run.run_id);
+    const maxAge = run.submitted_at ? MAX_SUBMITTED_RUN_AGE_MS : MAX_RUN_AGE_MS;
+    if (Date.parse(lastTouched(run)) < now - maxAge) closeRun(run.run_id);
   }
 }
 

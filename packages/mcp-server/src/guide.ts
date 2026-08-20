@@ -109,9 +109,13 @@ already knows it. Pass \`repo\` to \`compute_diff\` itself (the absolute path of
 repository you changed) whenever the server spans more than one repo: its working
 directory is the workspace, not your repo.
 
-The id is a hash of repo + base, so the author and the reviewer derive the same handle
-independently without coordinating, and a role resumed later recomputes it by calling
-\`compute_diff\` again. Never invent or shorten a \`run_id\`.
+The id is a hash of repo + base + branch, so the author and the reviewer derive the same
+handle independently without coordinating, and a role resumed later recomputes it by
+calling \`compute_diff\` again. Never invent or shorten a \`run_id\`.
+
+Base and branch are both in there for a reason. The base separates successive changes on a
+long-lived branch like \`main\`; the branch separates two feature branches cut from the
+same commit, which would otherwise share one run and one interview.
 
 The head is NOT in that hash, which is what makes a correction cycle possible. Commit the
 document, fix a finding, let the branch move — the run and the interview on it are still
@@ -176,6 +180,12 @@ Call \`submit_document\` with the candidate JSON and the \`run_id\`. It derives 
 and head from the run, so the interview and the coverage check cannot disagree about
 which change this is. If it returns validation findings, FIX them and resubmit — do not
 argue with the validator. Warnings are advisory; only errors block.
+
+Submitting does NOT end the run. The document is written and the run stays open with its
+interview attached, so a finding spotted afterwards — including one found after the
+document is committed — is fixed by editing and submitting again under the same
+\`run_id\`, with nothing re-asked. If the branch moved in between, call \`compute_diff\`
+first and re-anchor; the id is unchanged but the hunk ids are not.
 
 Consent is per repository: Review Assist is installed globally but must be opted in for
 each repo. \`compute_diff\` reports \`consent_state\` when it opens the run — if it is
