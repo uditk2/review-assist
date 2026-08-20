@@ -34,31 +34,46 @@ beforeEach(() => {
   }
 });
 
+const HEAD_2 = "a024854f8ff71d0a3c1b9e77d2f4a8c6e0b15d93";
+
+/** The record itself, for the common case where the open-time signals do not matter. */
+const open = (key: { repo: string; baseSha: string; headSha: string; branch?: string }) =>
+  runs.openRun(key).run;
+
 describe("computeRunId", () => {
   it("is stable for the same change, so two isolated roles derive the same handle", () => {
-    const a = runs.computeRunId({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
-    const b = runs.computeRunId({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const a = runs.computeRunId({ repo: REPO_A, baseSha: BASE });
+    const b = runs.computeRunId({ repo: REPO_A, baseSha: BASE });
     expect(a).toBe(b);
     expect(a).toHaveLength(12);
   });
 
-  it("changes when the branch moves, so a stale document cannot submit against a new head", () => {
-    const before = runs.computeRunId({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
-    const after = runs.computeRunId({ repo: REPO_A, baseSha: BASE, headSha: "a024854f8ff71d0aaaaaaaaaaaaaaaaaaaaaaaaa" });
-    expect(after).not.toBe(before);
+  it("survives the branch moving, because the head is state and not identity", () => {
+    // Committing the Intent Document is itself a commit. While the head was in the hash
+    // this rotated the handle, and the interview recorded under the old one became
+    // unreachable at the exact moment the guide told the reviewer to fix and resubmit.
+    const a = runs.computeRunId({ repo: REPO_A, baseSha: BASE });
+    const b = runs.computeRunId({ repo: REPO_A, baseSha: BASE });
+    expect(b).toBe(a);
   });
 
   it("separates repos in the same workspace — the case that caused the loop", () => {
-    const a = runs.computeRunId({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
-    const b = runs.computeRunId({ repo: REPO_B, baseSha: BASE, headSha: HEAD });
+    const a = runs.computeRunId({ repo: REPO_A, baseSha: BASE });
+    const b = runs.computeRunId({ repo: REPO_B, baseSha: BASE });
+    expect(a).not.toBe(b);
+  });
+
+  it("separates two branches off different bases in one repo", () => {
+    const a = runs.computeRunId({ repo: REPO_A, baseSha: BASE });
+    const b = runs.computeRunId({ repo: REPO_A, baseSha: HEAD });
     expect(a).not.toBe(b);
   });
 });
 
 describe("openRun", () => {
   it("is idempotent: the author and the reviewer opening the same change get one run", () => {
-    const first = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "feat/ads-manager" });
-    const second = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const first = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "feat/ads-manager" });
+    const second = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     expect(second.run_id).toBe(first.run_id);
     expect(second.created_at).toBe(first.created_at);
     expect(second.branch).toBe("feat/ads-manager");
@@ -66,10 +81,58 @@ describe("openRun", () => {
   });
 
   it("survives a process boundary — state is on disk, not in a Map", async () => {
-    const opened = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const opened = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(opened.run_id, [{ question: "What did the user ask for?", answer: "…" }]);
     const reloaded = runs.getRun(opened.run_id);
     expect(Object.keys(reloaded!.rounds)).toHaveLength(1);
+  });
+
+  it("moves an existing run to the new head instead of minting a second one", () => {
+    const first = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const moved = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD_2 });
+    expect(moved.run.run_id).toBe(first.run_id);
+    expect(moved.run.head_sha).toBe(HEAD_2);
+    expect(moved.head_changed).toBe(true);
+    expect(moved.previous_head).toBe(HEAD);
+    expect(moved.run.head_history).toEqual([HEAD]);
+    // One file per branch. The observed symptom was four or five per repo.
+    expect(readdirSync(runs.runsDir())).toHaveLength(1);
+  });
+
+  it("reports no head change when the branch has not moved", () => {
+    open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const again = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    expect(again.head_changed).toBe(false);
+    expect(again.previous_head).toBeUndefined();
+    expect(again.run.head_history).toBeUndefined();
+  });
+
+  it("does not blank a branch name it already has when none is supplied", () => {
+    open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "feat/ads-manager" });
+    // Detached HEAD resolves to no branch; the submit path writes .intent/<branch>.json.
+    const moved = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD_2 });
+    expect(moved.branch).toBe("feat/ads-manager");
+  });
+});
+
+/**
+ * The regression this whole fix exists for. Every step is one the guide tells the roles to
+ * take, and the sequence used to end with the author's answers landing nowhere.
+ */
+describe("the correction cycle", () => {
+  it("keeps the interview when the head moves under it", () => {
+    const opened = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    runs.recordRounds(opened.run_id, [{ question: "What was tried and abandoned?" }]);
+    const { q_id } = runs.runRounds(runs.getRun(opened.run_id)!)[0];
+
+    // The reviewer submits, the document is committed, and the head moves.
+    const moved = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD_2 });
+    expect(moved.run_id).toBe(opened.run_id);
+
+    // The author answers by the id it was relayed BEFORE the commit.
+    const res = runs.recordAnswers(moved.run_id, [{ q_id, answer: "two schemas, one dropped" }]);
+    expect(res?.unknown).toEqual([]);
+    expect(runs.summarizeRun(runs.getRun(moved.run_id)!).author_attested).toBe(1);
   });
 });
 
@@ -85,7 +148,7 @@ describe("recordRounds", () => {
   ];
 
   it("collapses the observed 21-call retry into 7 rounds", () => {
-    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     // Three passes, exactly as the airo-backend reviewer did after each failed submit.
     for (let pass = 0; pass < 3; pass++) {
       runs.recordRounds(
@@ -99,7 +162,7 @@ describe("recordRounds", () => {
   });
 
   it("keeps the latest answer when a question is re-recorded", () => {
-    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(run.run_id, [{ question: "Q", answer: "first" }]);
     runs.recordRounds(run.run_id, [{ question: "Q", answer: "second" }]);
     const rounds = runs.runRounds(runs.getRun(run.run_id)!);
@@ -108,14 +171,14 @@ describe("recordRounds", () => {
   });
 
   it("treats whitespace and case variants of a question as the same round", () => {
-    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(run.run_id, [{ question: "What was tried and abandoned?", answer: "a" }]);
     runs.recordRounds(run.run_id, [{ question: "  what   was tried and ABANDONED?  ", answer: "b" }]);
     expect(runs.summarizeRun(runs.getRun(run.run_id)!).rounds).toBe(1);
   });
 
   it("counts unresolved rounds for meta.interview", () => {
-    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(run.run_id, [
       { question: "Q1", answer: "a", resolved: true },
       { question: "Q2", answer: "the transcript does not cover this", resolved: false },
@@ -134,15 +197,15 @@ describe("recordRounds", () => {
   });
 
   it("does not leak rounds between repos in one workspace", () => {
-    const a = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
-    const b = runs.openRun({ repo: REPO_B, baseSha: BASE, headSha: HEAD });
+    const a = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const b = open({ repo: REPO_B, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(a.run_id, [{ question: "Q", answer: "for A" }]);
     expect(runs.summarizeRun(runs.getRun(a.run_id)!).rounds).toBe(1);
     expect(runs.summarizeRun(runs.getRun(b.run_id)!).rounds).toBe(0);
   });
 
   it("records a question with no answer, which is how the interview starts", () => {
-    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(run.run_id, [{ question: "What was tried?" }]);
     const [round] = runs.runRounds(runs.getRun(run.run_id)!);
     expect(round.q_id).toMatch(/^[0-9a-f]{16}$/);
@@ -159,7 +222,7 @@ describe("recordRounds", () => {
  */
 describe("recordAnswers", () => {
   const ask = (question: string) => {
-    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(run.run_id, [{ question }]);
     return { run_id: run.run_id, q_id: runs.runRounds(runs.getRun(run.run_id)!)[0].q_id };
   };
@@ -174,7 +237,7 @@ describe("recordAnswers", () => {
   });
 
   it("does not attest an answer the reviewer transcribed", () => {
-    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(run.run_id, [{ question: "Q", answer: "reviewer's account of it" }]);
     const summary = runs.summarizeRun(runs.getRun(run.run_id)!);
     expect(summary.rounds).toBe(1);
@@ -183,7 +246,7 @@ describe("recordAnswers", () => {
   });
 
   it("lets the author's answer win over the reviewer's transcription of it", () => {
-    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(run.run_id, [{ question: "Q", answer: "roughly what I was told" }]);
     const { q_id } = runs.runRounds(runs.getRun(run.run_id)!)[0];
     runs.recordAnswers(run.run_id, [{ q_id, answer: "what I actually said" }]);
@@ -228,7 +291,7 @@ describe("recordAnswers", () => {
 
 describe("closeRun", () => {
   it("removes the run once its document is written", () => {
-    const run = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.closeRun(run.run_id);
     expect(runs.getRun(run.run_id)).toBeUndefined();
     expect(runs.listOpenRuns()).toHaveLength(0);
