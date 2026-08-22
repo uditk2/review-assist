@@ -30,7 +30,28 @@ export async function computeDiff(
   const baseSha = (await git(repoDir, ["rev-parse", base])).trim();
   const headSha = (await git(repoDir, ["rev-parse", head])).trim();
   // Three-dot: changes on head since the merge-base, i.e. the PR's own changes.
-  const diff = await git(repoDir, ["diff", "--no-color", `${baseSha}...${headSha}`]);
+  //
+  // `.intent/` is excluded at the source rather than filtered downstream. The document is
+  // this tool's own output, and from a branch's second commit onward it arrives as a
+  // whole-file addition — 630 lines on the run that prompted this. Leaving it in the diff
+  // cost twice over: it sorts first in git's path order, so it landed as H1 and shifted
+  // every other hunk id by one whenever the document was committed, silently misanchoring
+  // any regeneration; and an anchor pointing into it was reported by the coverage checker
+  // as "dangling ... (stale anchor?)" even though the id came straight from compute_diff's
+  // own index.
+  //
+  // Excluding it HERE fixes both, because this is the single place a diff is produced:
+  // compute_diff, read_diff and submit_document all come through this function, so the
+  // ids handed out, the text paged, and the diff validated against cannot disagree. It also
+  // keeps the property that counting hunks in the raw diff reproduces the index — which
+  // excluding it from the NUMBERING instead would have broken.
+  const diff = await git(repoDir, [
+    "diff",
+    "--no-color",
+    `${baseSha}...${headSha}`,
+    "--",
+    ":(exclude).intent/",
+  ]);
   return { diff, baseSha, headSha };
 }
 

@@ -132,11 +132,19 @@ function runCoverage(
   let totalHunks = 0;
 
   for (const file of diffFiles) {
-    // The intent document itself travels in the PR diff — a document must not have to
+    // The intent document itself can travel in the PR diff — a document must not have to
     // "explain" its own file, so .intent/ changes are excluded from coverage.
-    if (isIntentPath(file.path)) continue;
+    //
+    // Excluded from COVERAGE, not from anchor MATCHING. Skipping the file outright meant an
+    // anchor pointing into it could never set `anchorMatched`, so the dangling pass below
+    // reported a hunk id taken straight from compute_diff's own index as "stale anchor?" —
+    // a warning that misdiagnosed the one thing it was meant to catch. Observed on a real
+    // submit. The server now excludes .intent/ from the diff at source, so this path is
+    // reached only by a hand-written document or a diff produced elsewhere; it is correct
+    // for those rather than dead.
+    const excluded = isIntentPath(file.path);
     for (const hunk of file.hunks) {
-      totalHunks++;
+      if (!excluded) totalHunks++;
       const hunkRange = newRange(hunk);
       let covered = false;
       anchors.forEach((anchor, idx) => {
@@ -145,7 +153,7 @@ function runCoverage(
           anchorMatched[idx] = true;
         }
       });
-      if (!covered) {
+      if (!covered && !excluded) {
         const matters = strict || hunk.substantive;
         if (matters) {
           unexplained.push({ path: file.path, hunk });
