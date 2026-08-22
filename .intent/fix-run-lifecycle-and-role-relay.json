@@ -1,0 +1,995 @@
+{
+  "schema_version": "0.1",
+  "meta": {
+    "id": "review-assist-run-lifecycle-and-role-relay",
+    "repo": "uditk2/review-assist",
+    "commit_range": {
+      "base_sha": "ea958e5c7011f124a8bb4bb00054bdbbcfc1dc40",
+      "head_sha": "702f6a160c6cf03d357924b9918eeb4588119e75"
+    },
+    "session": {
+      "agent": "claude-code",
+      "model": "not reported by the author role",
+      "session_ids": [
+        "dec41181-b2ca-4682-ad97-44d8eec9070d"
+      ]
+    },
+    "generated_by": {
+      "pipeline": "review-assist two-role distillation",
+      "version": "0.1"
+    },
+    "generated_at": "2026-08-22T00:00:00Z",
+    "interview": {
+      "rounds": 15,
+      "questions_asked": 15,
+      "unresolved": 1,
+      "author_attested": 15,
+      "unanswered": 0
+    }
+  },
+  "problem": {
+    "statement": "A distillation run could not survive its own output. The run handle was sha256(repo | base | head), so it rotated on every commit — and committing the Intent Document is itself a commit — while submit_document additionally deleted the run outright. Either path made the recorded interview unreachable, and because openRun recreates a record for an id it cannot find, the author's next answer_questions landed on a fresh empty run under the same handle and returned unknown_q_ids with rounds: 0, silently. Observed on disk as one run file per commit: airo-backend/feat/ads-impl held four files with 21, 23, 26 and 0 rounds; seerly-front held three with 23, 24, 26 — the same interview re-asked after each head move. Separately, no tool let either role read the other's half of the interview, so questions and answers were hand-carried as chat text by the orchestrator (25,567 and 28,943 bytes across two runs), and list_transcripts could not find any session for a repo whose path contains a space.",
+    "origin": "stated_upfront",
+    "evolution": [
+      {
+        "at": "opening message",
+        "formulation": "Three bugs reported from three live distillations, with fixes named in priority order and an explicit instruction to diagnose only: \"Can you check if the highlighted bugs are correct and need to be fixed at our end. Do not make the code change now.\""
+      },
+      {
+        "at": "first proposal",
+        "formulation": "The relay problem was framed as a notify/watch design: \"One way to do it is via common file so that both update the common file and listen for a notify trigger.\" Rejected at the time on the premise that the two roles never run concurrently under Claude Code."
+      },
+      {
+        "at": "after two hand-relayed distillations",
+        "formulation": "Reformulated as a passive read: \"Let it be.. I dont like the relaying part though. How can we solve it. the agents are not talking to each other.\" then \"we just need to pass the run id to let the subagents relay to each other. Is that correct ?\" That reshaped one reviewer-side tool into two symmetric read tools."
+      },
+      {
+        "at": "mid-session, unplanned",
+        "formulation": "Running the tool on itself produced two defects nobody had scoped: the reviewer role cold-read the diff and found that dropping the head from the hash had removed the only thing separating two branches cut from one base; the author role found that list_transcripts could see no session for this repository at all."
+      }
+    ],
+    "user_asks": [
+      "Fixes, in priority order: don't close the run on submit, or make close explicit; add a reviewer-visible get_answers(run_id); and mark the document's own path coverage_required: false and exclude it from hunk numbering so ids stay stable across regenerations. / Can you check if the highlighted bugs are correct and need to be fixed at our end. Do not make the code change now.",
+      "I think #3 is a bigger problem. the relay between the reviewer and the author is not happening on its own. One way to do it is via common file so that both update the common file and listen for a notify trigger. I think monitor is available in all agents. I am not sure. May be we need to define a tool for it which simply does that part.",
+      "Why do you propose to fix the bugs ? Be to the point and provide specific answer to the question and in poitns",
+      "Why do I need to delete closeRun. The idea of close run is to remove the run after intent document is created and submitted. If we delete it, wont it lead to stray file ?",
+      "You are right.. lets do Fix 2 first.",
+      "Lets commit the changes on main. Meanwhile, generate a doc of what fixes were proposed and what has been done. Keep it short and to the point. Post that I will restart this session and we can test.",
+      "lets do fix 1,",
+      "Why would there be a colision between branches ? Wouldn't their commits be different ?",
+      "Wait. Lets think it through. we use the base sha and that complicated it. If we also append the branch with it, will it not differ ? Lets not worry about detached heads at the momebt",
+      "I meant to keep base sha and the current branch..",
+      "Let it be.. I dont like the relaying part though. How can we solve it. the agents are not talking to each other.",
+      "Then it is plain and simple, we just need to pass the run id to let the subagents relay to each other. Is that correct ?",
+      "Lets build it",
+      "Lets just create a branch and commit it there too so that we can do a pull request and verify the intent document ."
+    ],
+    "out_of_scope": [
+      "Fix 4, hunk-id stability. Named with a specific implementation — add a `:(exclude).intent/` pathspec to the git diff so one choke point covers compute_diff, read_diff and submit_document — and ranked last every time the work was ordered. The session watched it fire live: committing .intent/main.json entered the diff as H1 and shifted every hunk id by one. Still not built.",
+      "A blocking await_answers tool. Deferred twice, most recently after the concurrency premise against it was disproved: it burns tokens polling, risks client-side tool timeouts, and the read tools already reduce the orchestrator to passing one string.",
+      "An explicit close_run / discard_run tool. Argued against: \"it's another gate to forget, and nothing breaks if a run lingers.\""
+    ]
+  },
+  "assumptions": [
+    {
+      "id": "A1",
+      "assumption": "No two repositories under ~/.claude/projects normalize to the same key once every run of non-alphanumerics is collapsed to a dash.",
+      "impact_if_wrong": "ClaudeCodeSource.find returns the union of every matching directory, so a second repository's sessions are offered as candidates for this one and the author role can hydrate the wrong session. The code comment's \"inherited, not introduced\" defence covers the key collision but not the union — if Claude Code preserves a character the key collapses (dots, say), /a/my.repo and /a/my-repo are two real directories that the key merges into one candidate set.",
+      "how_to_verify": "ls ~/.claude/projects and look for two entries differing only in a character the key collapses.",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A2",
+      "assumption": "Both roles resolve the branch from the same checkout, so `git rev-parse --abbrev-ref HEAD` yields the same name for each.",
+      "impact_if_wrong": "The two roles derive different run ids and silently stop sharing a run — the exact failure class the previous two fixes removed. This is why the branch is taken from the checkout and never from the caller's `head` argument: `rev-parse --abbrev-ref <sha>` returns empty rather than a name, so an author passing HEAD and a reviewer passing an explicit SHA would otherwise disagree.",
+      "how_to_verify": "Run `git rev-parse --abbrev-ref HEAD` in each role's working directory and compare.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A3",
+      "assumption": "A branch is never untouched for 30 days while still live, and a document is never corrected more than 7 days after its run was last touched.",
+      "impact_if_wrong": "The sweep reaps a live run and its attested interview; the next compute_diff mints an empty record under the same handle and the interview has to be redone. Both numbers were picked, not measured — 30 was inherited from the old MAX_RUN_AGE_MS, 7 was proposed in the first plan with no derivation given anywhere.",
+      "how_to_verify": "ls -l ~/.review-assist/runs and compare updated_at against branch activity.",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A4",
+      "assumption": "A caller of openRun always supplies `branch`.",
+      "impact_if_wrong": "RunKey.branch is optional and computeRunId falls back to the empty string, so a caller that omits it silently derives a different run id and lands on a different record — the same silent-divergence class A2 exists to prevent. Only compute_diff calls openRun today.",
+      "how_to_verify": "Grep for openRun / computeRunId call sites and check every one passes branch.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A5",
+      "assumption": "Distillations are not run from a detached HEAD.",
+      "impact_if_wrong": "A detached HEAD has no branch name and contributes an empty component, so two detached distillations off one base still collide on one run and one rounds map. Deferred by explicit user instruction (\"Lets not worry about detached heads at the momebt\") and written into computeRunId rather than left to be rediscovered. Refusing to open a run on a detached HEAD was never proposed by either party.",
+      "how_to_verify": "git rev-parse --abbrev-ref HEAD returning \"HEAD\" means detached.",
+      "confidence": "confirmed_by_user"
+    },
+    {
+      "id": "A6",
+      "assumption": "A moving origin/main is rare enough that rotating base_sha — and therefore minting a new run — is acceptable.",
+      "impact_if_wrong": "A distillation whose base ref advances mid-flight loses its interview the same way the head rotation used to lose it. Accepted knowingly on the grounds that keying on the base ref NAME instead is too loose, and re-affirmed unchanged after the branch component was added.",
+      "how_to_verify": "Compare git rev-parse origin/main before and after a long distillation.",
+      "confidence": "confirmed_by_user"
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "pageRounds uses a bare integer index into the already-filtered list as its cursor. If a round is answered or recorded between two pages, the list `only_answered` / `only_unanswered` produces shifts under the cursor and a round can be skipped or repeated — and a cursor taken from one filtered view does not denote the same position in another.",
+      "context": "Never raised by anyone: not the user, not the agent, not any of the three distillations' roles. Paging was discussed once and only as a size problem. The usual defence — the roles alternate rather than interleave — is not available: the session demonstrated the two roles running as background agents in parallel, alive at once, twice.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q2",
+      "question": "summarizeRun's `unresolved` conflates two different states, and a reader cannot tell them apart without also reading `unanswered`.",
+      "context": "Observed directly in this run: record_interview_round returned unresolved: 15 immediately after recording 15 questions with no answers, because a question recorded with no answer defaults to resolved: false. After the author answered, get_answers returned unresolved: 1, which is the genuine sense — one \"the transcript does not cover this\". The same field carried both meanings. meta.interview.unresolved is stamped from it.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q3",
+      "question": "Should ClaudeCodeSource.find prefer an exact directory match and fall back to the normalized one only when none exists?",
+      "context": "The fix is already named and agreed — \"Keeps the space fix, removes the union in every case where the naive encoding already works.\" It was held back only so the distillation then in flight would record it honestly as a finding rather than describe code that no longer existed. That reason expired when the distillation finished; the work was redirected to the relay problem and never taken back up.",
+      "raised_by": "author_agent"
+    },
+    {
+      "id": "Q4",
+      "question": "The computeRunId test named \"survives the branch moving, because the head is state and not identity\" asserts the identical expression twice and cannot fail for the reason its name claims.",
+      "context": "Found by the FIRST distillation's reviewer — \"It's a comment carrier, not a test.\" Accepted, and it visibly changed later behaviour: twice afterwards the source was reverted and the new test watched to fail before shipping. The offending test itself was never fixed or deleted, and has sat in the Outstanding section of docs/protocol-fixes.md since.",
+      "raised_by": "author_agent"
+    },
+    {
+      "id": "Q5",
+      "question": "The answer_questions entry in TOOL_BLURB still reads \"your answers, by the `q_id` the reviewer relayed\" — the old relay model, one line below record_interview_round's rewritten blurb, in the text the author role actually reads.",
+      "context": "TOOL_BLURB is the generator for both role prompts. Verification was that the allowlists render with the right tool NAMES, which would not catch stale wording in a neighbouring blurb. The author role marked this as inference from the diff rather than something the transcript records.",
+      "raised_by": "author_agent"
+    },
+    {
+      "id": "Q6",
+      "question": "Is .intent/main.json findable for this pull request?",
+      "context": "Every commit in this range was made on main and the branch was cut afterwards, so submit_document named the file from the checkout's branch and wrote .intent/main.json. The GitHub app looks for .intent/<pr.head.ref>.json. That document's commit_range also covers neither ea958e5..fa39bfb nor bc285a7.",
+      "raised_by": "author_agent"
+    },
+    {
+      "id": "Q7",
+      "question": "One user message in this session is unrecoverable, and it is the one that authorised pairing the space-path fix with Fix 1.",
+      "context": "Between \"lets do fix 1,\" and the agent's reply \"Both, then.\" the raw transcript holds queue-operation entries whose text cannot be read. A user message existed there. The shape of commits b5a1fcd and e4ae911 follows from it. The author role declined to attribute it and this document does not reconstruct it.",
+      "raised_by": "author_agent"
+    },
+    {
+      "id": "Q8",
+      "question": "The validator cannot match an anchor into .intent/, so an anchor taken from compute_diff's own hunk index is reported as \"stale\" when it is neither stale nor wrong.",
+      "context": "First-hand, twice, on this document. T10 anchors H1 — an id straight out of this run's index. packages/validator/src/index.ts:137 does `if (isIntentPath(file.path)) continue;` BEFORE the anchor-matching loop, so an anchor into that file can never set anchorMatched; the dangling pass at 163-172 then reports it as \"no diff hunk overlaps it (stale anchor?)\". The hunk exists and does overlap. Excluding .intent/ from COVERAGE is right — a reviewer should not have to explain its own prior output; excluding it from anchor MATCHING is the defect, and the message misdiagnoses it in a way that invites removing a correct anchor. Same class as the rest of this PR: a message that misdescribes what happened. Note the interaction with the unbuilt Fix 4 — excluding .intent/ from the diff itself via a git pathspec would remove this path entirely rather than needing a second special case.",
+      "raised_by": "reviewer_agent"
+    }
+  ],
+  "approach": {
+    "requirements": [
+      {
+        "text": "An interview must survive a commit, including the commit that adds the Intent Document itself.",
+        "source": "opening bug report"
+      },
+      {
+        "text": "Do not remove closeRun — a run whose document is written should still eventually go away rather than accumulate as a stray file.",
+        "source": "user: \"If we delete it, wont it lead to stray file ?\""
+      },
+      {
+        "text": "Two branches cut from the same base must not share one run, one rounds map, or one output filename.",
+        "source": "defect found by the reviewer role against fa39bfb"
+      },
+      {
+        "text": "Nothing but the run_id should travel between the two roles; neither role gains a second way to write.",
+        "source": "user: \"we just need to pass the run id to let the subagents relay to each other\""
+      },
+      {
+        "text": "Both read tools must page, on the same rule the diff and spine follow.",
+        "source": "two prior interviews measured at 25,567 and 28,943 bytes"
+      },
+      {
+        "text": "Do not guess Claude Code's directory encoder; a guessed rule fails silently on the next unpredicted character, and silence is what made the bug expensive.",
+        "source": "session reasoning after inspecting the real ~/.claude/projects"
+      }
+    ],
+    "trials": [
+      {
+        "what": "Delete the closeRun concept along with its call in submit_document.",
+        "outcome": "Rejected by the user on stray-file grounds; the agent conceded — \"you're right — I overstated it\".",
+        "why_abandoned": "Replaced by markSubmitted plus a tiered sweep, so the run is kept without accumulating. closeRun survives as the sweep's tool."
+      },
+      {
+        "what": "Key the run on repo + branch alone, dropping base_sha, which would also stop the moving-origin/main rotation.",
+        "outcome": "Reasoned through and rejected in the same message it was raised; never coded.",
+        "why_abandoned": "main is long-lived. Keyed on repo|branch alone, every change ever distilled on main would share one run and one rounds map, forever. A test now pins why base_sha stays."
+      },
+      {
+        "what": "Shared file plus a notify trigger, with the roles listening for changes — the user's original proposal for the relay problem.",
+        "outcome": "Rejected on the premise that author and reviewer are Task-dispatched subagents that never run concurrently, so \"There is nobody listening when the file changes\".",
+        "why_abandoned": "The premise was wrong and the session disproved it: the roles were launched as background agents in one message and ran in parallel, alive at once, twice. Concurrency was never the obstacle — the missing read was. The run file was already the shared channel; neither side could read the other's half of it. The passive read tools shipped instead."
+      },
+      {
+        "what": "A blocking await_answers tool.",
+        "outcome": "Never started. Proposed and deferred twice.",
+        "why_abandoned": "It burns tokens polling and risks client-side tool timeouts, and with the read tools in place the orchestrator is already down to passing one string. It would matter only if the roles were ever driven without an orchestrator at all."
+      },
+      {
+        "what": "Reconstruct Claude Code's cwd-to-directory encoder — first diagnosis said \"Fix is one character class: /[/\\\\\\s]/g\".",
+        "outcome": "Investigated against the real ~/.claude/projects and abandoned before a line was written: \"Only whitespace is attested here — no dots or other punctuation in these paths to infer from.\"",
+        "why_abandoned": "Any reconstructed rule fails silently again on the next unpredicted character. Matching on a key insensitive to WHICH characters were replaced is robust to whatever the real rule is."
+      },
+      {
+        "what": "The user's own proposed Fix 4: exclude .intent/ from hunk NUMBERING.",
+        "outcome": "Rejected in favour of excluding it from the diff itself via a git pathspec. Neither was built.",
+        "why_abandoned": "Excluding from numbering breaks the documented property that counting the raw diff reproduces the index; a pathspec removes a special case instead of adding one, and one choke point covers all three tools."
+      }
+    ],
+    "adopted": {
+      "summary": "Move the head out of the run's identity and into its state, put the branch in instead, keep the run after submit under a tiered sweep, and give each role a read-only tool for the other half of the interview.",
+      "rationale": "The three symptoms had one shape: state that the protocol depends on was being destroyed by ordinary steps the guide itself tells the roles to take. Identity was the root — a handle containing the head could not survive the commit that the correction cycle requires, and openRun silently recreating a missing record turned that into no error at all. Taking the head out fixes it and costs the branch separation the head provided as a side effect, which is why the branch is added back explicitly and resolved from the checkout rather than from a caller-named ref. Keeping the run after submit is the same decision applied to the other destroyer, and the 7/30-day tiers answer the user's stray-file objection without making submit the thing that deletes an attestation. The read tools are the smallest fix for the relay: the run file was always the channel, and the only thing missing was permission to read the other side of it — which is why they are reads and not a notify protocol, and why neither role gains a second way to write."
+    }
+  },
+  "tour": [
+    {
+      "id": "T1",
+      "title": "The run handle stops rotating on every commit",
+      "role": "core",
+      "what": "- Drops head_sha from computeRunId, which now hashes repo, base_sha and branch.\n- Turns head_sha into state on the record: openRun moves an existing run forward to the head just observed, pushes the prior value onto head_history, and carries the rounds over untouched.\n- Returns OpenRunResult {run, head_changed, previous_head} instead of a bare RunRecord, so the caller learns the branch moved.\n- Adds updated_at, submitted_at, document_path and head_history to RunRecord; writeRun stamps updated_at on every write.\n- Pins the behaviour: a head move reuses the run id, leaves one file rather than four, and the correction-cycle test answers by a q_id relayed BEFORE the commit and still gets unknown: [] with author_attested: 1.",
+      "why": "The handle contained the head, so committing the Intent Document rotated it — and openRun recreates a record for an id it cannot find, so the author's next answer_questions landed on a fresh empty run under the same handle and returned unknown_q_ids, rounds: 0, with nothing erroring. Observed as four run files for one branch holding 21, 23, 26 and 0 rounds: the same interview re-asked after each head move. An interview is about the work and survives a commit; an anchor is about a diff and does not, which is the whole split this stop implements.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 12,
+            "old_lines": 13,
+            "new_start": 12,
+            "new_lines": 26
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 69,
+            "old_lines": 9,
+            "new_start": 100,
+            "new_lines": 18
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 80,
+            "old_lines": 6,
+            "new_start": 120,
+            "new_lines": 20
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 97,
+            "old_lines": 11,
+            "new_start": 151,
+            "new_lines": 38
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 129,
+            "old_lines": 20,
+            "new_start": 210,
+            "new_lines": 44
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 154,
+            "old_lines": 7,
+            "new_start": 259,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 34,
+            "old_lines": 31,
+            "new_start": 34,
+            "new_lines": 47
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 66,
+            "old_lines": 11,
+            "new_start": 82,
+            "new_lines": 94
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "openRun's existing-record branch: it mutates and rewrites the record on every open, so a head move is a write even when nothing else changed. Check that carrying rounds over untouched really is untouched."
+    },
+    {
+      "id": "T2",
+      "title": "The move is reported, and the caller is told to re-anchor",
+      "role": "core",
+      "what": "- Adds head_changed, previous_head and a prose re_anchor instruction to the compute_diff response when the run has moved.\n- Reports interview.recorded_rounds on every compute_diff, moved or not.\n- Rewrites the submit-time drift error: it now says the run_id does NOT change, reports interview_preserved, and drops the old text that handed over a freshly computed id.",
+      "why": "Rotating the id used to be the staleness signal; with the id stable, something else has to carry it, and hunk ids are reassigned by the recomputed diff. A reviewer that misses this re-anchors nothing and ships stops pointing at the wrong code — the reporting bug's original symptom was exactly that, a reviewer having to work out unaided that its anchors had shifted. recorded_rounds was added as plumbing for the report and turned out to be the thing that makes a resurrected empty run legible: it reads 0 where a live run reads 16.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 163,
+            "old_lines": 6,
+            "new_start": 167,
+            "new_lines": 21
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 716,
+            "old_lines": 9,
+            "new_start": 871,
+            "new_lines": 12
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "The re_anchor text is the only instruction a role gets; check it is unmissable next to a full hunk index, since the failure it prevents is silent."
+    },
+    {
+      "id": "T3",
+      "title": "Two branches off one base no longer collide",
+      "role": "core",
+      "what": "- Adds branch to the run key and to computeRunId's hash.\n- Resolves the branch in compute_diff from `currentBranch(repoDir, \"HEAD\")` — the checkout — rather than from the caller's `head` argument.\n- Leaves the branch write in openRun as a defensive guard only, since a record reached by this id was opened under this same branch.\n- Pins it: two branches off one base get different ids, do not share an interview, and do not overwrite each other's branch field; a separate test pins why base_sha stays.",
+      "why": "This is a defect that Fix 2 introduced and that the reviewer role found cold-reading the diff: two branches cut from one commit have identical base SHAs however far they diverge, and the head used to keep them apart as a side effect. Without the branch they share one rounds map and fight over the branch field, which names .intent/<branch>.json. The checkout rule is not stylistic — `git rev-parse --abbrev-ref <sha>` returns empty rather than a name, so an author passing HEAD and a reviewer passing an explicit SHA would derive different ids and silently stop sharing a run.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 145,
+            "old_lines": 8,
+            "new_start": 145,
+            "new_lines": 12
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 80,
+            "old_lines": 6,
+            "new_start": 120,
+            "new_lines": 20
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 97,
+            "old_lines": 11,
+            "new_start": 151,
+            "new_lines": 38
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 34,
+            "old_lines": 31,
+            "new_start": 34,
+            "new_lines": 47
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 66,
+            "old_lines": 11,
+            "new_start": 82,
+            "new_lines": 94
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "RunKey.branch is optional with a `?? \"\"` fallback (A4, Q-list), so the guarantee holds only while every caller passes it. Detached HEAD contributes that empty string by design."
+    },
+    {
+      "id": "T4",
+      "title": "Submit records the document instead of deleting the run",
+      "role": "core",
+      "what": "- Replaces the closeRun call in submit_document with markSubmitted, which stamps submitted_at and document_path and keeps the record.\n- Adds run_id, run_still_open prose, and resubmit/previously_submitted_at (captured before the write) to the submit response, so a correction is distinguishable from a first submit.\n- Redocuments closeRun as the sweep's tool and explicitly not what submit does.\n- Pins it: the interview is still reachable and still attested after a document is written, and the author can answer a NEW question recorded post-submit.",
+      "why": "The guide tells a reviewer to fix findings and resubmit, and committing the document is itself a commit — so the ordinary correction cycle ran straight into a deleted run, and the deletion compounded the id rotation rather than duplicating it. A validation failure never cost anything, because that path returns before the write; what was one-shot was resubmitting AFTER a successful submit. Deleting closeRun outright was the first proposal and the user rejected it on stray-file grounds, which is why the concept survives and only the call site moved.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 51,
+            "old_lines": 15,
+            "new_start": 51,
+            "new_lines": 15
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 802,
+            "old_lines": 6,
+            "new_start": 960,
+            "new_lines": 11
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 812,
+            "old_lines": 7,
+            "new_start": 975,
+            "new_lines": 10
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 823,
+            "old_lines": 6,
+            "new_start": 989,
+            "new_lines": 12
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 245,
+            "old_lines": 7,
+            "new_start": 350,
+            "new_lines": 32
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 66,
+            "old_lines": 11,
+            "new_start": 82,
+            "new_lines": 94
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 226,
+            "old_lines": 11,
+            "new_start": 325,
+            "new_lines": 144
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "previously_submitted_at is read off the run before the write — check nothing between that read and markSubmitted can mutate submitted_at, or a resubmit reports itself as a first submit."
+    },
+    {
+      "id": "T5",
+      "title": "The sweep is tiered, and measures last touch",
+      "role": "core",
+      "what": "- Reaps an unsubmitted run after 30 days and a submitted one after 7.\n- Measures both from updated_at rather than created_at, falling back to created_at for records that predate the field.\n- Sorts listOpenRuns by last touch instead of creation.",
+      "why": "This is what makes keeping the run affordable, and it exists because the user asked whether not-closing would leave stray files. Creation time was a workable clock only while the id carried the head — a run was born and abandoned within one commit; a run now follows a branch from its first compute_diff to its merge, so a branch worked on for a month is live, not abandoned. Both numbers were picked rather than measured: 30 is the inherited window and 7 has no derivation anywhere in the session. Measuring from last touch means continued work extends either tier.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 42,
+            "old_lines": 9,
+            "new_start": 55,
+            "new_lines": 27
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 266,
+            "old_lines": 15,
+            "new_start": 396,
+            "new_lines": 24
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 226,
+            "old_lines": 11,
+            "new_start": 325,
+            "new_lines": 144
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "sweepStaleRuns runs inside openRun, so opening any run can reap another; the tests use a third repo to avoid the run under test being the one opening."
+    },
+    {
+      "id": "T6",
+      "title": "Each role reads the other's half of the interview off the run",
+      "role": "core",
+      "what": "- Adds get_questions (author role): the reviewer's wording and q_ids, with only_unanswered to check what is still owed.\n- Adds get_answers (reviewer role): the author's answers verbatim, each with answered_by so attested and reviewer-transcribed cannot be confused, and a trailing note naming how many rounds are still unanswered.\n- Pages both through a shared pageRounds helper that always emits at least one item, so an oversized single answer is served rather than skipped forever.\n- Grants get_questions to author and get_answers to reviewer only; neither role gains a second way to write.\n- Rewrites record_interview_round's TOOL_BLURB from \"which you relay to the author\" to \"the author reads them off the run itself\" — the protocol change written into the text each role reads.\n- Registers both tools in manifest.json, which the release consistency check validates against.",
+      "why": "The run file was already the channel between two agents forbidden from talking; the only thing missing was permission to read the other side of it. Until now the reviewer's questions and the author's answers were hand-carried as chat text by whoever dispatched the roles — 25,567 and 28,943 bytes across two real runs — and three separate reviewers read the missing answer bodies as a server bug and stalled. Paging is not decoration: an interview at that size does not fit one response, and a reviewer whose answers were truncated is back where it started.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/manifest.json",
+          "hunk": {
+            "old_start": 68,
+            "old_lines": 10,
+            "new_start": 68,
+            "new_lines": 18
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 523,
+            "old_lines": 6,
+            "new_start": 542,
+            "new_lines": 142
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 287,
+            "old_lines": 6,
+            "new_start": 287,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 299,
+            "old_lines": 6,
+            "new_start": 300,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 320,
+            "old_lines": 7,
+            "new_start": 322,
+            "new_lines": 9
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/roles.test.ts",
+          "hunk": {
+            "old_start": 59,
+            "old_lines": 6,
+            "new_start": 59,
+            "new_lines": 17
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 226,
+            "old_lines": 11,
+            "new_start": 325,
+            "new_lines": 144
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "pageRounds' cursor is a bare integer index into the FILTERED list — see Q1. Also check the answer_questions blurb directly below the rewritten one: it still describes the old relay model."
+    },
+    {
+      "id": "T7",
+      "title": "Sessions are found for repos whose path Claude Code mangles",
+      "role": "core",
+      "what": "- Groups every directory under ~/.claude/projects by a key that collapses each run of non-alphanumerics to a single dash, and looks the repo up by that key instead of by encodeRepoDir's output.\n- Returns the sessions of every directory whose key matches, for each ancestor candidate.\n- Pins it with a regression test that asserts the naive encoding does NOT resolve, then asserts the session is found anyway.",
+      "why": "Found by the author role while distilling an earlier commit of this same work: Claude Code replaces more than path separators when it flattens a cwd, so \".../engagement apps/review-assist\" is filed under \"...-engagement-apps-review-assist\". encodeRepoDir replaced only / and \\, so every session for this repository was invisible to its own tooling — with no error, no candidates, and the author role hydrating from an empty set rather than reporting it could not see the session. Reconstructing the real encoder was investigated against the live directory and abandoned because only whitespace was attested there: a guessed rule fails silently again on the next character nobody predicted, and silence is what made this expensive.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/transcript/sources.ts",
+          "hunk": {
+            "old_start": 124,
+            "old_lines": 18,
+            "new_start": 124,
+            "new_lines": 53
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/sources.test.ts",
+          "hunk": {
+            "old_start": 34,
+            "old_lines": 6,
+            "new_start": 34,
+            "new_lines": 38
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "find now returns the UNION of every key-matching directory. The \"inherited, not introduced\" comment defends the key collision, not the union — see A1 and Q3."
+    },
+    {
+      "id": "T8",
+      "title": "The guide and the role definitions stop describing the old relay",
+      "role": "supporting",
+      "what": "- Tells the author to read questions with get_questions and to re-check with only_unanswered before declaring itself done.\n- Tells the reviewer to read answers with get_answers, and that answered_by: \"author\" is the only value that attests — if the answers are not there, the author has not run.\n- Deletes the guide's claim that questions \"travel as text between the two roles — no tool carries them, and none can\", replacing it with \"Nothing but the run_id travels between the two roles.\"\n- Documents the new identity (repo + base + branch), why each component earns its place, and that a moved head preserves the interview but invalidates every anchor.\n- Documents that submitting does not end the run, in both the guide and the reviewer definition.",
+      "why": "The original diagnosis was that this was a documentation defect before it was a code defect — three reviewers independently stalled because the prose said the relay was impossible when it was merely unbuilt. The deleted sentence stated a design choice as a law. The prose is what the roles actually act on, so it is not an accompaniment to the code change here; it is half of the change.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/agents/_roles/author.md",
+          "hunk": {
+            "old_start": 71,
+            "old_lines": 7,
+            "new_start": 71,
+            "new_lines": 11
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 27,
+            "old_lines": 11,
+            "new_start": 27,
+            "new_lines": 16
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 123,
+            "old_lines": 6,
+            "new_start": 128,
+            "new_lines": 16
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 45,
+            "old_lines": 9,
+            "new_start": 45,
+            "new_lines": 13
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 60,
+            "old_lines": 6,
+            "new_start": 64,
+            "new_lines": 14
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 109,
+            "old_lines": 9,
+            "new_start": 121,
+            "new_lines": 23
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 167,
+            "old_lines": 6,
+            "new_start": 193,
+            "new_lines": 12
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "Check for any remaining instruction telling a role to WAIT to be told something, rather than to read it — the tool descriptions were updated, the surrounding wording less systematically."
+    },
+    {
+      "id": "T9",
+      "title": "docs/protocol-fixes.md — the standing record, including its own corrections",
+      "role": "supporting",
+      "what": "- Records a verdict per reported bug: two confirmed (one worse than reported, one a documentation split rather than a missing feature) and one already half-fixed.\n- Carries the on-disk evidence table — four and three run files per branch, holding 21/23/26/0 and 23/24/26 rounds.\n- Corrects an earlier rejection in place: the concurrency premise used to reject the shared-file design was wrong, and the roles were shown running in parallel.\n- Lists what is outstanding: the weak computeRunId test, three findings recorded against the previous commit and not fixed, and the unbuilt Fix 4 with its proposed pathspec.",
+      "why": "Written on explicit request as a proposed-vs-done status record before a session restart, and deliberately left untracked at first so an uncommitted file would stay out of the three-dot distillation diff. It then became a standing log with two commits existing only to keep it accurate, the last of which corrected Fix 3's own entry rather than deleting it — \"since being wrong about it is part of the story\". Read it as the branch's decision record, not as narration of the diff.",
+      "anchors": [
+        {
+          "path": "docs/protocol-fixes.md",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 160
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview"
+    },
+    {
+      "id": "T10",
+      "title": "The dogfooding artifact this branch carries, and where it is filed",
+      "role": "supporting",
+      "what": "- Adds .intent/main.json, the Intent Document produced by the second live distillation of this work.\n- Files it under main, not under this branch, because every commit in the range was made on main and the branch was cut afterwards.",
+      "why": "Committing it was a deliberate user call, taken after the document had been regenerated against the fixed code — the agent had held it back once because two of its findings were true when written and false as of the commit above them. Two consequences a reviewer should know: the GitHub app looks for .intent/<pr.head.ref>.json and this file is not that, and its commit_range does not cover this PR's range. The session also watched this file demonstrate the unbuilt Fix 4 live — committing it entered the diff as H1 and shifted every hunk id by one.",
+      "anchors": [
+        {
+          "path": ".intent/main.json",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 630
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview"
+    },
+    {
+      "id": "T11",
+      "title": "Test call-site churn from openRun's new return shape",
+      "role": "incidental",
+      "what": "- Rewrites ten `runs.openRun({...})` call sites to a local `open({...})` helper that unwraps `.run`, arguments unchanged.\n- Adds readFileSync/writeFileSync to the test imports for the sweep's backdating helper.",
+      "why": "Mechanical consequence of openRun returning {run, head_changed, previous_head} rather than a RunRecord; the rewrite was applied with a single sed over the file. The author confirmed no behaviour is encoded in any of them.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 7,
+            "old_lines": 7,
+            "new_start": 7,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 85,
+            "old_lines": 7,
+            "new_start": 184,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 99,
+            "old_lines": 7,
+            "new_start": 198,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 108,
+            "old_lines": 14,
+            "new_start": 207,
+            "new_lines": 14
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 134,
+            "old_lines": 15,
+            "new_start": 233,
+            "new_lines": 15
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 159,
+            "old_lines": 7,
+            "new_start": 258,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 174,
+            "old_lines": 7,
+            "new_start": 273,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 183,
+            "old_lines": 7,
+            "new_start": 282,
+            "new_lines": 7
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview"
+    }
+  ],
+  "verification": {
+    "performed": [
+      {
+        "kind": "typecheck",
+        "description": "npx tsc --noEmit -p packages/mcp-server, after every fix",
+        "result": "clean throughout"
+      },
+      {
+        "kind": "test",
+        "description": "npx vitest run, after every fix",
+        "result": "passing; count walked 129 -> 134 -> 135 -> 138 -> 141"
+      },
+      {
+        "kind": "build",
+        "description": "npm run build --workspace=review-assist-mcp",
+        "result": "passing"
+      },
+      {
+        "kind": "manual",
+        "description": "node scripts/check-release-consistency.mjs — validates registered tools against manifest.json",
+        "result": "accepts 15 tools"
+      },
+      {
+        "kind": "manual",
+        "description": "review-assist-mcp agents — render both role allowlists",
+        "result": "author gets get_questions, reviewer gets get_answers, neither gains a second way to write"
+      },
+      {
+        "kind": "manual",
+        "description": "Fix 1 confirmed live through the real MCP server: run present after submit, and the next compute_diff returned interview: {recorded_rounds: 16} where the identical call in the prior run returned 0 with no error",
+        "result": "confirmed"
+      },
+      {
+        "kind": "manual",
+        "description": "head_changed and the re_anchor prose observed live in a real compute_diff response after the document was committed",
+        "result": "confirmed"
+      },
+      {
+        "kind": "manual",
+        "description": "Collision fix confirmed on the wire: run_id 11adab29de7f = sha256(repo|base|main); pre-fix it would have been 35b6d36fcc55",
+        "result": "confirmed"
+      },
+      {
+        "kind": "manual",
+        "description": "Space-path fix confirmed against the real ~/.claude/projects: the author role found this repository's own session, no path override, ranked #1 at relevance 10",
+        "result": "confirmed — previously impossible"
+      },
+      {
+        "kind": "test",
+        "description": "Regression tests checked for discrimination: the source was reverted and each new test watched to fail before shipping",
+        "result": "confirmed for the space-path fix and the collision fix"
+      }
+    ],
+    "added_tests": [
+      {
+        "covers": "A head move reuses the run id, records head_history, and leaves one run file rather than four",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/runs.test.ts",
+            "hunk": {
+              "old_start": 66,
+              "old_lines": 11,
+              "new_start": 82,
+              "new_lines": 94
+            }
+          }
+        ]
+      },
+      {
+        "covers": "The correction cycle: the author answers by a q_id relayed before the commit and still gets unknown: [] with author_attested: 1",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/runs.test.ts",
+            "hunk": {
+              "old_start": 66,
+              "old_lines": 11,
+              "new_start": 82,
+              "new_lines": 94
+            }
+          }
+        ]
+      },
+      {
+        "covers": "Two branches off one base get different ids, do not share an interview, and do not overwrite each other's branch name",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/runs.test.ts",
+            "hunk": {
+              "old_start": 66,
+              "old_lines": 11,
+              "new_start": 82,
+              "new_lines": 94
+            }
+          }
+        ]
+      },
+      {
+        "covers": "markSubmitted keeps the run and its attestation, and the author can answer a question recorded after the document was written",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/runs.test.ts",
+            "hunk": {
+              "old_start": 226,
+              "old_lines": 11,
+              "new_start": 325,
+              "new_lines": 144
+            }
+          }
+        ]
+      },
+      {
+        "covers": "The tiered sweep reaps a submitted run after a week, keeps an unsubmitted one, and keeps a submitted one still being worked on",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/runs.test.ts",
+            "hunk": {
+              "old_start": 226,
+              "old_lines": 11,
+              "new_start": 325,
+              "new_lines": 144
+            }
+          }
+        ]
+      },
+      {
+        "covers": "The run carries the reviewer's questions to the author and the author's answers back, attributed",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/runs.test.ts",
+            "hunk": {
+              "old_start": 226,
+              "old_lines": 11,
+              "new_start": 325,
+              "new_lines": 144
+            }
+          }
+        ]
+      },
+      {
+        "covers": "Each role's allowlist gains the read tool for the other's half and no second way to write",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/roles.test.ts",
+            "hunk": {
+              "old_start": 59,
+              "old_lines": 6,
+              "new_start": 59,
+              "new_lines": 17
+            }
+          }
+        ]
+      },
+      {
+        "covers": "A Claude Code session is found for a repo path the naive encoding does not resolve",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/sources.test.ts",
+            "hunk": {
+              "old_start": 34,
+              "old_lines": 6,
+              "new_start": 34,
+              "new_lines": 38
+            }
+          }
+        ]
+      }
+    ],
+    "not_verified": [
+      "The return leg of the relay. At the point the session record ends, the outbound leg was proven — a reviewer returned only the run_id and one sentence, where both previous reviewers had handed over 15 questions to relay — but no real author had yet called get_questions and no real reviewer get_answers through the server.",
+      "Paging on get_questions and get_answers. next_cursor has not been exercised in a live run; the interview that tested these tools was 15 questions, which fits inside one page. The helper is unit-tested only through the round-trip test, which does not page.",
+      "The tiered sweep against real on-disk runs. Pinned only by backdating records in a fixture; reaping a genuine abandoned run has never been observed.",
+      "The union-of-directories path in ClaudeCodeSource.find (A1, Q3): no test covers two directories whose normalized keys collide.",
+      "A caller of openRun that omits RunKey.branch (A4).",
+      "Detached HEAD (A5).",
+      "Fix 4, hunk-id stability: not built, and the session watched the failure it would fix happen live.",
+      "No lint step appears anywhere in the session."
+    ]
+  },
+  "diagrams": [
+    {
+      "title": "The run as the channel between two roles that cannot talk",
+      "mermaid": "sequenceDiagram\n    participant R as Reviewer role\n    participant Run as Run file (repo base branch)\n    participant A as Author role\n    R->>Run: compute_diff (opens run, returns run_id)\n    A->>Run: compute_diff (same repo base branch, same run_id)\n    R->>Run: record_interview_round (questions, q_ids back)\n    A->>Run: get_questions (reviewer wording plus q_ids)\n    A->>Run: answer_questions (by q_id, attested to author)\n    R->>Run: get_answers (author words, answered_by)\n    R->>Run: submit_document (markSubmitted, run KEPT)\n    Note over Run: head moves when the document is committed\n    R->>Run: compute_diff again (same run_id, head_changed, re-anchor)",
+      "caption": "Only the run_id passes between the roles. Before this change the questions and answers were hand-carried as chat text, and submit plus the next commit destroyed the run under them."
+    }
+  ]
+}
