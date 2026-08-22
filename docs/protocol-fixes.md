@@ -108,24 +108,50 @@ property that counting the raw diff reproduces the index.
 - Tests verified to fail without the branch component: two branches off one base get
   distinct ids, do not share an interview, and do not overwrite each other's `branch` field.
 
+**Fix 3 — the roles read the run instead of being told what it says**
+
+- `get_questions({run_id, only_unanswered?})` gives the author the reviewer's wording and
+  `q_id`s; `get_answers({run_id, only_answered?})` gives the reviewer the author's answers
+  verbatim, with `answered_by` so attested and transcribed cannot be confused.
+- Both page, on the same rule the diff and spine follow — an interview is not small, and a
+  reviewer whose answers were truncated is back where it started.
+- Neither role gains a second way to write: the author still cannot `record_interview_round`,
+  the reviewer still cannot `answer_questions`. Each reads only the other's half.
+- Nothing but the `run_id` now travels between the roles, and even that is derivable from
+  `compute_diff`. The two runs that predate these tools cost 25,567 and 28,943 bytes of
+  hand-relayed prose.
+- The guide's claim that questions "travel as text between the two roles — no tool carries
+  them, and none can" is gone. The first half was true; the second was only ever a
+  description of what had been built.
+
+**Correction to the earlier reasoning.** The shared-file-plus-notify design was first
+rejected partly on the grounds that the two roles never run concurrently under Claude Code,
+so nothing could listen. That is wrong: dispatched as background agents they run in parallel
+and resume with context intact, which this work did repeatedly. Concurrency was never the
+obstacle — the missing read was. The run file was already the shared channel; neither side
+could read the other's half of it.
+
+A blocking `await_answers` remains possible and unbuilt. With the read tools in place the
+orchestrator is down to passing one string, so it buys little; it would matter only if the
+roles were ever driven without an orchestrator at all.
+
 ## Outstanding
 
 **The weak test.** `computeRunId`'s "survives the branch moving" test asserts the same
 expression twice and cannot fail as named. The real coverage is the correction-cycle test
 and the one-file assertion; this one should be deleted or rewritten.
 
-**Fix 3 — reviewer-visible answers.** Two parts: add `answer`/`resolved` to the projection
-`record_interview_round` already returns, and add `get_answers({run_id})` for the reviewer
-and author. Then state the answer path in the reviewer definition and the guide, which is
-what actually stalled the three reviewers.
+**Found by the reviewer against `e4ae911`, recorded in `.intent/` and not fixed.**
 
-A shared file plus a notify trigger was considered and rejected: the run file already *is*
-the shared state, and under Claude Code the two roles never run concurrently — the parent
-blocks on one subagent before dispatching the other, so there is nobody listening when the
-file changes. Monitor is also unavailable to these roles, since the rendered `tools:`
-allowlist is exclusively `mcp__review-assist__*` and that allowlist is the role split. A
-blocking `await_answers` is only worth building if the roles are ever run as concurrent
-sessions.
+- `ClaudeCodeSource.find` now returns the union of every directory whose normalized key
+  matches, so a repo differing only in punctuation could contribute its sessions here. The
+  "inherited, not introduced" defence in the code comment covers the key collision but not
+  the union, which is new behaviour. Likely fix: prefer an exact directory match and fall
+  back to the normalized one only when none exists.
+- `RunKey.branch` is optional with an empty-string fallback, so a caller that omits it
+  silently derives a different id — the same failure class the checkout-not-head rule exists
+  to prevent.
+- `closeRun` is documented as "available for an explicit discard" that nothing exposes.
 
 **Fix 4 — hunk-id stability.** Exclude `.intent/` from the diff itself via a git pathspec in
 `computeDiff` rather than from the numbering. One choke point covers `compute_diff`,
