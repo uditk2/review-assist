@@ -255,3 +255,62 @@ describe("meta.interview and the run summary agree", () => {
     expect(report.findings.filter((f) => JSON.stringify(f).includes("interview"))).toEqual([]);
   });
 });
+
+
+/**
+ * An anchor into the intent document's own file used to be reported as dangling, because
+ * the coverage loop skipped that file before anchor matching ever ran. The id came from
+ * `compute_diff`'s own hunk index, so the warning accused the server's own output of being
+ * a stale hand-copied anchor. Excluding `.intent/` from COVERAGE is right; excluding it
+ * from MATCHING was the defect.
+ */
+describe("anchors into the intent document's own file", () => {
+  const diff = [
+    "diff --git a/.intent/main.json b/.intent/main.json",
+    "--- /dev/null",
+    "+++ b/.intent/main.json",
+    "@@ -0,0 +1,3 @@",
+    "+{",
+    '+  "schema_version": "0.1"',
+    "+}",
+    "diff --git a/src/a.ts b/src/a.ts",
+    "--- a/src/a.ts",
+    "+++ b/src/a.ts",
+    "@@ -1,2 +1,3 @@",
+    " const a = 1;",
+    "+const b = 2;",
+    " export { a };",
+    "",
+  ].join("\n");
+
+  const anchoredAt = (path: string, new_start: number, new_lines: number) => ({
+    path,
+    hunk: { old_start: 0, old_lines: 0, new_start, new_lines },
+  });
+
+  /** The example document with its tour replaced by one stop carrying these anchors. */
+  const coverageOf = (d: string, anchors: ReturnType<typeof anchoredAt>[]) => {
+    const doc = JSON.parse(JSON.stringify(example));
+    doc.tour = [
+      {
+        id: "T1",
+        title: "Only stop",
+        role: "core",
+        what: "changes",
+        why: "reason",
+        anchors,
+        provenance: "from_transcript",
+      },
+    ];
+    doc.verification.added_tests = [];
+    return validate(doc, { diff: d }).coverage!;
+  };
+
+  it("does not report an anchor into .intent/ as dangling", () => {
+    const report = coverageOf(diff, [
+      anchoredAt(".intent/main.json", 1, 3),
+      anchoredAt("src/a.ts", 1, 3),
+    ]);
+    expect(report.dangling).toEqual([]);
+  });
+});

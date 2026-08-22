@@ -51,15 +51,15 @@ import {
 import { buildSpine, pageSpine } from "./spine.js";
 import { importSession, listImported } from "./transcript/export.js";
 import {
-  computeRunId,
   openRun,
   getRun,
   recordRounds,
   recordAnswers,
   runRounds,
   summarizeRun,
-  closeRun,
+  markSubmitted,
   listOpenRuns,
+  type InterviewRound,
 } from "./runs.js";
 import {
   getConsent,
@@ -145,8 +145,12 @@ registerTool(
     try {
       const repoDir = repo ? resolve(repo) : REPO_DIR;
       const { diff, baseSha, headSha } = await computeDiff(repoDir, base, head ?? "HEAD");
-      const branch = await currentBranch(repoDir, head ?? "HEAD");
-      const run = openRun({ repo: repoDir, baseSha, headSha, branch });
+      // From the CHECKOUT, not from `head`. The branch is part of the run's identity, and
+      // `rev-parse --abbrev-ref <sha>` yields no name — so resolving it from a caller-named
+      // SHA would give the author and the reviewer different ids for the same work.
+      const branch = await currentBranch(repoDir, "HEAD");
+      const { run, head_changed, previous_head } = openRun({ repo: repoDir, baseSha, headSha, branch });
+      const recorded_rounds = Object.keys(run.rounds).length;
       const consent = getConsent(repoDir);
       const hunks = indexHunks(diff);
       const files = summarizeFiles(hunks);
@@ -163,6 +167,21 @@ registerTool(
         head_sha: headSha,
         branch,
         consent_state: consent,
+        // The run outlives a commit; the hunk ids in it do not. Reported first because a
+        // reviewer that misses this re-anchors nothing and ships stops pointing at the
+        // wrong code — which is exactly what a silent id rotation used to cause.
+        ...(head_changed
+          ? {
+              head_changed: true,
+              previous_head,
+              re_anchor:
+                `This run has moved from ${previous_head} to ${headSha}. Your interview survived — ` +
+                `${recorded_rounds} round(s) are still on it — but the diff was recomputed, so every ` +
+                "hunk id below has been reassigned. Discard every anchor you were holding and take " +
+                "the ids from THIS response.",
+            }
+          : {}),
+        interview: { recorded_rounds },
         stats: {
           files: files.length,
           hunks: hunks.length,
@@ -523,6 +542,142 @@ registerTool(
   }
 );
 
+registerTool(
+  "get_questions",
+  "Author role: read the reviewer's questions straight off the run, with their `q_id`s. This is how you " +
+    "learn what you are being asked — you do NOT need them relayed to you as text. Call it with the " +
+    "`run_id` (derive it yourself from compute_diff, or take the one you were given, they are the same " +
+    "value), answer with `answer_questions` using the ids it returns, then call it again with " +
+    "`only_unanswered: true` to confirm nothing was missed. Paged: follow `next_cursor` until there is none.",
+  {
+    run_id: z.string().describe("Run handle from compute_diff."),
+    only_unanswered: z
+      .boolean()
+      .default(false)
+      .describe("Only questions with no answer yet — what is still owed. Use this after a batch to check you covered everything."),
+    cursor: z.string().optional().describe("`next_cursor` from the previous page. Omit to start at the beginning."),
+    max_bytes: z.number().int().min(2_000).optional().describe("Byte budget for this page. Defaults to the server's ceiling."),
+  },
+  async ({ run_id, only_unanswered, cursor, max_bytes }) => {
+    const run = getRun(run_id);
+    if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    const all = runRounds(run);
+    const wanted = (only_unanswered ?? false) ? all.filter((r) => r.answer.length === 0) : all;
+    const page = pageRounds(
+      wanted,
+      (r) => ({
+        q_id: r.q_id,
+        question: r.question,
+        answered: r.answer.length > 0,
+        answered_by: r.answered_by ?? null,
+        resolved: r.resolved,
+      }),
+      cursor,
+      max_bytes ?? maxResultBytes()
+    );
+    return textResult(
+      JSON.stringify({
+        run_id,
+        repo: run.repo,
+        branch: run.branch,
+        ...summarizeRun(run),
+        ...page,
+        next: page.next_cursor
+          ? `More questions. Call get_questions again with cursor: "${page.next_cursor}".`
+          : "That is every question on this run.",
+      })
+    );
+  }
+);
+
+registerTool(
+  "get_answers",
+  "Reviewer role: read the author's answers, in the author's own words, straight off the run. This is " +
+    "where the interview reaches you — you do NOT need answers relayed as text, and you must not " +
+    "paraphrase a summary into the document when the verbatim answer is here. Each round carries " +
+    "`answered_by`: only `author` is attested, `reviewer` is your own transcription, and `null` means " +
+    "nobody has answered yet. Paged: follow `next_cursor` until there is none.",
+  {
+    run_id: z.string().describe("Run handle from compute_diff."),
+    only_answered: z
+      .boolean()
+      .default(false)
+      .describe("Skip rounds nobody has answered yet. Leave false while you are waiting, so you can see what is still outstanding."),
+    cursor: z.string().optional().describe("`next_cursor` from the previous page. Omit to start at the beginning."),
+    max_bytes: z.number().int().min(2_000).optional().describe("Byte budget for this page. Defaults to the server's ceiling."),
+  },
+  async ({ run_id, only_answered, cursor, max_bytes }) => {
+    const run = getRun(run_id);
+    if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    const all = runRounds(run);
+    const wanted = (only_answered ?? false) ? all.filter((r) => r.answer.length > 0) : all;
+    const page = pageRounds(
+      wanted,
+      (r) => ({
+        q_id: r.q_id,
+        question: r.question,
+        answer: r.answer,
+        answered_by: r.answered_by ?? null,
+        resolved: r.resolved,
+        at: r.at,
+      }),
+      cursor,
+      max_bytes ?? maxResultBytes()
+    );
+    const summary = summarizeRun(run);
+    return textResult(
+      JSON.stringify({
+        run_id,
+        repo: run.repo,
+        branch: run.branch,
+        ...summary,
+        ...page,
+        next: page.next_cursor
+          ? `More answers. Call get_answers again with cursor: "${page.next_cursor}".`
+          : summary.unanswered > 0
+            ? `That is every round. ${summary.unanswered} still have no answer — the author has not replied to those yet.`
+            : "That is every round, and all of them are answered.",
+      })
+    );
+  }
+);
+
+/**
+ * Page a list of rounds under a byte budget.
+ *
+ * The same rule the diff and the spine already follow: no response may grow with the size
+ * of the thing it describes. An interview is not small — the two runs before this tool
+ * existed carried 25,567 and 28,943 bytes of answer text — and a reviewer that cannot read
+ * its answers because the response was truncated is back where it started.
+ *
+ * Always emits at least one item, so an oversized single answer is served rather than
+ * skipped forever.
+ */
+function pageRounds<T>(
+  rounds: InterviewRound[],
+  render: (r: InterviewRound) => T,
+  cursor: string | undefined,
+  maxBytes: number
+): { items: T[]; from: number; total: number; next_cursor?: string } {
+  const start = Math.min(Math.max(0, Number(cursor ?? 0) || 0), rounds.length);
+  const items: T[] = [];
+  let used = 0;
+  let i = start;
+  for (; i < rounds.length; i++) {
+    const item = render(rounds[i]);
+    const size = JSON.stringify(item).length;
+    if (items.length && used + size > maxBytes) break;
+    items.push(item);
+    used += size;
+  }
+  return {
+    items,
+    from: start,
+    total: rounds.length,
+    next_cursor: i < rounds.length ? String(i) : undefined,
+  };
+}
+
 /**
  * An unknown run_id is answered with the runs that DO exist. A wrong handle then costs
  * one corrective call instead of a guess; previously the equivalent mistake was silent
@@ -716,9 +871,12 @@ registerTool(
             error: "The branch moved after this run opened, so the document describes an older change.",
             run_head: run.head_sha,
             live_head: liveHead,
-            next: `Call compute_diff again for ${repoDir} to open the run for the new head (run_id will be ${computeRunId(
-              { repo: repoDir, baseSha: run.base_sha, headSha: liveHead }
-            )}), re-anchor against the new diff, then resubmit.`,
+            interview_preserved: summarizeRun(run),
+            next:
+              `Call compute_diff again for ${repoDir}. The run_id does NOT change — it stays ${run_id}, ` +
+              "and your recorded interview stays on it, so there is nothing to re-ask. That call moves " +
+              "the run to the new head and renumbers the hunks; re-anchor every stop against the ids it " +
+              "returns, then resubmit.",
           },
           null,
           2
@@ -802,6 +960,11 @@ registerTool(
       );
     }
 
+    // Captured BEFORE the write: whether a document has already been produced from this
+    // run. That is the difference between a first submit and a correction, and the run
+    // survives either way.
+    const previously_submitted_at = run.submitted_at;
+
     let written: string | null = null;
     if (write ?? true) {
       try {
@@ -812,7 +975,10 @@ registerTool(
         mkdirSync(dirname(outPath), { recursive: true });
         writeFileSync(outPath, JSON.stringify(doc, null, 2) + "\n", "utf8");
         written = outPath;
-        closeRun(run_id);
+        // The run is kept, with its interview attached. Submitting is not the end of a
+        // distillation: a finding spotted after the document lands is fixed by editing and
+        // resubmitting, and that must not cost the attestation.
+        markSubmitted(run_id, outPath);
       } catch (e) {
         return textResult(`document valid but write failed: ${(e as Error).message}`, true);
       }
@@ -823,6 +989,12 @@ registerTool(
         {
           ok: true,
           written,
+          run_id,
+          ...(previously_submitted_at ? { resubmit: true, previously_submitted_at } : {}),
+          run_still_open:
+            "This run and its interview are still open. If you spot a finding, fix the document and " +
+            "submit again with the same run_id — nothing needs re-asking. If the branch has moved, call " +
+            "compute_diff first and re-anchor: the id is unchanged but the hunk ids are not.",
           pr_description: renderPrDescription(doc as never),
           coverage: report.coverage,
           interview,

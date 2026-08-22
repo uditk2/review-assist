@@ -45,9 +45,13 @@ quietly sources \`user_asks\` from the commit message:
    - **Batch one** — the baseline set plus every question the diff provoked, together in ONE
      \`record_interview_round\` call. You have already read the diff, so you already have
      these questions; holding any back only buys a round-trip. Record them BEFORE relaying:
-     each comes back with a \`q_id\`, and the author replies by calling \`answer_questions\`
-     with those ids, so the server records the author's own words. Questions themselves
-     travel as text between the two roles — no tool carries them, and none can.
+     each comes back with a \`q_id\`. The author reads them off the run with
+     \`get_questions\` and replies with \`answer_questions\` by those ids, so the server
+     records the author's own words.
+   - **Read the answers with \`get_answers\`.** They arrive in the author's own words, and
+     that is what you write the document from. Do not paraphrase a relayed summary into a
+     field when the verbatim answer is one call away, and never mark a stop
+     \`provenance: from_transcript\` on the strength of a summary.
    - **Draft the whole document** from the answers, then read your own reasoning back. This
      is what finds the real gaps: an answer reads fine until you try to write
      \`approach.adopted.rationale\` out of it and find there is nothing there. Mark every
@@ -59,6 +63,14 @@ quietly sources \`user_asks\` from the commit message:
    cannot inflate the count. The server stamps \`meta.interview\` from them itself. Fold
    answers back into the fields. Do NOT keep the Q&A as a transcript — its only trace is
    better-filled fields.
+
+   **Nothing but the \`run_id\` travels between the two roles.** The run IS the channel:
+   the reviewer writes questions into it, the author reads them and writes answers back,
+   and each side reads the other's half with \`get_questions\` / \`get_answers\`. Whoever
+   dispatched you only has to say which run and whose turn it is — and even the id is
+   derivable, since both roles get the same one from \`compute_diff\`. Hand-carrying
+   question or answer TEXT between the roles is a sign something is wrong; the two runs
+   that predate these tools cost 25,567 and 28,943 bytes of relayed prose.
 
 Two batches is the cap, and the document must converge. Thin spots that survive the second
 batch are findings, not a third round. Do NOT hand-fill \`meta.interview\` — the server
@@ -109,9 +121,23 @@ already knows it. Pass \`repo\` to \`compute_diff\` itself (the absolute path of
 repository you changed) whenever the server spans more than one repo: its working
 directory is the workspace, not your repo.
 
-The id is a hash of repo + base + head, so the author and the reviewer derive the same
+The id is a hash of repo + base + branch, so the author and the reviewer derive the same
 handle independently without coordinating, and a role resumed later recomputes it by
-calling \`compute_diff\` again. Never invent, shorten, or carry over a \`run_id\`.
+calling \`compute_diff\` again. Never invent or shorten a \`run_id\`.
+
+Base and branch are both in there for a reason. The base separates successive changes on a
+long-lived branch like \`main\`; the branch separates two feature branches cut from the
+same commit, which would otherwise share one run and one interview.
+
+The head is NOT in that hash, which is what makes a correction cycle possible. Commit the
+document, fix a finding, let the branch move — the run and the interview on it are still
+there under the same handle, so nothing has to be re-asked. Call \`compute_diff\` again and
+it moves the run to the new head, reporting \`head_changed\` with the head it moved from.
+
+What does NOT survive a moved head is your anchors. The new head means a new diff, and the
+diff is renumbered from H1, so every hunk id you were holding now means something else.
+When you see \`head_changed\`, discard them and re-anchor from the ids that response
+carries. This is the one part of a resubmit you have to redo.
 
 The document is written to \`<repo>/.intent/<branch>.json\`. The run's own state lives
 outside the repository and is never committed.
@@ -166,6 +192,12 @@ Call \`submit_document\` with the candidate JSON and the \`run_id\`. It derives 
 and head from the run, so the interview and the coverage check cannot disagree about
 which change this is. If it returns validation findings, FIX them and resubmit — do not
 argue with the validator. Warnings are advisory; only errors block.
+
+Submitting does NOT end the run. The document is written and the run stays open with its
+interview attached, so a finding spotted afterwards — including one found after the
+document is committed — is fixed by editing and submitting again under the same
+\`run_id\`, with nothing re-asked. If the branch moved in between, call \`compute_diff\`
+first and re-anchor; the id is unchanged but the hunk ids are not.
 
 Consent is per repository: Review Assist is installed globally but must be opted in for
 each repo. \`compute_diff\` reports \`consent_state\` when it opens the run — if it is

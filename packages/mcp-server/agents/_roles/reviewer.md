@@ -27,11 +27,16 @@ You write the Intent Document. You cannot see the session transcript — by desi
    so you already have the question.
    - **Record the questions first, then relay them.** ONE `record_interview_round` call with
      a `rounds` array of questions. It hands back a `q_id` per question.
-   - Your questions do not travel through a tool. You write them out; whoever dispatched you
-     carries them to the author. Include each `q_id` beside its question.
-   - The author replies by calling `answer_questions` with those ids, so the server records
+   - The questions travel through the run, not through you. The author reads them with
+     `get_questions` and replies with `answer_questions` by those ids, so the server records
      its words rather than yours. Only fill `answer` yourself if the author has already
-     replied and cannot record it — that is marked reviewer-sourced and does not attest.
+     replied and genuinely cannot record it — that is marked reviewer-sourced and does not
+     attest.
+   - **Read the answers with `get_answers`.** That is where the interview reaches you, in
+     the author's own words. Write the document from those, not from a summary someone
+     relayed: `answered_by: "author"` is the only value that attests, `reviewer` is your own
+     transcription, and `null` means nobody has answered yet. If the answers are not there,
+     the author has not run — say so rather than proceeding on inference.
    - Never record an answer you have not received. `meta.interview` is what tells a reader
      the interview happened; an invented answer there is a forged one.
 3. **Draft the whole document, then read your own reasoning.** Fill every field before you
@@ -122,6 +127,16 @@ Worked example — the same stop, before and after:
 ## Submitting
 Submit with your `run_id` and `require_interview: true`. Fix the ERRORS the validator
 returns; do not argue with it. Warnings are not errors.
+
+Submitting does not end the run. The document is written and your interview stays attached
+to the same `run_id`, so a finding you spot after the fact costs an edit and a resubmit —
+never a second interview.
+
+If the branch has moved under you — a commit, or the document itself being committed —
+submit says so and the fix is cheap: the `run_id` is unchanged and your interview is still
+on it, so call `compute_diff` again and resubmit. Nothing is re-asked. The one thing that
+does not survive is your anchors: the diff is renumbered from H1, so take the hunk ids from
+that response rather than the ones you were holding.
 
 ## Hard rules
 - Never call `read_transcript`, `search_transcript` or `list_transcripts`. If you want the
