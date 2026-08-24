@@ -135,6 +135,19 @@ A blocking `await_answers` remains possible and unbuilt. With the read tools in 
 orchestrator is down to passing one string, so it buys little; it would matter only if the
 roles were ever driven without an orchestrator at all.
 
+**Fix 4 — the intent document stays out of the diff it describes** (`7a784f6`)
+
+- `computeDiff` passes `:(exclude).intent/`. One choke point covers `compute_diff`,
+  `read_diff` and `submit_document`, so the ids handed out, the text paged and the diff
+  validated against cannot disagree.
+- Excluding it from the NUMBERING instead — the original suggestion — would have broken the
+  property that counting hunks in the raw diff reproduces the index.
+- Also fixes a defect found by the reviewer while distilling this branch: an anchor pointing
+  into `.intent/` came back as "dangling ... (stale anchor?)" even though the id came from
+  `compute_diff`'s own index. The validator skipped those files *before* anchor matching, so
+  such an anchor could never mark itself matched. Excluding from coverage is right;
+  excluding from matching was the bug.
+
 ## Outstanding
 
 **The weak test.** `computeRunId`'s "survives the branch moving" test asserts the same
@@ -152,9 +165,3 @@ and the one-file assertion; this one should be deleted or rewritten.
   silently derives a different id — the same failure class the checkout-not-head rule exists
   to prevent.
 - `closeRun` is documented as "available for an explicit discard" that nothing exposes.
-
-**Fix 4 — hunk-id stability.** Exclude `.intent/` from the diff itself via a git pathspec in
-`computeDiff` rather than from the numbering. One choke point covers `compute_diff`,
-`read_diff` and `submit_document`; it removes the `coverage_required` special case instead
-of adding one, and preserves countability because the diff the reviewer reads is the diff
-that was numbered.
