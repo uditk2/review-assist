@@ -30,16 +30,6 @@
   "problem": {
     "statement": "`get_spine` bounded its response by deleting every assistant turn once the spine passed 600 KB, so the largest sessions returned the least useful record; and the interview was written entirely by the reviewer, so `meta.interview` recorded one role's account of both halves and could not distinguish an interview that happened from one a single agent invented.",
     "origin": "emerged_during_session",
-    "evolution": [
-      {
-        "at": "mid-session, once paging was working",
-        "formulation": "the user proposed letting the author decide what is relevant rather than draining every page; this was pushed back on — the author must still drain `next_cursor` to the end, and selective paging would reintroduce exactly the failure the spine was built to remove"
-      },
-      {
-        "at": "after the commit was made",
-        "formulation": "the commit was found to be un-submittable against its own schema; the fix was written but deliberately left uncommitted so HEAD and the run_id would not move and the interview would not be discarded, leaving the final commit shape undecided"
-      }
-    ],
     "user_asks": [
       "let the author decide what is relevant",
       "no, and it wouldn't help even where it's supported"

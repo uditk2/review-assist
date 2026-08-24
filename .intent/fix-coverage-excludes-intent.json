@@ -17,10 +17,6 @@
   "problem": {
     "statement": "The Intent Document is committed into the same PR as the code it describes, so its own file (.intent/<branch>.json) shows up in the PR diff — and the coverage check counted it as an unexplained change, forcing a document to account for itself.",
     "origin": "emerged_during_session",
-    "evolution": [
-      { "at": "dogfooding", "formulation": "Generate a real Intent Document for a review-assist change and open a PR." },
-      { "at": "on first generation", "formulation": "The .intent file itself appears as an uncovered hunk — a document shouldn't have to explain its own file." }
-    ],
     "user_asks": [
       "\"raise a pr for this repo and check what the generation looks like\"",
       "\"generate the required intent document for the change\""

@@ -25,20 +25,6 @@
   "problem": {
     "statement": "Distilling a change into an Intent Document took minutes of wall clock and repeated full-document resubmits. Profiling three real runs found the cost was almost entirely mechanical: an interview filed under a key the submit never read, consent discovered after the document existed, and an author navigating a transcript blind.",
     "origin": "stated_upfront",
-    "evolution": [
-      {
-        "at": "after profiling three runs",
-        "formulation": "The interview is being discarded and re-run; fix the identity, not the prompts."
-      },
-      {
-        "at": "after the terseness rule was rejected",
-        "formulation": "Document quality is about jargon and skimmability, not length."
-      },
-      {
-        "at": "after measuring 41 sessions",
-        "formulation": "Stop retrieving from the transcript; hand over the whole conversation."
-      }
-    ],
     "user_asks": [
       "In the review assist, the time it takes to build that intent document is high and labourious. How can we reduce the time.",
       "We need to make this part deterministic to avoid bad rounds and reduce the overall back and forth",

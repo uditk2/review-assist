@@ -21,8 +21,10 @@ rules above say what you may do with each answer.
 
 There is no question here about whether the problem was stated up front or changed shape.
 The author hands you the plan as agreed, what was learned, and the plan as it ended, before
-you ask anything — `problem.origin` and `evolution` come from that narrative, and asking for
-it again as a yes/no invites a guess where you already have the account.
+you ask anything — `problem.origin` comes from that narrative, and asking for it again as a
+yes/no invites a guess where you already have the account. The rest of that narrative is
+not a field: a constraint it reveals belongs in `trials` or `requirements`, and the
+play-by-play belongs nowhere.
 
 If the plan never arrives, ask for it as item 0 of the same batch. Do not spend a round on
 it alone: you need it to group hunks, but you need the other answers regardless.

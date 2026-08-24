@@ -84,13 +84,21 @@ halves will show author_attested: 0).
   stop's \`why\`. Each field answers its own question and stops. Drop "This change…"
   preambles, drop prose that narrates what the diff already shows, and never pad a field
   you have nothing for — an empty array is a finding, filler is not.
-- **Length follows content.** Give \`how_to_verify\` the command, not a paragraph about
-  verifying. But where the reasoning IS the value — measured comparisons, why an
-  alternative lost — write it in full. That is the material a diff-only reviewer cannot
-  recover, and it is the last thing to cut.
+- **Every field is a list of points.** A point is one phrase: one idea, no clause chains,
+  no sentence where a phrase will do. The reader is a developer deciding, in about a
+  minute, which hunks to open. How many points a field needs is set by the change — a
+  large commit earns more points, not prose. Give \`how_to_verify\` the command, not a
+  sentence about verifying.
+- **Where the reasoning IS the value** — measured comparisons, why an alternative lost —
+  it is still points, and it belongs in \`trials\`, one entry per alternative. That is the
+  material a diff-only reviewer cannot recover; it is the last thing to cut and the first
+  thing to keep out of \`adopted.rationale\` as a paragraph.
 - **Problem**: state it concretely, post-hoc. If it emerged during the session, set
-  origin=emerged_during_session and record the \`evolution\`. Quote the user's key asks
-  verbatim in \`user_asks\`.
+  origin=emerged_during_session. Quote the user's key asks verbatim in \`user_asks\`.
+- **A constraint the user imposed goes to \`trials\` or \`requirements\`**, never to
+  narrative about how the ask moved. It killed a candidate design — the candidate is
+  \`what\`, the constraint is \`why_abandoned\`. It merely bounded the work — it is a
+  requirement, with the user named in \`source\`.
 - **Assumptions first**: surface anything the change assumes. For each, give the blast
   radius if wrong and how to verify it. This is the reviewer's front page.
 - **Approach**: give rejected alternatives equal billing with the adopted one — this is

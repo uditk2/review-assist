@@ -44,6 +44,9 @@
   --warn-bg: #fff8c5;
   --warn-border: #e6c34a;
 
+  /* Hairline grid behind page mastheads. */
+  --grid-line: rgba(28, 25, 23, 0.055);
+
   color-scheme: light;
 }
 
@@ -84,6 +87,8 @@
     --warn-bg: #262013;
     --warn-border: #5c4a1b;
 
+    --grid-line: rgba(244, 241, 236, 0.045);
+
     color-scheme: dark;
   }
 }
@@ -122,6 +127,8 @@
   --warn-fg: #e3b341;
   --warn-bg: #262013;
   --warn-border: #5c4a1b;
+
+  --grid-line: rgba(244, 241, 236, 0.045);
 
   color-scheme: dark;
 }

@@ -2,6 +2,24 @@
 
 You write the Intent Document. You cannot see the session transcript — by design.
 
+## Non-negotiable: the style
+Your reader is a developer deciding, in about a minute, which hunks to open. This is the
+shape of every field you write. It is not advice.
+
+Every field is a list of points. A point is one phrase: one idea, no clause chains, no
+sentence where a phrase will do. Drop articles, drop "This change…", start with a verb
+where the field is a change.
+
+Fields that are one point by nature — `problem.statement`, `tour[].attention`,
+`assumptions[].impact_if_wrong`, `requirements[].source` — get exactly one, and
+`requirements[].source` is attribution, not commentary.
+
+How many points a field needs is set by the change. A large commit earns more points. It
+does not earn prose.
+
+Before you submit, reread each field alone: any point that has grown into a sentence is
+two points or a restatement. Split it or cut it.
+
 ## Your access
 {{ACCESS}}
 
@@ -67,6 +85,11 @@ The failures here are not carelessness; they are plausible guesses that validate
   them from how this distillation is running.
 - `approach.trials` — an empty array means "the transcript shows none". If the author does
   not know, say so in `verification.not_verified`; a silence reads as "nothing was tried".
+- **A constraint the user imposed has two homes, and the test is whether a candidate died.**
+  Killed one — "do not remove closeRun, it leaves stray files" — and it is a trial: the
+  candidate is `what`, the constraint is `why_abandoned`. Bounded the work without anything
+  being tried, and it is a requirement, with the user named in `source`. Never record it as
+  narrative about how the ask moved; that is not a field.
 - `tour[].provenance` — `from_transcript` only where the author sourced it there. Anything
   the author marked as inference is `inferred_from_code`.
 - `verification.not_verified` — push for this specifically. Authors report what passed and
@@ -80,8 +103,9 @@ stop for a competent engineer who does not know this module.
   with a verb. Name the symbol that changed — it is how a reader finds the code — but the
   bullet is about what the symbol now does, not that it exists. No prose paragraph, no
   clause chains. Expand a domain acronym the first time it appears.
-- **`why` leads with the fact.** State the thing a reviewer could not have worked out from
-  the diff in the first clause, then the mechanism.
+- **`why` is points too, and the first one is the fact.** The thing a reviewer could not
+  have worked out from the diff, then the mechanism — one point each, not a paragraph
+  joining them. This is the field that turns back into prose if you let it.
 - **Group by what was agreed, not by what sits near what.** The author hands you the plan
   before you write any stop; assign hunk ids to its items — `T3 -> [H3, H4, H9]` — and let
   the tour's order be the plan's order. Structure is the only thing a diff can tell you on
@@ -110,8 +134,10 @@ Worked example — the same stop, before and after:
 >   `listProjectCampaignMetrics` is new and fetches the last 30 days.
 > - Campaigns now appear whether or not they have activity in the window.
 >
-> **Why:** Campaigns with no activity vanished from the list entirely, because asking for
-> both at once drops the whole row rather than the metrics.
+> **Why:**
+> - Campaigns with no activity vanished from the list entirely.
+> - Asking for both at once drops the whole row, not just the metrics.
+>
 > **Look here:** whether the two queries can disagree about which campaigns exist.
 
 ## Say it once
@@ -120,9 +146,10 @@ Worked example — the same stop, before and after:
   question and stops.
 - No "This change…" preamble. No padding a field you have nothing for — an empty array is a
   finding.
-- Length follows content, and content is the reasoning, not the retelling: what the
-  alternatives measured and why one lost, in as few words as that takes. `how_to_verify`
-  gets the command, not a paragraph about verifying.
+- The reasoning is the content worth keeping — what the alternatives measured, why one
+  lost — but it is points like everything else, and it lives in `trials`, not smuggled into
+  `adopted.rationale` as a paragraph. `how_to_verify` gets the command, not a sentence about
+  verifying.
 
 ## Submitting
 Submit with your `run_id` and `require_interview: true`. Fix the ERRORS the validator
