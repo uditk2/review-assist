@@ -5,7 +5,7 @@
     "repo": "uditk2/review-assist",
     "commit_range": {
       "base_sha": "ea958e5c7011f124a8bb4bb00054bdbbcfc1dc40",
-      "head_sha": "702f6a160c6cf03d357924b9918eeb4588119e75"
+      "head_sha": "7a784f6e0c30737638144dcae4ebd712a3231163"
     },
     "session": {
       "agent": "claude-code",
@@ -20,11 +20,11 @@
     },
     "generated_at": "2026-08-22T00:00:00Z",
     "interview": {
-      "rounds": 15,
-      "questions_asked": 15,
-      "unresolved": 1,
+      "rounds": 19,
+      "questions_asked": 19,
+      "unresolved": 5,
       "author_attested": 15,
-      "unanswered": 0
+      "unanswered": 4
     }
   },
   "problem": {
@@ -46,6 +46,10 @@
       {
         "at": "mid-session, unplanned",
         "formulation": "Running the tool on itself produced two defects nobody had scoped: the reviewer role cold-read the diff and found that dropping the head from the hash had removed the only thing separating two branches cut from one base; the author role found that list_transcripts could see no session for this repository at all."
+      },
+      {
+        "at": "after this document was first submitted (7a784f6)",
+        "formulation": "Fix 4 moved from out-of-scope to done. Distilling this branch produced the last piece of evidence for it: an anchor into .intent/ taken straight from compute_diff's own index came back as a \"stale anchor?\" warning. That defect and the long-known hunk-id shift turned out to share one cause and one fix — exclude .intent/ from the diff at source — which is the tour's last core stop."
       }
     ],
     "user_asks": [
@@ -65,9 +69,9 @@
       "Lets just create a branch and commit it there too so that we can do a pull request and verify the intent document ."
     ],
     "out_of_scope": [
-      "Fix 4, hunk-id stability. Named with a specific implementation — add a `:(exclude).intent/` pathspec to the git diff so one choke point covers compute_diff, read_diff and submit_document — and ranked last every time the work was ordered. The session watched it fire live: committing .intent/main.json entered the diff as H1 and shifted every hunk id by one. Still not built.",
       "A blocking await_answers tool. Deferred twice, most recently after the concurrency premise against it was disproved: it burns tokens polling, risks client-side tool timeouts, and the read tools already reduce the orchestrator to passing one string.",
-      "An explicit close_run / discard_run tool. Argued against: \"it's another gate to forget, and nothing breaks if a run lingers.\""
+      "An explicit close_run / discard_run tool. Argued against: \"it's another gate to forget, and nothing breaks if a run lingers.\"",
+      "The union-of-directories narrowing in ClaudeCodeSource.find. Named, agreed and not built — see Q3."
     ]
   },
   "assumptions": [
@@ -112,6 +116,13 @@
       "impact_if_wrong": "A distillation whose base ref advances mid-flight loses its interview the same way the head rotation used to lose it. Accepted knowingly on the grounds that keying on the base ref NAME instead is too loose, and re-affirmed unchanged after the branch component was added.",
       "how_to_verify": "Compare git rev-parse origin/main before and after a long distillation.",
       "confidence": "confirmed_by_user"
+    },
+    {
+      "id": "A7",
+      "assumption": "computeDiff in packages/mcp-server/src/git.ts is the single place any diff reaches the tools, so excluding .intent/ there covers compute_diff, read_diff and submit_document alike.",
+      "impact_if_wrong": "If any path produces a diff without going through computeDiff, the ids handed out, the text paged, and the diff validated against can disagree again — which is the failure the exclusion exists to end. The validator keeps its own .intent/ handling as defence for exactly that case, which is why the two are not redundant.",
+      "how_to_verify": "Grep for callers of validate({diff}) and confirm every diff originates in computeDiff.",
+      "confidence": "grounded_in_code"
     }
   ],
   "open_questions": [
@@ -136,7 +147,7 @@
     {
       "id": "Q4",
       "question": "The computeRunId test named \"survives the branch moving, because the head is state and not identity\" asserts the identical expression twice and cannot fail for the reason its name claims.",
-      "context": "Found by the FIRST distillation's reviewer — \"It's a comment carrier, not a test.\" Accepted, and it visibly changed later behaviour: twice afterwards the source was reverted and the new test watched to fail before shipping. The offending test itself was never fixed or deleted, and has sat in the Outstanding section of docs/protocol-fixes.md since.",
+      "context": "Found by the FIRST distillation's reviewer — \"It's a comment carrier, not a test.\" Accepted, and it visibly changed later behaviour: three times afterwards the source was reverted and the new test watched to fail before shipping. The offending test itself was never fixed or deleted, and has sat in the Outstanding section of docs/protocol-fixes.md since.",
       "raised_by": "author_agent"
     },
     {
@@ -148,7 +159,7 @@
     {
       "id": "Q6",
       "question": "Is .intent/main.json findable for this pull request?",
-      "context": "Every commit in this range was made on main and the branch was cut afterwards, so submit_document named the file from the checkout's branch and wrote .intent/main.json. The GitHub app looks for .intent/<pr.head.ref>.json. That document's commit_range also covers neither ea958e5..fa39bfb nor bc285a7.",
+      "context": "Every commit up to 702f6a1 was made on main and the branch was cut afterwards, so submit_document named that document from the checkout's branch and wrote .intent/main.json. The GitHub app looks for .intent/<pr.head.ref>.json. Both that file and this document now sit in the tree; only the second carries this branch's name, and .intent/main.json's commit_range covers neither ea958e5..fa39bfb nor bc285a7. Note the file is no longer visible in the diff, so a reviewer will not meet it by reading the change.",
       "raised_by": "author_agent"
     },
     {
@@ -159,8 +170,14 @@
     },
     {
       "id": "Q8",
-      "question": "The validator cannot match an anchor into .intent/, so an anchor taken from compute_diff's own hunk index is reported as \"stale\" when it is neither stale nor wrong.",
-      "context": "First-hand, twice, on this document. T10 anchors H1 — an id straight out of this run's index. packages/validator/src/index.ts:137 does `if (isIntentPath(file.path)) continue;` BEFORE the anchor-matching loop, so an anchor into that file can never set anchorMatched; the dangling pass at 163-172 then reports it as \"no diff hunk overlaps it (stale anchor?)\". The hunk exists and does overlap. Excluding .intent/ from COVERAGE is right — a reviewer should not have to explain its own prior output; excluding it from anchor MATCHING is the defect, and the message misdiagnoses it in a way that invites removing a correct anchor. Same class as the rest of this PR: a message that misdescribes what happened. Note the interaction with the unbuilt Fix 4 — excluding .intent/ from the diff itself via a git pathspec would remove this path entirely rather than needing a second special case.",
+      "question": "The `:(exclude).intent/` pathspec has not been observed working through a running server.",
+      "context": "First-hand, and it is the reason the last tour stop is marked inferred_from_code. Re-running compute_diff against 7a784f6 returned files: 17, hunks: 49, diff_bytes: 175035, with BOTH intent documents still in the hunk index — H1 (995 lines) and H2 (630 lines) — where the fix predicts 12 files and neither. The likeliest reading is that the MCP server process predates the commit and has not been rebuilt or restarted, so it is still running the single-argument `git diff`; the fix would then be correct but unexercised. The alternative reading is that the exclusion does not work, which would be a much larger finding. Asked of the author and unanswered at submit time. Check by restarting the server and re-running compute_diff.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q9",
+      "question": "Is the validator's isIntentPath coverage exclusion a permanent defensive position or a step towards removal?",
+      "context": "With .intent/ excluded at source, the branch is reached only by a hand-written document or a diff produced elsewhere. The new comment argues it is \"correct for those rather than dead\" (A7). Whether anything actually produces such a diff today is unconfirmed — asked of the author and unanswered at submit time.",
       "raised_by": "reviewer_agent"
     }
   ],
@@ -189,6 +206,10 @@
       {
         "text": "Do not guess Claude Code's directory encoder; a guessed rule fails silently on the next unpredicted character, and silence is what made the bug expensive.",
         "source": "session reasoning after inspecting the real ~/.claude/projects"
+      },
+      {
+        "text": "Keep the property that counting hunks in the raw diff reproduces the index — which is why .intent/ is excluded from the diff rather than from the numbering.",
+        "source": "rejection of the user's originally proposed Fix 4"
       }
     ],
     "trials": [
@@ -218,14 +239,14 @@
         "why_abandoned": "Any reconstructed rule fails silently again on the next unpredicted character. Matching on a key insensitive to WHICH characters were replaced is robust to whatever the real rule is."
       },
       {
-        "what": "The user's own proposed Fix 4: exclude .intent/ from hunk NUMBERING.",
-        "outcome": "Rejected in favour of excluding it from the diff itself via a git pathspec. Neither was built.",
-        "why_abandoned": "Excluding from numbering breaks the documented property that counting the raw diff reproduces the index; a pathspec removes a special case instead of adding one, and one choke point covers all three tools."
+        "what": "The user's own proposed Fix 4: exclude .intent/ from hunk NUMBERING, leaving it in the diff.",
+        "outcome": "Rejected in favour of excluding it from the diff itself via a git pathspec. The pathspec is what eventually shipped, in 7a784f6.",
+        "why_abandoned": "Excluding from numbering breaks the documented property that counting the raw diff reproduces the index. Excluding at source removes a special case instead of adding one, and one choke point makes it impossible for the ids handed out, the text paged and the diff validated against to disagree."
       }
     ],
     "adopted": {
-      "summary": "Move the head out of the run's identity and into its state, put the branch in instead, keep the run after submit under a tiered sweep, and give each role a read-only tool for the other half of the interview.",
-      "rationale": "The three symptoms had one shape: state that the protocol depends on was being destroyed by ordinary steps the guide itself tells the roles to take. Identity was the root — a handle containing the head could not survive the commit that the correction cycle requires, and openRun silently recreating a missing record turned that into no error at all. Taking the head out fixes it and costs the branch separation the head provided as a side effect, which is why the branch is added back explicitly and resolved from the checkout rather than from a caller-named ref. Keeping the run after submit is the same decision applied to the other destroyer, and the 7/30-day tiers answer the user's stray-file objection without making submit the thing that deletes an attestation. The read tools are the smallest fix for the relay: the run file was always the channel, and the only thing missing was permission to read the other side of it — which is why they are reads and not a notify protocol, and why neither role gains a second way to write."
+      "summary": "Move the head out of the run's identity and into its state, put the branch in instead, keep the run after submit under a tiered sweep, give each role a read-only tool for the other half of the interview, and take the Intent Document out of the diff that describes it.",
+      "rationale": "The symptoms had one shape: state the protocol depends on was being destroyed by ordinary steps the guide itself tells the roles to take. Identity was the root — a handle containing the head could not survive the commit that the correction cycle requires, and openRun silently recreating a missing record turned that into no error at all. Taking the head out fixes it and costs the branch separation the head provided as a side effect, which is why the branch is added back explicitly and resolved from the checkout rather than from a caller-named ref. Keeping the run after submit is the same decision applied to the other destroyer, and the 7/30-day tiers answer the user's stray-file objection without making submit the thing that deletes an attestation. The read tools are the smallest fix for the relay: the run file was always the channel, and the only thing missing was permission to read the other side of it — which is why they are reads and not a notify protocol, and why neither role gains a second way to write. The last piece is the same principle applied to the diff: the document is the tool's own output, so excluding it at the single point a diff is produced stops it from renumbering the ids that anchor into it."
     }
   },
   "tour": [
@@ -317,7 +338,7 @@
       "title": "The move is reported, and the caller is told to re-anchor",
       "role": "core",
       "what": "- Adds head_changed, previous_head and a prose re_anchor instruction to the compute_diff response when the run has moved.\n- Reports interview.recorded_rounds on every compute_diff, moved or not.\n- Rewrites the submit-time drift error: it now says the run_id does NOT change, reports interview_preserved, and drops the old text that handed over a freshly computed id.",
-      "why": "Rotating the id used to be the staleness signal; with the id stable, something else has to carry it, and hunk ids are reassigned by the recomputed diff. A reviewer that misses this re-anchors nothing and ships stops pointing at the wrong code — the reporting bug's original symptom was exactly that, a reviewer having to work out unaided that its anchors had shifted. recorded_rounds was added as plumbing for the report and turned out to be the thing that makes a resurrected empty run legible: it reads 0 where a live run reads 16.",
+      "why": "Rotating the id used to be the staleness signal; with the id stable, something else has to carry it, and hunk ids are reassigned by the recomputed diff. A reviewer that misses this re-anchors nothing and ships stops pointing at the wrong code — the reporting bug's original symptom was exactly that, a reviewer having to work out unaided that its anchors had shifted. recorded_rounds was added as plumbing for the report and turned out to be the thing that makes a resurrected empty run legible: it reads 0 where a live run reads 15 or 16.",
       "anchors": [
         {
           "path": "packages/mcp-server/src/index.ts",
@@ -346,7 +367,7 @@
       "title": "Two branches off one base no longer collide",
       "role": "core",
       "what": "- Adds branch to the run key and to computeRunId's hash.\n- Resolves the branch in compute_diff from `currentBranch(repoDir, \"HEAD\")` — the checkout — rather than from the caller's `head` argument.\n- Leaves the branch write in openRun as a defensive guard only, since a record reached by this id was opened under this same branch.\n- Pins it: two branches off one base get different ids, do not share an interview, and do not overwrite each other's branch field; a separate test pins why base_sha stays.",
-      "why": "This is a defect that Fix 2 introduced and that the reviewer role found cold-reading the diff: two branches cut from one commit have identical base SHAs however far they diverge, and the head used to keep them apart as a side effect. Without the branch they share one rounds map and fight over the branch field, which names .intent/<branch>.json. The checkout rule is not stylistic — `git rev-parse --abbrev-ref <sha>` returns empty rather than a name, so an author passing HEAD and a reviewer passing an explicit SHA would derive different ids and silently stop sharing a run.",
+      "why": "This is a defect that the run-identity fix introduced and that the reviewer role found cold-reading the diff: two branches cut from one commit have identical base SHAs however far they diverge, and the head used to keep them apart as a side effect. Without the branch they share one rounds map and fight over the branch field, which names .intent/<branch>.json. The checkout rule is not stylistic — `git rev-parse --abbrev-ref <sha>` returns empty rather than a name, so an author passing HEAD and a reviewer passing an explicit SHA would derive different ids and silently stop sharing a run.",
       "anchors": [
         {
           "path": "packages/mcp-server/src/index.ts",
@@ -395,7 +416,7 @@
         }
       ],
       "provenance": "confirmed_in_interview",
-      "attention": "RunKey.branch is optional with a `?? \"\"` fallback (A4, Q-list), so the guarantee holds only while every caller passes it. Detached HEAD contributes that empty string by design."
+      "attention": "RunKey.branch is optional with a `?? \"\"` fallback (A4), so the guarantee holds only while every caller passes it. Detached HEAD contributes that empty string by design (A5)."
     },
     {
       "id": "T4",
@@ -690,8 +711,8 @@
       "id": "T9",
       "title": "docs/protocol-fixes.md — the standing record, including its own corrections",
       "role": "supporting",
-      "what": "- Records a verdict per reported bug: two confirmed (one worse than reported, one a documentation split rather than a missing feature) and one already half-fixed.\n- Carries the on-disk evidence table — four and three run files per branch, holding 21/23/26/0 and 23/24/26 rounds.\n- Corrects an earlier rejection in place: the concurrency premise used to reject the shared-file design was wrong, and the roles were shown running in parallel.\n- Lists what is outstanding: the weak computeRunId test, three findings recorded against the previous commit and not fixed, and the unbuilt Fix 4 with its proposed pathspec.",
-      "why": "Written on explicit request as a proposed-vs-done status record before a session restart, and deliberately left untracked at first so an uncommitted file would stay out of the three-dot distillation diff. It then became a standing log with two commits existing only to keep it accurate, the last of which corrected Fix 3's own entry rather than deleting it — \"since being wrong about it is part of the story\". Read it as the branch's decision record, not as narration of the diff.",
+      "what": "- Records a verdict per reported bug: two confirmed (one worse than reported, one a documentation split rather than a missing feature) and one already half-fixed.\n- Carries the on-disk evidence table — four and three run files per branch, holding 21/23/26/0 and 23/24/26 rounds.\n- Corrects an earlier rejection in place: the concurrency premise used to reject the shared-file design was wrong, and the roles were shown running in parallel.\n- Lists what is outstanding: the weak computeRunId test, three findings recorded against an earlier commit and not fixed, and Fix 4 with its proposed pathspec.",
+      "why": "Written on explicit request as a proposed-vs-done status record before a session restart, and deliberately left untracked at first so an uncommitted file would stay out of the three-dot distillation diff. It then became a standing log with two commits existing only to keep it accurate, the last of which corrected an entry in place rather than deleting it — \"since being wrong about it is part of the story\". Read it as the branch's decision record, not as narration of the diff. Note its Outstanding section now describes Fix 4 as unbuilt, which the last commit made false.",
       "anchors": [
         {
           "path": "docs/protocol-fixes.md",
@@ -707,22 +728,50 @@
     },
     {
       "id": "T10",
-      "title": "The dogfooding artifact this branch carries, and where it is filed",
-      "role": "supporting",
-      "what": "- Adds .intent/main.json, the Intent Document produced by the second live distillation of this work.\n- Files it under main, not under this branch, because every commit in the range was made on main and the branch was cut afterwards.",
-      "why": "Committing it was a deliberate user call, taken after the document had been regenerated against the fixed code — the agent had held it back once because two of its findings were true when written and false as of the commit above them. Two consequences a reviewer should know: the GitHub app looks for .intent/<pr.head.ref>.json and this file is not that, and its commit_range does not cover this PR's range. The session also watched this file demonstrate the unbuilt Fix 4 live — committing it entered the diff as H1 and shifted every hunk id by one.",
+      "title": "The Intent Document leaves the diff that describes it",
+      "role": "core",
+      "what": "- Adds `-- :(exclude).intent/` to the single `git diff` in computeDiff, so both intent documents drop out of the diff entirely rather than arriving as whole-file additions.\n- Stops the validator skipping .intent/ files BEFORE anchor matching: `excluded` is now computed and applied to the hunk count and to the unexplained check, while the anchor loop runs for every file.\n- Adds a regression test asserting that an anchor into .intent/main.json is not reported as dangling.",
+      "why": "Two bugs, one cause. `.intent/<branch>.json` sorts first in git's path order, so committing the document landed it as H1 and shifted every other hunk id by one — silently misanchoring any regeneration. And because the validator's coverage loop skipped that file before the anchor loop ran, an anchor into it could never set anchorMatched, so a hunk id taken straight from compute_diff's own index came back as \"dangling ... (stale anchor?)\": a warning that misdiagnosed the one thing it existed to catch, and invited the reviewer to delete a correct anchor. Both were observed live on this very branch. Excluding at source rather than downstream is what makes them one fix: computeDiff is the only place a diff is produced, so the ids handed out, the text paged and the diff validated against cannot disagree — and unlike excluding from the NUMBERING, which is what was originally proposed, it preserves the property that counting hunks in the raw diff reproduces the index.",
       "anchors": [
         {
-          "path": ".intent/main.json",
+          "path": "packages/mcp-server/src/git.ts",
           "hunk": {
-            "old_start": 0,
-            "old_lines": 0,
-            "new_start": 1,
-            "new_lines": 630
+            "old_start": 30,
+            "old_lines": 7,
+            "new_start": 30,
+            "new_lines": 28
+          }
+        },
+        {
+          "path": "packages/validator/src/index.ts",
+          "hunk": {
+            "old_start": 132,
+            "old_lines": 11,
+            "new_start": 132,
+            "new_lines": 19
+          }
+        },
+        {
+          "path": "packages/validator/src/index.ts",
+          "hunk": {
+            "old_start": 145,
+            "old_lines": 7,
+            "new_start": 153,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/validator/test/validator.test.ts",
+          "hunk": {
+            "old_start": 255,
+            "old_lines": 3,
+            "new_start": 255,
+            "new_lines": 62
           }
         }
       ],
-      "provenance": "confirmed_in_interview"
+      "provenance": "inferred_from_code",
+      "attention": "Not observed working through a running server — see Q8. Re-running compute_diff after this commit still returned both intent documents in the hunk index, which is consistent with a server that has not been restarted, but is not proof of that."
     },
     {
       "id": "T11",
@@ -811,12 +860,12 @@
     "performed": [
       {
         "kind": "typecheck",
-        "description": "npx tsc --noEmit -p packages/mcp-server, after every fix",
+        "description": "npx tsc --noEmit -p packages/mcp-server, after every fix up to 702f6a1",
         "result": "clean throughout"
       },
       {
         "kind": "test",
-        "description": "npx vitest run, after every fix",
+        "description": "npx vitest run, after every fix up to 702f6a1",
         "result": "passing; count walked 129 -> 134 -> 135 -> 138 -> 141"
       },
       {
@@ -836,7 +885,7 @@
       },
       {
         "kind": "manual",
-        "description": "Fix 1 confirmed live through the real MCP server: run present after submit, and the next compute_diff returned interview: {recorded_rounds: 16} where the identical call in the prior run returned 0 with no error",
+        "description": "Run-survives-submit confirmed live through the real MCP server: run present after submit, and the next compute_diff returned interview: {recorded_rounds: 16} where the identical call in the prior run returned 0 with no error",
         "result": "confirmed"
       },
       {
@@ -857,7 +906,22 @@
       {
         "kind": "test",
         "description": "Regression tests checked for discrimination: the source was reverted and each new test watched to fail before shipping",
-        "result": "confirmed for the space-path fix and the collision fix"
+        "result": "confirmed for the space-path fix and the collision fix; not confirmed for the validator dangling-anchor test (asked, unanswered)"
+      },
+      {
+        "kind": "manual",
+        "description": "The full two-role protocol exercised end to end while distilling this branch: the reviewer recorded 15 questions and returned only the run_id; the author read them with get_questions and answered with answer_questions; the reviewer read them back with get_answers across three pages. No question or answer text was relayed by the orchestrator in either direction.",
+        "result": "confirmed — 15/15 author-attested, 0 unanswered"
+      },
+      {
+        "kind": "manual",
+        "description": "The correction cycle exercised live: a second submit_document under the same run_id after a successful first one",
+        "result": "confirmed — resubmit: true, previously_submitted_at returned, and the interview came back unchanged at 15 rounds / 15 author_attested / 0 unanswered. This is the path that was one-shot before the change."
+      },
+      {
+        "kind": "manual",
+        "description": "A live head move observed by the reviewer: compute_diff re-run after 7a784f6 landed",
+        "result": "confirmed — head_changed: true, previous_head 702f6a16, re_anchor prose returned, interview.recorded_rounds still 15 under the same run_id 5255c6812928"
       }
     ],
     "added_tests": [
@@ -972,24 +1036,39 @@
             }
           }
         ]
+      },
+      {
+        "covers": "An anchor into .intent/ is not reported as dangling, while a normal file's coverage is unaffected",
+        "anchors": [
+          {
+            "path": "packages/validator/test/validator.test.ts",
+            "hunk": {
+              "old_start": 255,
+              "old_lines": 3,
+              "new_start": 255,
+              "new_lines": 62
+            }
+          }
+        ]
       }
     ],
     "not_verified": [
-      "The return leg of the relay. At the point the session record ends, the outbound leg was proven — a reviewer returned only the run_id and one sentence, where both previous reviewers had handed over 15 questions to relay — but no real author had yet called get_questions and no real reviewer get_answers through the server.",
-      "Paging on get_questions and get_answers. next_cursor has not been exercised in a live run; the interview that tested these tools was 15 questions, which fits inside one page. The helper is unit-tested only through the round-trip test, which does not page.",
+      "The `:(exclude).intent/` pathspec, through a running server. Re-running compute_diff after 7a784f6 still returned both intent documents in the hunk index (17 files, 49 hunks) where the fix predicts neither. Consistent with a server process that predates the commit and has not been restarted, but not confirmed — see Q8. The unit test covers the validator half of the fix, not the git half.",
+      "Paging on get_questions and get_answers. next_cursor has not fired in any live run: the interview that exercised these tools was 15 questions, which fits inside one page, and it stayed inside one page across three submits.",
+      "Whether the validator's dangling-anchor test was verified to fail against the old code by reverting it — asked of the author and unanswered at submit time. Every other regression test on this branch was checked that way.",
+      "typecheck, build and test results for 7a784f6 specifically. The counts recorded here stop at 702f6a1.",
       "The tiered sweep against real on-disk runs. Pinned only by backdating records in a fixture; reaping a genuine abandoned run has never been observed.",
       "The union-of-directories path in ClaudeCodeSource.find (A1, Q3): no test covers two directories whose normalized keys collide.",
       "A caller of openRun that omits RunKey.branch (A4).",
       "Detached HEAD (A5).",
-      "Fix 4, hunk-id stability: not built, and the session watched the failure it would fix happen live.",
       "No lint step appears anywhere in the session."
     ]
   },
   "diagrams": [
     {
       "title": "The run as the channel between two roles that cannot talk",
-      "mermaid": "sequenceDiagram\n    participant R as Reviewer role\n    participant Run as Run file (repo base branch)\n    participant A as Author role\n    R->>Run: compute_diff (opens run, returns run_id)\n    A->>Run: compute_diff (same repo base branch, same run_id)\n    R->>Run: record_interview_round (questions, q_ids back)\n    A->>Run: get_questions (reviewer wording plus q_ids)\n    A->>Run: answer_questions (by q_id, attested to author)\n    R->>Run: get_answers (author words, answered_by)\n    R->>Run: submit_document (markSubmitted, run KEPT)\n    Note over Run: head moves when the document is committed\n    R->>Run: compute_diff again (same run_id, head_changed, re-anchor)",
-      "caption": "Only the run_id passes between the roles. Before this change the questions and answers were hand-carried as chat text, and submit plus the next commit destroyed the run under them."
+      "mermaid": "sequenceDiagram\n    participant R as Reviewer role\n    participant Run as Run file (repo base branch)\n    participant A as Author role\n    R->>Run: compute_diff (opens run, returns run_id)\n    A->>Run: compute_diff (same repo base branch, same run_id)\n    R->>Run: record_interview_round (questions, q_ids back)\n    A->>Run: get_questions (reviewer wording plus q_ids)\n    A->>Run: answer_questions (by q_id, attested to author)\n    R->>Run: get_answers (author words, answered_by)\n    R->>Run: submit_document (markSubmitted, run KEPT)\n    Note over Run: head moves when the document is committed\n    R->>Run: compute_diff again (same run_id, head_changed, re-anchor)\n    R->>Run: submit_document again (resubmit true, interview intact)",
+      "caption": "Only the run_id passes between the roles. Before this change the questions and answers were hand-carried as chat text, and submit plus the next commit destroyed the run under them. Every leg of this diagram was exercised live while distilling this branch."
     }
   ]
 }
