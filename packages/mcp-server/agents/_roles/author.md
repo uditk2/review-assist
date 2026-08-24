@@ -79,7 +79,7 @@ from you.
   `q_id`. Answer the whole batch in ONE call, keyed by those ids. This is not bookkeeping:
   an answer you write is the only kind the document can attest to. One the reviewer
   transcribes for you is marked reviewer-sourced, and a reader cannot tell it from an
-  answer that was never given. Reply in prose too, so the reviewer can work — but record it.
+  answer that was never given. Reply in the same points too, so the reviewer can work — but record it.
 - **Expect two batches, and only two.** The reviewer asks everything it has at once, drafts
   the document from your answers, then comes back once with what the drafting exposed.
   Answer each batch in one call, in order. Do not wait to be asked again, and do not hold
@@ -87,11 +87,16 @@ from you.
 - **The second batch is not a repeat.** It arrives because a field would not write from
   what you gave. Treat "you already told me X" as the wrong reflex — the reviewer has read
   your answer and found it did not carry what the field needs.
-- **Answer, do not narrate.** Give the finding, not an essay around the finding: a verbatim
-  quote plus the context needed to read it. Roughly a short paragraph per question — a
-  couple of sentences, or a quote and the line that places it. Where three alternatives were
-  weighed, that is three lines, one each: what it measured, why it lost. If an answer is
-  running past that, you are recounting the session rather than answering.
+- **Answer in points.** One point per fact: a phrase, one idea, no clause chains. The
+  reviewer writes the document out of your words — anything you hand over as a paragraph it
+  has to compress first, and that compression is where restatement gets in. Where three
+  alternatives were weighed, that is three points: what each measured, why it lost. A
+  verbatim quote is a point; keep it whole.
+- **Never trade a fact for brevity.** You are the only role that read the session. A point
+  you leave out, the reviewer cannot recover from anywhere. How many points an answer needs
+  is set by what the session holds — give every one. Terse is the shape of a point, not a
+  limit on how many you write. This is where your rule differs from the reviewer's: its job
+  is to select, yours is to recall.
 - **Quote exactly, and say where from.** When an answer turns on what the user asked
   for, give the words verbatim and name the session. Never paraphrase into quotation
   marks.

@@ -64,14 +64,6 @@ export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): s
   }
 
   // Problem detail.
-  if (doc.problem.origin === "emerged_during_session" && doc.problem.evolution?.length) {
-    p(`### 🎯 How the ask evolved`);
-    p();
-    for (const e of doc.problem.evolution) {
-      p(`- _${escape(e.at)}_: ${escape(e.formulation)}`);
-    }
-    p();
-  }
   if (doc.problem.out_of_scope?.length) {
     p(`**Out of scope:** ${doc.problem.out_of_scope.map(escape).join("; ")}`);
     p();
@@ -84,16 +76,22 @@ export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): s
   p();
   p(`_Why:_ ${escape(doc.approach.adopted.rationale)}`);
   p();
+  if (doc.approach.requirements?.length) {
+    p(`**Requirements**`);
+    p();
+    for (const r of doc.approach.requirements) {
+      p(`- ${escape(r.text)}${r.source ? ` — _${escape(r.source)}_` : ""}`);
+    }
+    p();
+  }
   if (doc.approach.trials?.length) {
-    p(`<details><summary>Rejected alternatives (${doc.approach.trials.length})</summary>`);
+    p(`**Considered and rejected**`);
     p();
     for (const t of doc.approach.trials) {
       p(`- **Tried:** ${escape(t.what)}`);
       p(`  - **Outcome:** ${escape(t.outcome)}`);
       p(`  - **Abandoned because:** ${escape(t.why_abandoned)}`);
     }
-    p();
-    p(`</details>`);
     p();
   }
 
@@ -133,8 +131,12 @@ export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): s
 
 /**
  * A concise PR description rendered from the Intent Document: problem, approach,
- * any diagrams, and the assumptions to check first. The full guided tour lives in
- * the viewer / webhook comment, not the PR body.
+ * what was considered and rejected, any diagrams, and the assumptions to check
+ * first. The full guided tour lives in the viewer / webhook comment, not the PR body.
+ *
+ * Rejected alternatives are here rather than behind a fold because they are the one
+ * thing a diff-only reviewer cannot reconstruct, and the PR body is the surface that
+ * actually gets read.
  */
 export function renderPrDescription(doc: IntentDocument, opts: RenderOptions = {}): string {
   const out: string[] = [];
@@ -155,6 +157,15 @@ export function renderPrDescription(doc: IntentDocument, opts: RenderOptions = {
     for (const a of doc.assumptions) {
       const v = a.how_to_verify ? ` _Verify:_ ${escape(a.how_to_verify)}` : "";
       p(`- **[${a.id}] ${escape(a.assumption)}** — if wrong: ${escape(a.impact_if_wrong)}.${v}`);
+    }
+    p();
+  }
+
+  if (doc.approach.trials?.length) {
+    p(`### Considered and rejected`);
+    p();
+    for (const t of doc.approach.trials) {
+      p(`- **${escape(t.what)}** — ${escape(t.why_abandoned)}`);
     }
     p();
   }

@@ -137,10 +137,12 @@ const el = (t, props={}, ...kids) => {
 function runMermaid(){
   if(!window.mermaid) return;
   try{
-    if(!window.__mmInit){
-      window.mermaid.initialize({ startOnLoad:false, securityLevel:"strict", theme:"neutral",
+    const dark = currentTheme() === "dark";
+    if(window.__mmTheme !== (dark ? "dark" : "light")){
+      window.mermaid.initialize({ startOnLoad:false, securityLevel:"strict",
+        theme: dark ? "dark" : "neutral",
         flowchart:{ useMaxWidth:true }, sequence:{ useMaxWidth:true } });
-      window.__mmInit = true;
+      window.__mmTheme = dark ? "dark" : "light";
     }
     const nodes = [...document.querySelectorAll(".mermaid:not([data-processed])")];
     if(nodes.length) window.mermaid.run({ nodes });
@@ -157,15 +159,24 @@ const titleCase = s => String(s||"").replace(/_/g," ");
 
 let STATE = { data:null, files:[], coverage:null, ordered:[], view:"overview", stopIndex:0, acks:{}, me:null, comments:[], composer:null, composerSeed:"", posted:{}, reviewSubmitted:null, selAnchor:null };
 
+/** "#/blog" and "#/blog/<version>" — the release notes, served by the same SPA. */
+function parseBlogHash() {
+  const m = /^#\/blog(?:\/([A-Za-z0-9._-]+))?\/?$/.exec(location.hash);
+  return m ? { slug: m[1] || null } : null;
+}
+
 function parseHash() {
   const m = /#([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(location.hash);
   return m ? { owner:m[1], repo:m[2], pull:m[3] } : null;
 }
 
 async function boot() {
-  const ref = parseHash();
   const app = document.getElementById("app");
-  if (!ref) return app.replaceChildren(renderLanding());
+  stopDemo();
+  const blog = parseBlogHash();
+  if (blog) { window.scrollTo(0, 0); return app.replaceChildren(blog.slug ? renderPost(blog.slug) : renderBlogIndex()); }
+  const ref = parseHash();
+  if (!ref) { window.scrollTo(0, 0); return app.replaceChildren(renderLanding()); }
 
   try { STATE.me = (await (await fetch("/api/me")).json()).login; } catch {}
   const res = await fetch(`/api/document?owner=${encodeURIComponent(ref.owner)}&repo=${encodeURIComponent(ref.repo)}&pull=${ref.pull}`);
@@ -198,60 +209,481 @@ function codeBlock(text){
 }
 function renderLanding(){
   const step = (n, title, body) => el("li",{class:"flex gap-3"},
-    el("span",{class:"id-chip shrink-0 pt-0.5"}, n),
-    el("div",{}, el("p",{class:"font-medium text-ink-900"}, title), el("p",{class:"text-ink-600"}, body)));
+    el("span",{class:"ordinal pt-1"}, n),
+    el("div",{}, el("span",{class:"font-medium text-ink-900"}, title+". "), el("span",{class:"text-ink-600", html:richHtml(body)})));
 
   return el("div",{class:"min-h-screen"},
-    el("header",{class:"border-b border-ink-200"},
-      el("div",{class:"mx-auto flex max-w-3xl items-center gap-3 px-6 py-3"},
-        el("span",{class:"font-semibold"}, "Review Assist"),
-        el("span",{class:"flex-1"}),
-        el("a",{class:"btn-ghost", href:REPO_URL}, "GitHub"),
-        themeToggle())),
+    siteHeader("home"),
     el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
-      el("section",{class:"mb-12"},
+
+      el("section",{class:"grid-field mb-12"},
         el("p",{class:"eyebrow mb-2"}, "Guided review for AI-written code"),
         el("h1",{class:"mb-4 text-[2rem] leading-tight"}, "Review AI-written code as fast as agents write it."),
         el("p",{class:"max-w-prose text-[1.05rem] text-ink-700"},
-          "AI agents write code faster than anyone can read diffs. Review Assist turns an agent\u2019s coding session into a guided, verifiable pull request \u2014 the problem, the assumptions, and an anchored walkthrough of every change."),
-        el("div",{class:"mt-6 flex items-center gap-3"},
-          el("a",{class:"btn-primary", href:APP_INSTALL}, "Install the GitHub App \u2192"),
+          "A diff is the residue of a decision, not the decision. Review Assist has the agent distil its own session into an Intent Document — the ask, the assumptions, the rejected approaches, an anchored walkthrough — proves the document covers the diff, and renders it as a guided review on the pull request."),
+        el("div",{class:"mt-6 flex flex-wrap items-center gap-3"},
+          el("a",{class:"btn-primary", href:APP_INSTALL}, "Install the GitHub App →"),
+          el("a",{class:"btn-ghost", href:"#get-started", onclick:(e)=>{
+            e.preventDefault();
+            document.getElementById("get-started")?.scrollIntoView({behavior:"smooth"});
+          }}, "Register the MCP server"),
           el("a",{class:"btn-ghost", href:REPO_URL}, "View source"))),
 
       el("section",{class:"mb-12"},
-        el("h2",{class:"mb-4 border-b border-ink-200 pb-1.5"}, "How it works"),
-        el("ol",{class:"space-y-3"},
-          step("1","Capture","A short author\u21c4reviewer interview over your coding session distills the Intent Document, committed with the PR."),
-          step("2","Validate","The GitHub App checks it against the diff on every PR and posts a check plus a guided-review link \u2014 no workflow files."),
-          step("3","Review","This viewer renders the walkthrough; inline and discussion comments sync back to GitHub.")),
-        el("p",{class:"mt-4 text-sm"}, el("a",{class:"text-ink-500", href:REPO_URL+"/blob/main/docs/ARCHITECTURE.md"}, "Architecture & internals \u2192"))),
+        renderDemo(),
+        el("p",{class:"mt-2 text-sm text-ink-500"},
+          "A real Intent Document and the diff it describes, rendered by the viewer your reviewers get. Pick a stop.")),
 
       el("section",{class:"mb-12"},
-        el("h2",{class:"mb-2 border-b border-ink-200 pb-1.5"}, "Get started"),
-        el("p",{class:"mb-5 text-ink-600"}, "Two one-time installs \u2014 the MCP server on the developer\u2019s side, the GitHub App on the repo\u2019s."),
-        el("ol",{class:"space-y-5"},
-          el("li",{class:"flex gap-3"},
-            el("span",{class:"id-chip shrink-0 pt-0.5"},"1"),
-            el("div",{class:"min-w-0 flex-1"},
-              el("p",{class:"font-medium text-ink-900"},"Register the MCP server with your agent"),
-              el("p",{class:"mb-2 mt-0.5 text-sm text-ink-600"},"So it can author the Intent Document. Claude Code:"),
-              codeBlock("claude mcp add -s user review-assist -- npx -y review-assist-mcp"),
-              el("p",{class:"mb-2 mt-2 text-sm text-ink-600"},"Codex:"),
-              codeBlock("codex mcp add review-assist -- npx -y review-assist-mcp"),
-              el("p",{class:"mb-2 mt-3 text-sm text-ink-600"},"Or, for the Claude desktop app \u2014 one-click install, no terminal:"),
-              el("a",{class:"btn-ghost", href:MCPB_DOWNLOAD}, "Download the .mcpb \u2192"))),
-          el("li",{class:"flex gap-3"},
-            el("span",{class:"id-chip shrink-0 pt-0.5"},"2"),
-            el("div",{class:"min-w-0 flex-1"},
-              el("p",{class:"font-medium text-ink-900"},"Install the GitHub App on your repos"),
-              el("p",{class:"mt-0.5 text-sm text-ink-600"},"One click. Read-only code + PR comments, no workflow files \u2014 it adds the automatic check, the guided-review comment, and this viewer."),
-              el("a",{class:"btn-primary mt-3", href:APP_INSTALL}, "Install the GitHub App \u2192")))),
-        el("p",{class:"mt-6 text-sm text-ink-500"}, "Then every PR: code, ask your agent to generate the Intent Document, open the PR \u2014 the App posts an \u201cOpen guided review\u201d link here.")),
+        el("h2",{class:"section-h mb-4"}, "How it works"),
+        el("ol",{class:"space-y-2.5"},
+          step("01","Capture","Your agent distils the session as it commits. The transcript never leaves your machine."),
+          step("02","Validate","Every push, the App checks the document against the diff and names anything unexplained."),
+          step("03","Review","Assumptions first, then a walkthrough anchored to the hunks. Comments and the verdict post as you."))),
+      // "Two installs" described them and "Get started" then installed them — two stacks
+      // of prose saying the same thing. One section, each part ending in its own action.
+      el("section",{class:"mb-12", id:"get-started"},
+        el("h2",{class:"section-h mb-4"}, "Install"),
+        el("p",{class:"mb-5 text-ink-600"}, "Two one-time installs — the server on the developer’s side, the App on the repository’s."),
 
-      el("footer",{class:"border-t border-ink-200 pt-6 text-sm text-ink-500"},
-        el("p",{class:"mb-1"}, "Sign in with GitHub once; nothing is stored \u2014 documents and diffs are read live from GitHub in your browser."),
-        el("p",{}, "Open source \u00b7 ", el("a",{href:REPO_URL}, "github.com/uditk2/review-assist")))));
+        el("div",{class:"border-t border-ink-200 pt-4"},
+          el("div",{class:"flex items-baseline gap-2.5"},
+            el("span",{class:"ordinal"},"01"),
+            el("p",{class:"font-medium text-ink-900"}, "The MCP server"),
+            el("span",{class:"ml-auto text-sm text-ink-500"}, "beside your agent")),
+          el("p",{class:"mt-0.5 text-ink-600", html:richHtml(
+            "Never calls a model. It supplies ground truth, enforces the role split — one subagent holds the transcript and cannot submit, one reads the diff cold — and runs five deterministic checks before a word is written.")}),
+          el("div",{class:"mt-3"},
+            codeBlock("claude mcp add -s user review-assist -- npx -y review-assist-mcp\ncodex mcp add review-assist -- npx -y review-assist-mcp")),
+          el("p",{class:"mt-2 text-sm text-ink-500", html:richHtml(
+            "Claude desktop app: [download the .mcpb](" + MCPB_DOWNLOAD + "). Editor launched from the Dock? `npx` is not on a GUI app’s PATH — [use the form in the README](" + REPO_URL + "#claude-code).")})),
+
+        el("div",{class:"mt-6 border-t border-ink-200 pt-4"},
+          el("div",{class:"flex items-baseline gap-2.5"},
+            el("span",{class:"ordinal"},"02"),
+            el("p",{class:"font-medium text-ink-900"}, "The GitHub App"),
+            el("span",{class:"ml-auto text-sm text-ink-500"}, "on your repositories")),
+          el("p",{class:"mt-0.5 text-ink-600", html:richHtml(
+            "A GitHub App, **not** an Action — no workflow file, no runner minutes. It posts a non-blocking check with the coverage result, a summary comment linking to the guided review, and fills in the PR description from the document. No database: it reads from GitHub per request and discards.")}),
+          el("a",{class:"btn-primary mt-3", href:APP_INSTALL}, "Install the GitHub App →")),
+
+        el("p",{class:"mt-5 text-sm"}, el("a",{class:"text-ink-500", href:REPO_URL+"/blob/main/docs/ARCHITECTURE.md"}, "Architecture & internals →"))),
+
+      el("section",{class:"mb-12"},
+        el("h2",{class:"section-h"}, "Release notes"),
+        el("div",{}, ...RELEASES.slice(0,3).map(releaseRow)),
+        el("p",{class:"mt-4 text-sm"}, el("a",{href:"#/blog"}, "All releases →"))),
+
+      siteFooter()));
 }
+
+// ---------- the landing demo: the real viewer, on a real document ----------
+// Nothing here is mocked-up markup. It is the example Intent Document from
+// packages/schema and the diff it describes, rendered by renderHunk — the same
+// function the PR viewer uses. A screenshot would go stale; this cannot.
+const DEMO = {
+  repo: "acme/checkout-service",
+  pull: 128,
+  title: "Cache session validation in Redis",
+  stops: [
+    { id:"T1", role:"supporting", title:"Introduce SessionCache interface",
+      what:"Defines get/set/delete for validation results with TTL.",
+      why:"Isolates caching behind an interface so the in-process trial could be swapped for Redis without touching the middleware.",
+      anchors:[{path:"internal/auth/cache.go", hunk:{old_start:0, old_lines:0, new_start:1, new_lines:38}}] },
+    { id:"T2", role:"core", title:"Redis implementation with 60s TTL",
+      what:"Caches successful validations keyed by session token hash; failures are never cached.",
+      why:"The shared store is what makes the 60s revocation bound hold across all pods (A1, A2).",
+      attention:"Token is hashed before use as a cache key — review the hash choice; a reversible or truncated key would leak session material into Redis.",
+      anchors:[{path:"internal/auth/redis_cache.go", hunk:{old_start:0, old_lines:0, new_start:1, new_lines:74}}] },
+    { id:"T3", role:"core", title:"Explicit cache delete on logout",
+      what:"Logout handler deletes the cache entry before calling the auth service.",
+      why:"Makes voluntary logout immediate instead of waiting out the TTL (user ask, msg-44).",
+      anchors:[{path:"internal/handlers/logout.go", hunk:{old_start:21, old_lines:4, new_start:21, new_lines:11}}] },
+    { id:"T4", role:"incidental", title:"Rename validateSession → revalidateSession",
+      what:"Mechanical rename across call sites for accuracy; no behaviour change.",
+      why:"Consistency after the cache split the fast path from true revalidation.",
+      anchors:[{path:"internal/auth/middleware.go", hunk:{old_start:55, old_lines:9, new_start:55, new_lines:9}}] },
+  ],
+  diff: `diff --git a/internal/auth/cache.go b/internal/auth/cache.go
+--- /dev/null
++++ b/internal/auth/cache.go
+@@ -0,0 +1,8 @@
++package auth
++
++type SessionCache interface {
++\tGet(k string) (bool, bool)
++\tSet(k string)
++\tDelete(k string)
++}
++// ... 38 lines total
+diff --git a/internal/auth/redis_cache.go b/internal/auth/redis_cache.go
+--- /dev/null
++++ b/internal/auth/redis_cache.go
+@@ -0,0 +1,5 @@
++package auth
++// Redis-backed cache with 60s TTL, keyed on hash(token)
++func (r *RedisCache) Set(k string) {
++\tr.client.Set(ctx, hash(k), "1", 60*time.Second)
++}
+diff --git a/internal/handlers/logout.go b/internal/handlers/logout.go
+--- a/internal/handlers/logout.go
++++ b/internal/handlers/logout.go
+@@ -21,4 +21,11 @@ func Logout() {
+ \ttoken := sessionToken(r)
++\t// delete first: logout is immediate, not TTL-bound
++\tcache.Delete(token)
+ \tauthService.Revoke(token)
+diff --git a/internal/auth/middleware.go b/internal/auth/middleware.go
+--- a/internal/auth/middleware.go
++++ b/internal/auth/middleware.go
+@@ -55,9 +55,9 @@ func Middleware() {
+-\tif err := validateSession(token); err != nil {
++\tif err := revalidateSession(token); err != nil {
+ \t\thttp.Error(w, "unauthorized", 401)
+`,
+};
+
+const DWELL = 6000;
+let DEMO_STATE = { i: 0, timer: null, auto: true, files: null };
+
+function reducedMotion(){
+  return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** Any route change leaves the interval running otherwise, painting into a dead node. */
+function stopDemo(){
+  if (DEMO_STATE.timer) { clearInterval(DEMO_STATE.timer); DEMO_STATE.timer = null; }
+}
+
+function demoGoto(i, byHand){
+  DEMO_STATE.i = (i + DEMO.stops.length) % DEMO.stops.length;
+  // A click is a statement of intent: stop moving the thing the reader is reading.
+  if (byHand) { DEMO_STATE.auto = false; stopDemo(); }
+  paintDemo();
+}
+
+function startDemo(){
+  stopDemo();
+  if (!DEMO_STATE.auto || reducedMotion()) return;
+  DEMO_STATE.timer = setInterval(() => {
+    if (!document.getElementById("demo-body")) return stopDemo();
+    DEMO_STATE.i = (DEMO_STATE.i + 1) % DEMO.stops.length;
+    paintDemo();
+  }, DWELL);
+}
+
+function renderDemo(){
+  DEMO_STATE.files = parseUnifiedDiff(DEMO.diff);
+  DEMO_STATE.i = 0; DEMO_STATE.auto = true;
+
+  const panel = el("div",{class:"demo"},
+    el("div",{class:"demo-bar"},
+      el("span",{class:"font-mono"}, DEMO.repo),
+      el("span",{class:"id-chip"}, "#"+DEMO.pull),
+      el("span",{class:"hidden truncate text-ink-500 sm:inline"}, DEMO.title),
+      el("span",{class:"flex-1"}),
+      el("span",{class:"tag tag-ok"}, "4 of 4 changes explained")),
+    el("div",{class:"demo-track"}, el("div",{class:"demo-progress", id:"demo-progress"})),
+    el("div",{class:"demo-grid", id:"demo-body"}));
+
+  // Pausing on hover keeps a reader from losing the stop they are mid-way through.
+  panel.addEventListener("mouseenter", stopDemo);
+  panel.addEventListener("mouseleave", () => { if (DEMO_STATE.auto) startDemo(); });
+
+  setTimeout(() => { paintDemo(); startDemo(); }, 0);
+  return panel;
+}
+
+function paintDemo(){
+  const body = document.getElementById("demo-body");
+  if (!body) return stopDemo();
+  const s = DEMO.stops[DEMO_STATE.i];
+
+  const rail = el("div",{class:"demo-rail"},
+    ...DEMO.stops.map((t, i) => el("button",{
+      class:"demo-stop"+(i===DEMO_STATE.i ? " is-active" : ""),
+      onclick:()=>demoGoto(i, true)},
+      el("span",{class:"id-chip"}, t.id),
+      el("span",{class:"truncate"}, t.title))));
+
+  const pane = el("div",{class:"demo-pane"},
+    el("div",{class:"mb-2 flex items-center gap-2"},
+      el("span",{class:"eyebrow"}, `stop ${String(DEMO_STATE.i+1).padStart(2,"0")} / ${String(DEMO.stops.length).padStart(2,"0")}`),
+      el("span",{class:"tag"}, s.role)),
+    el("p",{class:"mb-2 font-medium text-ink-900"}, s.title),
+    el("p",{class:"text-sm text-ink-700"}, el("span",{class:"font-medium text-ink-900"},"What. "), s.what),
+    el("p",{class:"mt-1 text-sm text-ink-700"}, el("span",{class:"font-medium text-ink-900"},"Why. "), s.why),
+    s.attention ? el("div",{class:"note mt-3 text-sm"},
+      el("p",{class:"mb-0.5 font-mono text-micro text-warn-fg"},"reviewer note"),
+      el("p",{class:"text-ink-800"}, s.attention)) : null,
+    el("div",{class:"mt-3 space-y-2"},
+      ...hunksForStop(s, DEMO_STATE.files).map(hp => hp.missing ? null : renderHunk(hp.path, hp.hunk))));
+
+  body.replaceChildren(rail, pane);
+  rail.querySelector(".is-active")?.scrollIntoView({ inline: "nearest", block: "nearest" });
+
+  // Restart the dwell bar from zero, in the direction of travel.
+  const bar = document.getElementById("demo-progress");
+  if (bar) {
+    const run = DEMO_STATE.auto && !reducedMotion();
+    bar.style.transition = "none";
+    bar.style.width = "0%";
+    void bar.offsetWidth; // commit the zero state, or the two writes coalesce into no-op
+    if (run) {
+      bar.style.transition = `width ${DWELL}ms linear`;
+      bar.style.width = "100%";
+    }
+  }
+}
+
+// ---------- site chrome, shared by the landing page and the release notes ----------
+function siteHeader(active){
+  const navLink = (href, label, key) => el("a",{class:"site-nav"+(active===key?" is-active":""), href}, label);
+  return el("header",{class:"border-b border-ink-200"},
+    el("div",{class:"mx-auto flex max-w-3xl items-center gap-1 px-6 py-3"},
+      el("a",{class:"font-semibold text-ink-900 hover:no-underline", href:"#"}, "Review Assist"),
+      el("span",{class:"flex-1"}),
+      navLink("#","Overview","home"),
+      navLink("#/blog","Releases","blog"),
+      el("a",{class:"site-nav", href:REPO_URL}, "GitHub"),
+      themeToggle()));
+}
+function siteFooter(){
+  return el("footer",{class:"border-t border-ink-200 pt-6 text-sm text-ink-500"},
+    el("p",{class:"mb-1"}, "Sign in with GitHub once; nothing is stored — documents and diffs are read live from GitHub in your browser."),
+    el("p",{}, "Open source, Apache-2.0 · ", el("a",{href:REPO_URL}, "github.com/uditk2/review-assist")));
+}
+
+/** Minimal inline markup for authored prose: `code`, **bold**, and [text](href). */
+function richHtml(text){
+  const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  return esc(text)
+    .replace(/`([^`]+)`/g, "<code class=\"code-inline\">$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong class=\"font-medium text-ink-900\">$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "<a href=\"$2\">$1</a>");
+}
+
+// ---------- release notes ----------
+function releaseRow(r){
+  return el("a",{class:"block border-t border-ink-200 py-3 hover:no-underline", href:"#/blog/"+r.v},
+    el("div",{class:"flex items-baseline gap-2.5"},
+      el("span",{class:"id-chip"}, "v"+r.v),
+      el("span",{class:"font-medium text-ink-900"}, r.title),
+      el("span",{class:"ml-auto shrink-0 text-sm text-ink-500"}, r.date)),
+    el("p",{class:"mt-0.5 text-sm text-ink-600", html:richHtml(r.summary)}));
+}
+
+function renderBlogIndex(){
+  return el("div",{class:"min-h-screen"},
+    siteHeader("blog"),
+    el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
+      el("section",{class:"grid-field is-short mb-8"},
+        el("h1",{class:"text-[2rem] leading-tight"}, "Releases")),
+      el("section",{class:"mb-12"}, ...RELEASES.map(releaseRow)),
+      siteFooter()));
+}
+
+function renderPost(slug){
+  const i = RELEASES.findIndex(r => r.v === slug);
+  if (i < 0) return el("div",{class:"min-h-screen"}, siteHeader("blog"),
+    el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
+      el("h1",{class:"mb-3"},"No such release"),
+      el("p",{class:"text-ink-600"}, el("a",{href:"#/blog"},"Back to the release notes →"))));
+
+  const r = RELEASES[i];
+  const body = el("div",{});
+  for (const b of r.body){
+    if (typeof b === "string"){ body.append(el("p",{class:"mt-4 text-ink-700", html:richHtml(b)})); continue; }
+    if (b.h){ body.append(el("h2",{class:"section-h mb-1 mt-8"}, b.h)); continue; }
+    if (b.ul){ body.append(el("ul",{class:"mt-4 space-y-2"}, ...b.ul.map(t =>
+      el("li",{class:"flex gap-2.5 text-ink-700"},
+        el("span",{class:"select-none pt-0.5 text-ink-400"},"—"),
+        el("span",{html:richHtml(t)}))))); continue; }
+    if (b.code){ body.append(el("div",{class:"mt-4"}, codeBlock(b.code))); continue; }
+    if (b.note){ body.append(el("p",{class:"note mt-4", html:richHtml(b.note)})); continue; }
+  }
+
+  const newer = RELEASES[i-1], older = RELEASES[i+1];
+  return el("div",{class:"min-h-screen"},
+    siteHeader("blog"),
+    el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
+      el("p",{class:"mb-4 text-sm"}, el("a",{class:"text-ink-500", href:"#/blog"}, "← Release notes")),
+      el("article",{},
+        el("div",{class:"grid-field"},
+          el("div",{class:"mb-2 flex items-baseline gap-2.5"},
+            el("span",{class:"tag"}, "v"+r.v),
+            el("span",{class:"text-sm text-ink-500"}, r.date)),
+          el("h1",{class:"mb-3 text-[1.75rem] leading-tight"}, r.title),
+          el("p",{class:"text-[1.05rem] text-ink-700", html:richHtml(r.summary)})),
+        body,
+        el("p",{class:"mt-8 border-t border-ink-200 pt-4 text-sm text-ink-500"},
+          "Commits for this release: ",
+          el("a",{href: REPO_URL + (older ? "/compare/v"+older.v+"...v"+r.v : "/commits/v"+r.v)}, older ? "v"+older.v+"…v"+r.v : "history to v"+r.v))),
+      el("nav",{class:"mt-10 flex justify-between gap-4 border-t border-ink-200 pt-5 text-sm"},
+        older ? el("a",{href:"#/blog/"+older.v}, "← v"+older.v) : el("span",{}),
+        newer ? el("a",{href:"#/blog/"+newer.v}, "v"+newer.v+" →") : el("span",{})),
+      el("div",{class:"mt-10"}, siteFooter())));
+}
+
+// Newest first. Each entry: what broke, what was done, why. Kept short on purpose.
+const RELEASES = [
+  {
+    v: "1.0.0",
+    date: "13 Aug 2026",
+    title: "Nothing large enough to matter can go missing",
+    summary: "A paged session spine, an interview the server can attest from both sides, and the schema fix that made every submission fail.",
+    body: [
+      { h: "The spine deleted the agent’s half" },
+      "`get_spine` was the one tool with no result ceiling — up to 600 KB, thirty times what every other tool respects. When a session went past that, the fallback dropped every assistant turn to fit.",
+      "That is the worst thing to lose: roughly two thirds of the prose in a session is the agent’s, and 17 of 23 recorded trials came from its side. The spine is now paged like the diff, so a long session costs more calls and no material.",
+      { h: "The server only heard one side" },
+      "`record_interview_round` took both the question and the answer from the reviewer, so a fabricated interview was indistinguishable from a real one.",
+      "Questions are now recorded first and come back with a `q_id`; the author answers by that id through `answer_questions`. `meta.interview` gained `author_attested`, so an unattested interview shows up in the document. The interview also went from four rounds to two.",
+      { h: "The schema fix" },
+      "`summarizeRun` grew two fields; `meta.interview` is `additionalProperties: false` over three. `submit_document` stamps that summary into every document — so every submission failed validation. The tool could not file its own output.",
+      "124 unit tests passed with the bug in place, because no test stamped a real summary into a real document. A reviewer agent reading the diff cold found it, which is what the two-role split is for.",
+    ],
+  },
+  {
+    v: "0.3.1",
+    date: "6 Aug 2026",
+    title: "No response grows with the size of the change",
+    summary: "The flow died on exactly the changes big enough to deserve a document. Paged diffs, hunk-id anchors, a run handle that survives a restart.",
+    body: [
+      "`compute_diff` returned the whole diff beside the `run_id` every later call needs. On a 205,432-character change the response was 234,337 characters — past the client’s tool-result cap, so it was spilled to a file whole and the `run_id` went with it. The reviewer has no file access by design, so it could neither record a round nor submit. The bigger the change, the more certain the failure.",
+      "Now `compute_diff` returns the handle, the SHAs and a numbered hunk index; the bytes come from `read_diff`, paged on hunk boundaries — the unit the anchors already speak in. Envelope on the change that prompted it: 234,337 → 15,622 characters, twelve pages, every walked hunk byte-identical on reassembly.",
+      { note: "Breaking: `compute_diff` no longer returns `diff`. The document format is unchanged." },
+      { h: "Also" },
+      { ul: [
+        "**A run handle, not a working directory.** Rounds were filed under the server’s cwd while submits passed the repo — different keys in a multi-repo workspace, so the submit found no interview and the reviewer re-ran everything. A run is now `sha256(repo|base_sha|head_sha)`, required by both tools.",
+        "**Anchors by hunk id.** A stop says `H3, H4` instead of restating line numbers from a diff header. Ids are expanded before validation, so nothing downstream changes.",
+        "**A transcript parser per agent.** Claude Code and Codex transcripts share nothing; guessing at both half-worked in silence — `get_spine` reduced 831 Codex entries to one gap item.",
+        "**A tour grouped by the plan, not the diff.** Grouping by file structure produces stops that are really just filenames.",
+        "**The reviewer lost the orchestrator’s tools.** It could reset consent for every repository on the machine, and in one run reached for it after two failed submits.",
+      ] },
+    ],
+  },
+  {
+    v: "0.2.11",
+    date: "29 Jul 2026",
+    title: "Role definitions install at the handshake",
+    summary: "Written during a tool call, they could not be dispatched until the next session — so agents simulated the split without the allowlist that enforces it.",
+    body: [
+      "Claude Code reads `~/.claude/agents/` once, at session start. Definitions written during a tool call therefore did nothing that session, and the agent offered to simulate the two roles with general-purpose subagents — which drops the `tools:` allowlist, the only thing making the split enforceable rather than advisory.",
+      "They now install on the `initialize` handshake, during the session start the user was already performing. The hook is `oninitialized`, not a step after `connect()`: connect resolves before the client has sent `initialize`, so the client identity is still unknown there.",
+    ],
+  },
+  {
+    v: "0.2.10",
+    date: "29 Jul 2026",
+    title: "The server installs the roles, at user scope",
+    summary: "The guide told agents to run a CLI that could not detect their client, so they wrote subagent files into whatever repository they happened to be in.",
+    body: [
+      "`review-assist-mcp agents --write`, run standalone, has no MCP handshake: it resolved to `generic`, which has no agent directory, and refused to write. Every agent fell through to placing the files by hand — in the user’s repository.",
+      "The server already knows the client from the handshake, so it does the write. At user scope, not project scope: the definitions contain nothing repo-specific, and per-project writes left untracked files in every repository the tool touched.",
+      "The CLI keeps the job the server cannot do — showing what would be written, before anything is.",
+    ],
+  },
+  {
+    v: "0.2.9",
+    date: "29 Jul 2026",
+    title: "Check the invariants; name the silent install failure",
+    summary: "Two releases had broken on cross-file invariants no generator owns. Separately: why `npx`-based servers show as *not connected* in GUI editors, with no error.",
+    body: [
+      "Both release bugs that week were cross-file invariants, not forgotten generator runs: `server.json` advertised 0.2.1 against npm 0.2.7, and the registry’s required `mcpName` did not exist at all.",
+      "CI now fails on any diff from regenerating derived files, and asserts what no generator owns — `mcpName` against `server.json`, the identifier shape, that `SERVER_VERSION` is still derived, and that the manifest declares exactly the tools the server registers. That last one is how the manifest sat at eight tools while the server had ten. The publish workflow checks twice, so a broken invariant fails the release instead of annotating it afterwards.",
+      { h: "The install that fails silently" },
+      "`npx -y review-assist-mcp` works from a terminal and fails two ways elsewhere, both silent: GUI apps on macOS inherit only `/usr/bin:/bin:/usr/sbin:/sbin`, so a Homebrew or nvm `npx` is not found; on Windows `npx` is a `.cmd` wrapper needing a TTY the VS Code panel lacks. The server just shows as not connected.",
+      "Under a bare GUI PATH, only an absolute `node` invoking the script directly starts — plain `npx` fails on lookup, the others on the shebang:",
+      { code: "npm install -g review-assist-mcp\nclaude mcp add -s user review-assist -- \"$(which node)\" \"$(npm root -g)/review-assist-mcp/dist/index.js\"" },
+      "This affects every `npx`-based MCP server, not just this one.",
+    ],
+  },
+  {
+    v: "0.2.8",
+    date: "29 Jul 2026",
+    title: "Publishing to the MCP registry",
+    summary: "`server.json` had drifted two versions behind npm, and the registry could not verify the package was ours.",
+    body: [
+      "`server.json` carries the version twice and derived neither from `package.json`, so it advertised 0.2.1 while npm was on 0.2.7 — publishing that would list a version that no longer resolves. It is now folded into `sync-version`.",
+      "The registry also checks that the underlying package claims the same name: for npm that means an `mcpName` field present in the published tarball, not just the repository. Without it, verification fails.",
+      "Publishing runs from CI over GitHub OIDC. Interactively it would mean a device code and a token on a laptop, and a manual step that drifts exactly the way `server.json` already had.",
+    ],
+  },
+  {
+    v: "0.2.7",
+    date: "29 Jul 2026",
+    title: "Say what the thing actually is",
+    summary: "The npm README listed five tools where the server registers ten, and never mentioned that half the product is a GitHub App. The privacy claim was overstated too.",
+    body: [
+      "It told readers to build from source and register an absolute `dist` path — instructions that cannot work for anyone arriving via `npx` — and never mentioned the App, so an npm installer got half a product with nothing saying so. It now leads with the two installs, states that the second is a GitHub App rather than an Action, and documents all ten tools by role.",
+      { h: "The privacy claim" },
+      "“Validation runs against the diff on GitHub’s side of the fence” read as though repository content never reached the service. It does: the worker fetches the document and the full `base...head` diff from the GitHub API.",
+      "Nothing is persisted — that is the claim worth making, so that is the claim now made, with the in-transit caveat named rather than left in `index.ts` for a reader to find.",
+    ],
+  },
+  {
+    v: "0.2.6",
+    date: "29 Jul 2026",
+    title: "Pin the toolchain",
+    summary: "`npm i -g npm@latest` made every release depend on whatever npm shipped that hour.",
+    body: [
+      "Runs 2 through 4 published fine over OIDC. Run 6 failed inside `npm publish` with a 401, trying to open a browser web-auth flow — after the tarball had uploaded and the provenance statement was signed. Nothing in the repository had changed in any way that touches authentication.",
+      "Node 24 already bundles npm 11.5.1 or later, which is all trusted publishing needs. Use the bundled npm and assert the floor.",
+    ],
+  },
+  {
+    v: "0.2.5",
+    date: "29 Jul 2026",
+    title: "Push an annotated tag",
+    summary: "`git tag` creates a lightweight tag; `git push --follow-tags` only pushes annotated ones.",
+    body: [
+      "v0.2.4 never left the runner, and `gh release create` failed with “tag exists locally but has not been pushed”. npm and `main` had already been updated, leaving a published version with no release behind it.",
+    ],
+  },
+  {
+    v: "0.2.4",
+    date: "29 Jul 2026",
+    title: "Commit and tag from the repository root",
+    summary: "`npm version` inside a workspace package bumps `package.json` and silently does nothing in git.",
+    body: [
+      "There is no `.git` in `packages/mcp-server`, so the commit and tag were skipped without complaint: 0.2.3 went to npm while `main` still said 0.2.2, and `gh release` tagged the pre-bump commit.",
+      "The release now bumps with `--no-git-tag-version`, reads the version back off disk, and commits and tags from the root. 0.2.4 carries no functional change — it is the first release cut correctly by that path.",
+    ],
+  },
+  {
+    v: "0.2.3",
+    date: "29 Jul 2026",
+    title: "One version, derived everywhere",
+    summary: "Three files carried a version and the release bumped one, so 0.2.2 shipped a server that reported itself as 0.2.1.",
+    body: [
+      "`SERVER_VERSION` now reads `package.json` at runtime, so there is no second literal to drift. `manifest.json` still needs one, because the `.mcpb` format requires it — so the build regenerates it.",
+      "Same change fixes the release push: `actions/checkout` leaves a detached HEAD, so the bump commit had no branch to land on and only the tag reached the remote.",
+    ],
+  },
+  {
+    v: "0.2.2",
+    date: "29 Jul 2026",
+    title: "Trusted publishing, and the bundle the README promised",
+    summary: "The publish workflow depended on a secret that was never set, and never attached the `.mcpb` the README links to.",
+    body: [
+      "`NPM_TOKEN` had never been set, so the workflow would have failed at the publish step. It now uses npm trusted publishing over OIDC — no long-lived credential stored anywhere. `setup-node`’s `registry-url` is deliberately dropped, since it writes an `_authToken` line that breaks OIDC.",
+      "The `.mcpb` is now packed and attached to the release the README already pointed people at.",
+    ],
+  },
+  {
+    v: "0.2.1",
+    date: "29 Jul 2026",
+    title: "First published release",
+    summary: "The format, the validator, the MCP server and the guided-review app — and the decision to retire the GitHub Action.",
+    body: [
+      "First release on npm and in the MCP registry: the Intent Document format and schema, the deterministic validator, the MCP server that drives distillation, and the GitHub App that renders the guided review.",
+      "**The Action was retired.** It and the App webhook were two paths to the same checks, and the webhook already runs them on every `pull_request` event with zero configuration — so the Action was a redundant path that cost every adopting repository a workflow file and runner minutes. The `review-assist` CLI remains for teams who prefer their own runners.",
+      "Also: all ten tools registered (the desktop manifest advertised eight, so clients never saw two of them), the two roles shipped as installable subagents, commenting on a range of lines, and per-repository consent before anything is written.",
+    ],
+  },
+];
 
 function renderLogin(ref){
   const back = encodeURIComponent(location.pathname + location.hash);
@@ -264,25 +696,27 @@ function renderLogin(ref){
 function render(){
   const doc = STATE.data.document, m = STATE.data.meta, cov = STATE.coverage;
   const covOk = cov.unexplained.length === 0;
-  const covTag = el("span",{class: covOk ? "tag tag-ok" : "tag tag-warn"},
+  const covTag = el("span",{class: (covOk ? "tag tag-ok" : "tag tag-warn") + " hidden sm:inline-flex"},
     covOk ? `${cov.explained} of ${cov.total} changes explained`
           : `${cov.unexplained.length} change${cov.unexplained.length>1?"s":""} uncovered`);
 
-  const header = el("header",{class:"sticky top-0 z-10 border-b border-ink-200 bg-canvas"},
-    el("div",{class:"flex items-center gap-3 px-6 py-3"},
-      el("span",{class:"font-mono text-sm text-ink-700"}, `${m.owner}/${m.repo}`),
-      el("span",{class:"id-chip"}, `#${m.pull}`),
-      el("span",{class:"truncate text-ink-500"}, m.title || ""),
+  const header = el("header",{class:"sticky top-0 z-20 border-b border-ink-200 bg-canvas"},
+    el("div",{class:"mx-auto flex w-full max-w-[120rem] items-center gap-3 px-4 py-3 md:px-6"},
+      el("span",{class:"min-w-0 truncate font-mono text-sm text-ink-700"}, `${m.owner}/${m.repo}`),
+      el("span",{class:"id-chip shrink-0"}, `#${m.pull}`),
+      el("span",{class:"hidden truncate text-ink-500 sm:inline"}, m.title || ""),
       el("span",{class:"flex-1"}),
       covTag,
-      STATE.me ? el("span",{class:"tag"}, "@"+STATE.me) : null,
+      STATE.me ? el("span",{class:"tag hidden md:inline-flex"}, "@"+STATE.me) : null,
       themeToggle()));
 
   const link = (view, label, badge) => el("button",
     {class:"nav-link"+(STATE.view===view?" is-active":""), onclick:()=>{STATE.view=view;render();}},
     el("span",{}, label), badge);
 
-  const nav = el("nav",{class:"sticky top-[57px] hidden h-[calc(100vh-57px)] w-72 shrink-0 overflow-y-auto border-r border-ink-200 px-3 py-5 md:block"},
+  const goStop = i => { STATE.view="tour"; STATE.stopIndex=i; render(); };
+
+  const nav = el("nav",{class:"rail"},
     el("p",{class:"eyebrow px-2.5 pb-2"},"Review"),
     link("overview","Overview"),
     link("verify","Verification"),
@@ -290,18 +724,34 @@ function render(){
     STATE.me ? link("submit","Submit review", STATE.reviewSubmitted ? el("span",{class:"ml-auto tag tag-ok"}, "sent") : null) : null,
     el("p",{class:"eyebrow px-2.5 pb-2 pt-5"},"Walkthrough"),
     ...STATE.ordered.map((s,i)=>el("button",
-      {class:"nav-link"+(STATE.view==="tour"&&STATE.stopIndex===i?" is-active":""), onclick:()=>{STATE.view="tour";STATE.stopIndex=i;render();}},
+      {class:"nav-link"+(STATE.view==="tour"&&STATE.stopIndex===i?" is-active":""), onclick:()=>goStop(i)},
       el("span",{class:"id-chip"}, s.id), el("span",{class:"truncate"}, s.title))));
 
-  const main = el("main",{class:"min-w-0 flex-1 px-6 py-8 md:px-10"},
-    el("div",{class:"max-w-prose"},
+  // The same navigation, as a scrolling strip, for the widths where the rail is hidden.
+  const chip = (view, label, on) => el("button",
+    {class:"chip-link"+(on?" is-active":""), onclick:()=>{STATE.view=view;render();}}, label);
+  const railbar = el("div",{class:"railbar"},
+    el("span",{class:(covOk ? "tag tag-ok" : "tag tag-warn") + " shrink-0 sm:hidden"},
+      covOk ? `${cov.explained}/${cov.total} explained` : `${cov.unexplained.length} uncovered`),
+    chip("overview","Overview", STATE.view==="overview"),
+    chip("verify","Verification", STATE.view==="verify"),
+    cov.unexplained.length ? chip("coverage","Uncovered", STATE.view==="coverage") : null,
+    STATE.me ? chip("submit","Submit", STATE.view==="submit") : null,
+    ...STATE.ordered.map((s,i)=>el("button",
+      {class:"chip-link"+(STATE.view==="tour"&&STATE.stopIndex===i?" is-active":""), onclick:()=>goStop(i)},
+      el("span",{class:"id-chip"}, s.id))));
+
+  // Prose views keep a reading measure; the code-bearing views get the whole canvas.
+  const wide = STATE.view !== "submit";
+  const main = el("main",{class:"view"},
+    el("div",{class: wide ? "view-wide" : "view-prose"},
       STATE.view==="overview" ? renderOverview(doc)
       : STATE.view==="verify" ? renderVerify(doc)
       : STATE.view==="coverage" ? renderCoverage()
       : STATE.view==="submit" ? renderSubmitReview()
       : renderStop()));
 
-  document.getElementById("app").replaceChildren(header, el("div",{class:"flex"}, nav, main));
+  document.getElementById("app").replaceChildren(header, railbar, el("div",{class:"shell"}, nav, main));
   runMermaid();
 }
 
@@ -314,8 +764,21 @@ function themeToggle() {
   const dark = currentTheme() === "dark";
   return el("button",{
     class:"btn-ghost !px-2.5 !py-1", title:"Toggle light / dark",
-    onclick:()=>{ document.documentElement.setAttribute("data-theme", dark ? "light" : "dark"); render(); }
+    onclick:()=>{ document.documentElement.setAttribute("data-theme", dark ? "light" : "dark"); rerenderCurrent(); }
   }, dark ? "Light" : "Dark");
+}
+
+/** Re-render whichever view is on screen, keeping the scroll position. The header is
+ *  shared by three routes, so the toggle cannot assume the PR view is the live one. */
+function rerenderCurrent() {
+  stopDemo();
+  const y = window.scrollY;
+  const app = document.getElementById("app");
+  const blog = parseBlogHash();
+  if (blog) app.replaceChildren(blog.slug ? renderPost(blog.slug) : renderBlogIndex());
+  else if (!parseHash()) app.replaceChildren(renderLanding());
+  else render();
+  window.scrollTo(0, y);
 }
 
 function labeled(label, ...body){
@@ -325,19 +788,14 @@ function labeled(label, ...body){
 function renderOverview(doc){
   const p = doc.problem;
   const f = document.createDocumentFragment();
-  f.append(el("section",{class:"mb-8"},
+  const left = el("div",{class:"min-w-0"});
+  const right = el("div",{class:"min-w-0"});
+  left.append(el("section",{class:"grid-field mb-8"},
     el("p",{class:"eyebrow mb-1"}, p.origin==="emerged_during_session" ? "The problem was defined over the course of the session" : "Problem stated up front"),
     el("h1",{class:"mb-3"},"Overview"),
     el("blockquote",{class:"border-l-2 border-ink-300 pl-4 text-[1.05rem] leading-relaxed text-ink-800"}, p.statement)));
 
-  // The marker is free text and is often a whole sentence, so it wraps inside a gutter of
-  // its own — unbounded, it eats the row and squeezes the formulation into a narrow column.
-  if (p.evolution?.length) f.append(section("How the ask evolved",
-    el("ol",{class:"space-y-2"}, ...p.evolution.map(e=>el("li",{class:"flex gap-3"},
-      el("span",{class:"id-chip w-36 shrink-0 break-words pt-0.5"}, e.at),
-      el("span",{class:"min-w-0 flex-1"}, e.formulation))))));
-
-  if (p.out_of_scope?.length) f.append(section("Out of scope",
+  if (p.out_of_scope?.length) left.append(section("Out of scope",
     el("ul",{class:"list-disc space-y-1 pl-5 text-ink-700"}, ...p.out_of_scope.map(x=>el("li",{},x)))));
 
   if (doc.assumptions?.length){
@@ -359,7 +817,7 @@ function renderOverview(doc){
         STATE.composer==="assume:"+a.id ? renderGlobalComposer("assume:"+a.id, STATE.composerSeed) : null,
         STATE.posted["assume:"+a.id] ? el("p",{class:"mt-2 text-sm text-ink-500"}, "\u2713 Posted to the PR discussion.") : null));
     }
-    f.append(sec);
+    right.append(sec);
   }
 
   if (doc.open_questions?.length){
@@ -367,22 +825,22 @@ function renderOverview(doc){
     for (const q of doc.open_questions) sec.append(el("div",{class:"card mb-3"},
       el("div",{}, el("span",{class:"id-chip mr-2"},q.id), el("span",{class:"font-medium"}, q.question)),
       q.context ? el("p",{class:"mt-1.5 text-sm text-ink-600"}, q.context) : null));
-    f.append(sec);
+    right.append(sec);
   }
 
   const ap = doc.approach;
   const asec = section("Approach");
   asec.append(el("p",{class:"text-ink-800"}, ap.adopted.summary));
   asec.append(labeled("Rationale.", el("span",{class:"text-ink-700"}, ap.adopted.rationale)));
-  if (ap.requirements?.length) asec.append(disclosure(`Requirements (${ap.requirements.length})`,
+  if (ap.requirements?.length) asec.append(subsection(`Requirements (${ap.requirements.length})`,
     el("ul",{class:"mt-2 list-disc space-y-1 pl-5 text-ink-700"}, ...ap.requirements.map(r=>
       el("li",{}, r.text, r.source ? el("span",{class:"text-ink-400"}, " — "+r.source) : null)))));
-  if (ap.trials?.length) asec.append(disclosure(`Rejected alternatives (${ap.trials.length})`,
+  if (ap.trials?.length) asec.append(subsection(`Considered and rejected (${ap.trials.length})`,
     el("div",{class:"mt-2 space-y-3"}, ...ap.trials.map(t=>el("div",{class:"border-l-2 border-ink-200 pl-3"},
       el("p",{}, el("span",{class:"font-medium"},"Tried. "), t.what),
       el("p",{class:"text-sm text-ink-600"}, "Outcome — "+t.outcome),
       el("p",{class:"text-sm text-ink-600"}, "Abandoned — "+t.why_abandoned))))));
-  f.append(asec);
+  left.append(asec);
 
   if (doc.diagrams?.length){
     const dsec = section("Diagrams");
@@ -392,25 +850,27 @@ function renderOverview(doc){
         el("pre",{class:"mermaid overflow-x-auto rounded-lg border border-ink-200 bg-ink-50 p-3 text-center"}, d.mermaid),
         d.caption ? el("p",{class:"mt-1 text-sm text-ink-500"}, d.caption) : null));
     }
-    f.append(dsec);
+    left.append(dsec);
   }
 
-  f.append(el("div",{class:"mt-8 flex items-center gap-3 border-t border-ink-200 pt-6"},
+  left.append(el("div",{class:"mt-8 flex items-center gap-3 border-t border-ink-200 pt-6"},
     el("button",{class:"btn-primary", onclick:()=>{STATE.view="tour";STATE.stopIndex=0;render();}}, "Start walkthrough"),
     el("span",{class:"text-sm text-ink-500"}, `${STATE.ordered.length} stops`)));
+  f.append(el("div",{class:"ov-split"}, left, right));
   return f;
 }
 
-function section(title, ...body){ return el("section",{class:"mb-8"}, el("h2",{class:"mb-3 border-b border-ink-200 pb-1.5"}, title), ...body); }
+function section(title, ...body){ return el("section",{class:"mb-8"}, el("h2",{class:"section-h"}, title), ...body); }
 function row(k,v){ return el("div",{class:"flex gap-2"}, el("dt",{class:"shrink-0 text-ink-500"}, k+":"), el("dd",{}, v)); }
-function disclosure(summary, body){ return el("details",{class:"mt-3 border-t border-ink-200 pt-3"}, el("summary",{class:"cursor-pointer text-sm font-medium text-ink-600"}, summary), body); }
+function subsection(title, body){ return el("div",{class:"mt-3 border-t border-ink-200 pt-3"}, el("h3",{class:"text-sm font-medium text-ink-600"}, title), body); }
 function ackBtn(id,kind,label,state){ return el("button",{class:"btn-ghost"+(state===kind?" is-on":""), onclick:()=>{STATE.acks[id]= state===kind?null:kind; render();}}, label); }
 
 function renderStop(){
   const s = STATE.ordered[STATE.stopIndex];
   const total = STATE.ordered.length;
   const f = document.createDocumentFragment();
-  f.append(el("section",{},
+  const prose = el("div",{class:"stop-prose"});
+  prose.append(el("section",{},
     el("div",{class:"mb-2 flex items-center gap-2 text-sm text-ink-500"},
       el("span",{}, `Stop ${STATE.stopIndex+1} of ${total}`),
       el("span",{class:"tag"}, s.role),
@@ -421,19 +881,20 @@ function renderStop(){
     labeled("Why.", el("span",{class:"text-ink-800"}, s.why)),
     s.attention ? el("div",{class:"note mt-4"}, el("p",{class:"mb-0.5 text-sm font-semibold text-warn-fg"},"Reviewer note"), el("p",{class:"text-ink-800"}, s.attention)) : null));
 
-  const wrap = el("div",{class:"mt-5 space-y-3"});
+  const code = el("div",{class:"stop-code"});
   for (const hp of hunksForStop(s, STATE.files)){
-    if (hp.missing){ wrap.append(el("div",{class:"diff"}, el("div",{class:"diff-file"}, hp.path, el("span",{class:"tag tag-warn"},"no matching change")))); continue; }
-    wrap.append(renderHunk(hp.path, hp.hunk));
+    if (hp.missing){ code.append(el("div",{class:"diff"}, el("div",{class:"diff-file"}, hp.path, el("span",{class:"tag tag-warn"},"no matching change")))); continue; }
+    code.append(renderHunk(hp.path, hp.hunk));
   }
-  f.append(wrap);
 
   const last = STATE.stopIndex===total-1;
-  f.append(el("div",{class:"mt-8 flex justify-between border-t border-ink-200 pt-6"},
+  prose.append(el("div",{class:"mt-8 flex justify-between border-t border-ink-200 pt-6"},
     el("button",{class:"btn-ghost", disabled: STATE.stopIndex===0?"":null, onclick:()=>{if(STATE.stopIndex>0){STATE.stopIndex--;render();}}}, "Previous"),
     last && STATE.me
       ? el("button",{class:"btn-primary", onclick:()=>{STATE.view="submit";render();}}, "Finish review")
       : el("button",{class:"btn-ghost", disabled: last?"":null, onclick:()=>{if(!last){STATE.stopIndex++;render();}}}, "Next")));
+
+  f.append(el("div",{class:"stop-split"}, prose, code));
   return f;
 }
 
@@ -713,12 +1174,14 @@ function renderVerify(doc){
   const v = doc.verification;
   const f = document.createDocumentFragment();
   f.append(el("h1",{class:"mb-5"},"Verification"));
-  f.append(section("Checks performed",
+  const cols = el("div",{class:"ver-split"});
+  f.append(cols);
+  cols.append(section("Checks performed",
     el("ul",{class:"space-y-2"}, ...v.performed.map(p=>el("li",{class:"flex items-baseline gap-2"},
       el("span",{class:"tag"}, p.kind),
       el("span",{class:"text-ink-800"}, p.description),
       el("span",{class:"text-ink-400"}, "— "+p.result))))));
-  if (v.not_verified?.length) f.append(section("Not verified",
+  if (v.not_verified?.length) cols.append(section("Not verified",
     el("ul",{class:"space-y-1.5"}, ...v.not_verified.map(n=>el("li",{class:"flex gap-2 text-ink-700"},
       el("span",{class:"select-none text-warn-fg"},"—"), el("span",{}, n))))));
   return f;

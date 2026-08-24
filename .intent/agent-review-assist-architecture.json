@@ -28,24 +28,6 @@
   "problem": {
     "statement": "The architecture material mixed system, deployment, actor, resource, and MCP component concerns, which obscured ownership and incorrectly suggested that GitHub or the MCP Server hosted behavior that belongs to the Review Assist Application or the calling agent runtime.",
     "origin": "stated_upfront",
-    "evolution": [
-      {
-        "at": "initial architecture review",
-        "formulation": "Rename Reviewer to Review Assist Application, expose its webhook and application interfaces, and expand the MCP author/reviewer mechanism."
-      },
-      {
-        "at": "diagram critique",
-        "formulation": "Reduce prose, preserve the hand-drawn left-to-right topology, and keep each diagram at one abstraction level."
-      },
-      {
-        "at": "MCP clarification",
-        "formulation": "Show Author and Intent Reviewer as caller-orchestrated subagents outside the MCP Server, while retaining exact role-scoped tools as pills."
-      },
-      {
-        "at": "final correction",
-        "formulation": "Add the external Developer actor and remove vendor-specific Cloudflare terminology from the logical architecture."
-      }
-    ],
     "user_asks": [
       "we need to call Reviewer as the ReviewAssist Application.",
       "we should mention the services/endpoints it offers",

@@ -68,18 +68,6 @@
       "properties": {
         "statement": { "type": "string", "minLength": 1 },
         "origin": { "enum": ["stated_upfront", "emerged_during_session"] },
-        "evolution": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["at", "formulation"],
-            "additionalProperties": false,
-            "properties": {
-              "at": { "type": "string" },
-              "formulation": { "type": "string" }
-            }
-          }
-        },
         "user_asks": { "type": "array", "items": { "type": "string" } },
         "out_of_scope": { "type": "array", "items": { "type": "string" } }
       }

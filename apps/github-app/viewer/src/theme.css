@@ -25,8 +25,9 @@
 }
 
 @layer components {
-  /* Section label: sentence case, medium weight, muted — NOT an all-caps overline. */
-  .eyebrow { @apply text-sm font-medium text-ink-500; }
+  /* Section label: sentence case, mono, muted — NOT an all-caps overline. Mono is what
+     separates a label (a readout) from prose, without adding a colour or a weight. */
+  .eyebrow { @apply font-mono text-micro tracking-[0.02em] text-ink-500; }
 
   .card { @apply rounded-md border border-ink-200 bg-surface p-4; }
 
@@ -36,7 +37,7 @@
   .btn-ghost.is-on { @apply border-accent-600 text-accent-700 bg-accent-50; }
   .btn:disabled { @apply opacity-40 pointer-events-none; }
 
-  .tag { @apply inline-flex items-center rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 text-micro font-medium text-ink-600; }
+  .tag { @apply inline-flex items-center rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 font-mono text-micro tracking-[0.01em] text-ink-600; }
   .tag-ok { @apply border-ok-border bg-ok-bg text-ok-strong; }
   .tag-warn { @apply border-warn-border bg-warn-bg text-warn-fg; }
   .id-chip { @apply font-mono text-micro text-ink-500; }
@@ -54,6 +55,85 @@
   .diff-line.is-del { @apply bg-danger-line text-danger-fg; }
   .diff-line.is-ctx { @apply text-ink-500; }
   .diff-line.is-hunk { @apply bg-ink-50 text-ink-500; }
+
+  /* Site chrome: the landing page and the release notes share one header. */
+  .site-nav { @apply rounded-md px-2 py-1 font-mono text-micro tracking-[0.02em] text-ink-600 hover:bg-ink-100 hover:text-ink-900 hover:no-underline; }
+  .site-nav.is-active { @apply font-medium text-ink-900; }
+
+  /* Inline code inside authored prose — quieter than a diff line. */
+  .code-inline { @apply rounded border border-ink-200 bg-ink-50 px-1 py-px font-mono text-[0.85em] text-ink-700; }
+
+  .section-h { @apply relative mb-3 border-b border-ink-200 pb-1.5; }
+  .section-h::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    width: 1.25rem;
+    height: 1px;
+    background: var(--accent-600);
+  }
+
+  /* Hairline grid behind a page masthead, fading out before the content starts. */
+  .grid-field { position: relative; }
+  .grid-field::before {
+    content: "";
+    position: absolute;
+    inset: -4rem -3rem auto;
+    height: 17rem;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: 28px 28px;
+    -webkit-mask-image:
+      linear-gradient(to bottom, transparent, #000 24%, transparent 80%),
+      linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+    mask-image:
+      linear-gradient(to bottom, transparent, #000 24%, transparent 80%),
+      linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+    -webkit-mask-composite: source-in;
+    mask-composite: intersect;
+  }
+  .grid-field > * { position: relative; }
+  .grid-field.is-short::before { height: 11rem; }
+  @media (max-width: 47.9375rem) {
+    .grid-field::before { inset: -4rem -1rem auto; }
+  }
+
+  /* Ordinal in its own gutter: 01, 02, 03. */
+  .ordinal { @apply shrink-0 font-mono text-micro tracking-[0.02em] text-ink-500; }
+
+  /* Landing demo: the viewer's own chrome, shrunk to a panel. */
+  .demo { @apply overflow-hidden rounded-md border border-ink-200 bg-surface; }
+  .demo-bar { @apply flex items-center gap-2 border-b border-ink-200 bg-ink-50 px-3 py-2 font-mono text-micro text-ink-600; }
+  .demo-track { @apply h-px w-full bg-ink-200; }
+  .demo-progress { @apply h-px w-0 bg-accent-600; }
+  .demo-grid { @apply grid grid-cols-1 md:grid-cols-[13.5rem_1fr]; }
+  .demo-rail { @apply flex gap-1 overflow-x-auto border-b border-ink-200 p-2 md:flex-col md:gap-0.5 md:overflow-visible md:border-b-0 md:border-r; }
+  .demo-stop { @apply flex shrink-0 items-baseline gap-2 rounded px-2 py-1.5 text-left text-sm text-ink-600 hover:bg-ink-100 md:w-full md:shrink; }
+  .demo-stop.is-active { @apply bg-accent-50 font-medium text-ink-900; }
+  .demo-stop.is-active .id-chip { @apply text-accent-700; }
+  .demo-pane { @apply min-w-0 p-4; }
+
+  /* ---- viewer shell: full width on desktop, single column on mobile ---- */
+  .shell { @apply mx-auto flex w-full max-w-[120rem]; }
+  .rail { @apply sticky top-[57px] hidden h-[calc(100vh-57px)] w-64 shrink-0 overflow-y-auto border-r border-ink-200 px-3 py-5 md:block xl:w-72; }
+  /* Below md the rail is gone, so without this there is no way to reach a stop at all. */
+  .railbar { @apply sticky top-[57px] z-10 flex gap-1.5 overflow-x-auto border-b border-ink-200 bg-canvas px-4 py-2 md:hidden; }
+  .chip-link { @apply flex shrink-0 items-baseline gap-1.5 rounded border border-ink-200 bg-surface px-2 py-1 text-sm text-ink-600; }
+  .chip-link.is-active { @apply border-accent-600 bg-accent-50 font-medium text-ink-900; }
+  .view { @apply min-w-0 flex-1 px-4 py-6 md:px-8 lg:px-10; }
+  /* Prose keeps its measure; only code is allowed the full width. */
+  .view-prose { @apply max-w-prose; }
+  .view-wide { @apply w-full; }
+  /* A stop is prose plus code: the prose sticks at its measure, the diff takes the rest. */
+  .stop-split { @apply grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:gap-10; }
+  .stop-prose { @apply min-w-0 lg:sticky lg:top-[73px]; }
+  .stop-code { @apply min-w-0 space-y-3; }
+  /* Narrative left, self-contained cards right — only once the rail has room to spare. */
+  .ov-split { @apply grid grid-cols-1 items-start gap-8 xl:grid-cols-[minmax(0,32rem)_minmax(0,34rem)] xl:justify-center xl:gap-12; }
+  .ver-split { @apply grid grid-cols-1 items-start gap-8 lg:grid-cols-2 lg:gap-12; }
 
   .note { @apply rounded-md border border-warn-border bg-warn-bg px-3.5 py-3 text-ink-800; }
   .rule { @apply border-t border-ink-200; }

@@ -25,12 +25,6 @@
   "problem": {
     "statement": "Make two-agent Intent Document distillation installable and enforceable across clients, while improving discovery and targeted retrieval of the implementation transcript.",
     "origin": "emerged_during_session",
-    "evolution": [
-      {
-        "at": "post-hoc review",
-        "formulation": "The implementation session was not recovered; this formulation and the required origin classification are inferred from the completed diff, not from transcript evidence."
-      }
-    ],
     "user_asks": [],
     "out_of_scope": [
       "No qualifying implementation transcript was found, so the original ask, evolution, rejected approaches, and deliberate exclusions remain unknown."

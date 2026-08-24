@@ -22,10 +22,6 @@
   "problem": {
     "statement": "Checkout requests intermittently fail with 429s because every request re-validates the session against the auth service; validation must be cached without letting revoked sessions linger.",
     "origin": "emerged_during_session",
-    "evolution": [
-      { "at": "msg-3", "formulation": "Checkout is slow, make it faster" },
-      { "at": "msg-41", "formulation": "Auth service rate-limits us; the real problem is per-request session revalidation" }
-    ],
     "user_asks": [
       "\"checkout keeps timing out under load, can you look at it\"",
       "\"ok cache it, but a revoked session must not survive more than a minute\""

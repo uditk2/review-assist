@@ -30,28 +30,6 @@
   "problem": {
     "statement": "A distillation run could not survive its own output. The run handle was sha256(repo | base | head), so it rotated on every commit — and committing the Intent Document is itself a commit — while submit_document additionally deleted the run outright. Either path made the recorded interview unreachable, and because openRun recreates a record for an id it cannot find, the author's next answer_questions landed on a fresh empty run under the same handle and returned unknown_q_ids with rounds: 0, silently. Observed on disk as one run file per commit: airo-backend/feat/ads-impl held four files with 21, 23, 26 and 0 rounds; seerly-front held three with 23, 24, 26 — the same interview re-asked after each head move. Separately, no tool let either role read the other's half of the interview, so questions and answers were hand-carried as chat text by the orchestrator (25,567 and 28,943 bytes across two runs), and list_transcripts could not find any session for a repo whose path contains a space.",
     "origin": "stated_upfront",
-    "evolution": [
-      {
-        "at": "opening message",
-        "formulation": "Three bugs reported from three live distillations, with fixes named in priority order and an explicit instruction to diagnose only: \"Can you check if the highlighted bugs are correct and need to be fixed at our end. Do not make the code change now.\""
-      },
-      {
-        "at": "first proposal",
-        "formulation": "The relay problem was framed as a notify/watch design: \"One way to do it is via common file so that both update the common file and listen for a notify trigger.\" Rejected at the time on the premise that the two roles never run concurrently under Claude Code."
-      },
-      {
-        "at": "after two hand-relayed distillations",
-        "formulation": "Reformulated as a passive read: \"Let it be.. I dont like the relaying part though. How can we solve it. the agents are not talking to each other.\" then \"we just need to pass the run id to let the subagents relay to each other. Is that correct ?\" That reshaped one reviewer-side tool into two symmetric read tools."
-      },
-      {
-        "at": "mid-session, unplanned",
-        "formulation": "Running the tool on itself produced two defects nobody had scoped: the reviewer role cold-read the diff and found that dropping the head from the hash had removed the only thing separating two branches cut from one base; the author role found that list_transcripts could see no session for this repository at all."
-      },
-      {
-        "at": "after this document was first submitted (7a784f6)",
-        "formulation": "Fix 4 moved from out-of-scope to done. Distilling this branch produced the last piece of evidence for it: an anchor into .intent/ taken straight from compute_diff's own index came back as a \"stale anchor?\" warning. That defect and the long-known hunk-id shift turned out to share one cause and one fix — exclude .intent/ from the diff at source — which is the tour's last core stop."
-      }
-    ],
     "user_asks": [
       "Fixes, in priority order: don't close the run on submit, or make close explicit; add a reviewer-visible get_answers(run_id); and mark the document's own path coverage_required: false and exclude it from hunk numbering so ids stay stable across regenerations. / Can you check if the highlighted bugs are correct and need to be fixed at our end. Do not make the code change now.",
       "I think #3 is a bigger problem. the relay between the reviewer and the author is not happening on its own. One way to do it is via common file so that both update the common file and listen for a notify trigger. I think monitor is available in all agents. I am not sure. May be we need to define a tool for it which simply does that part.",

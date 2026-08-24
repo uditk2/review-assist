@@ -137,28 +137,6 @@
     }
   ],
   "problem": {
-    "evolution": [
-      {
-        "at": "mid-session",
-        "formulation": "Ask the user, at commit time, whether Review Assist may operate on a repo — Always / Just this time / Never — with a way to un-set it."
-      },
-      {
-        "at": "mid-session",
-        "formulation": "Generate a PR description as part of the intent."
-      },
-      {
-        "at": "mid-session",
-        "formulation": "Allow generating Mermaid diagrams as part of the intent."
-      },
-      {
-        "at": "mid-session",
-        "formulation": "The GitHub App webhook should be the only validation path; drop the Action."
-      },
-      {
-        "at": "late-session",
-        "formulation": "Package the MCP server as a one-click .mcpb bundle, and have the App set the PR description from the committed doc."
-      }
-    ],
     "origin": "emerged_during_session",
     "out_of_scope": [
       "Signing the .mcpb bundle",

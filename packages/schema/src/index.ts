@@ -66,7 +66,6 @@ export interface Meta {
 export interface Problem {
   statement: string;
   origin: "stated_upfront" | "emerged_during_session";
-  evolution?: { at: string; formulation: string }[];
   user_asks: string[];
   out_of_scope?: string[];
 }

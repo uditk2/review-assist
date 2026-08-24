@@ -66,7 +66,6 @@ Why the session happened.
 |---|---|---|
 | `statement` | string | The concrete problem, formulated post-hoc from the whole session |
 | `origin` | enum | `stated_upfront` \| `emerged_during_session` |
-| `evolution` | array?, only when emerged | ordered `{ at, formulation }` snapshots showing drift |
 | `user_asks` | array | verbatim quotes of the human's key requests (evidence anchors) |
 | `out_of_scope` | array | things explicitly deferred or declined during the session |
 
@@ -141,7 +140,7 @@ The validator is deterministic code. The agents write; the validator gatekeeps.
 
 ## 5. Renderer contract (browser extension)
 
-- **Front page:** `problem` (+ evolution when present), `out_of_scope`, `assumptions`
+- **Front page:** `problem`, `out_of_scope`, `assumptions`
   with per-assumption acknowledge/challenge controls, `open_questions`, `approach`
   summary with trials. Goal: the reviewer can reject the framing in two minutes without
   reading a line of code.

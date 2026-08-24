@@ -30,32 +30,6 @@
   "problem": {
     "statement": "Submitting an Intent Document deleted the run holding the author's attested interview, so the correction cycle the guide itself prescribes - fix a finding, resubmit - destroyed the attestation. The failure was silent rather than an error: openRun recreates a record for an id it cannot find, so the author's next answer_questions landed on a fresh empty run under the same handle and returned unknown_q_ids with rounds: 0. Reproduced live at the base commit against a run carrying 13 attested rounds. Distilling that base commit as a smoke test then exposed two further defects: run ids keyed on repo plus base alone collide for two branches cut from the same commit, and transcript discovery could not see any repository whose path contains a space.",
     "origin": "emerged_during_session",
-    "evolution": [
-      {
-        "at": "opening ask",
-        "formulation": "Verify three protocol bugs reported from three live distillations against the source. Explicitly no code change."
-      },
-      {
-        "at": "after verification",
-        "formulation": "Bug 1 has a second cause the report missed - the run id was sha256(repo|base|head), so committing the document rotates the id and loses the interview independently of closeRun. Bug 2 is a documentation split, not a missing feature. Bug 3 is half already fixed. Four numbered fixes proposed."
-      },
-      {
-        "at": "user objection to Fix 1",
-        "formulation": "Do not remove closeRun - it would leave stray files. Stop it firing at the submit site only, and reap submitted runs on a shorter clock."
-      },
-      {
-        "at": "user re-prioritises to Fix 3, then reverses",
-        "formulation": "The reviewer/author relay is the bigger problem; do it via a shared file and a notify trigger. Reversed after the execution model was argued: do Fix 2 first."
-      },
-      {
-        "at": "trial distillation of Fix 2 (the base commit) as a smoke test",
-        "formulation": "Running the protocol on itself surfaced three things: Fix 2 had introduced a same-base branch collision, the author role could not find this repository's own transcript, and Fix 1's data loss reproduced live."
-      },
-      {
-        "at": "final",
-        "formulation": "Do Fix 1, plus the two defects the trial exposed. Run id keeps base_sha and adds the current branch, resolved from the checkout. Detached HEAD set aside."
-      }
-    ],
     "user_asks": [
       "Can you check if the highlighted bugs are correct and need to be fixed at our end. Do not make the code change now.",
       "Why do I need to delete closeRun. The idea of close run is to remove the run after intent document is created and submitted. If we delete it, wont it lead to stray file ?",
