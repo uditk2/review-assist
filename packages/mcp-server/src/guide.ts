@@ -90,9 +90,11 @@ halves will show author_attested: 0).
   large commit earns more points, not prose. Give \`how_to_verify\` the command, not a
   sentence about verifying.
 - **Where the reasoning IS the value** — measured comparisons, why an alternative lost —
-  it is still points, and it belongs in \`trials\`, one entry per alternative. That is the
-  material a diff-only reviewer cannot recover; it is the last thing to cut and the first
-  thing to keep out of \`adopted.rationale\` as a paragraph.
+  it is still points. Per-alternative reasoning belongs in \`trials\`, one entry each.
+  \`adopted.rationale\` keeps the reasons the adopted shape is the adopted shape, and it is
+  a list too — it is the field that will try hardest to come out as a paragraph, and it is
+  not where the leftover prose goes. That reasoning is the material a diff-only reviewer
+  cannot recover, so it is the last thing to cut and never the thing to run together.
 - **Problem**: state it concretely, post-hoc. If it emerged during the session, set
   origin=emerged_during_session. Quote the user's key asks verbatim in \`user_asks\`.
 - **A constraint the user imposed goes to \`trials\` or \`requirements\`**, never to

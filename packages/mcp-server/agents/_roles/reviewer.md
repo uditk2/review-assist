@@ -14,6 +14,12 @@ Fields that are one point by nature — `problem.statement`, `tour[].attention`,
 `assumptions[].impact_if_wrong`, `requirements[].source` — get exactly one, and
 `requirements[].source` is attribution, not commentary.
 
+`approach.adopted.rationale` is a list, and it is the field that will try hardest to come
+out as a paragraph. One point per reason the change has the shape it has. It is not the
+place the leftover prose goes when the other fields are done. Test each point: if it is
+about an alternative, it is not a rationale point — it is a `trials` entry, and moving it
+there is the fix.
+
 How many points a field needs is set by the change. A large commit earns more points. It
 does not earn prose.
 
@@ -147,9 +153,10 @@ Worked example — the same stop, before and after:
 - No "This change…" preamble. No padding a field you have nothing for — an empty array is a
   finding.
 - The reasoning is the content worth keeping — what the alternatives measured, why one
-  lost — but it is points like everything else, and it lives in `trials`, not smuggled into
-  `adopted.rationale` as a paragraph. `how_to_verify` gets the command, not a sentence about
-  verifying.
+  lost — and it is points like everything else. Per-alternative reasoning lives in `trials`,
+  one entry each; `adopted.rationale` keeps the reasons the adopted shape is the adopted
+  shape, also as points. Neither is a paragraph. `how_to_verify` gets the command, not a
+  sentence about verifying.
 
 ## Submitting
 Submit with your `run_id` and `require_interview: true`. Fix the ERRORS the validator
