@@ -1,0 +1,905 @@
+{
+  "schema_version": "0.1",
+  "meta": {
+    "id": "review-assist/fix-point-style-and-drop-evolution",
+    "repo": "uditk2/review-assist",
+    "commit_range": {
+      "base_sha": "d916b4a7bc6329820206009182f238596d5c6e13",
+      "head_sha": "cf6a3303eb8759106fb0307eafe846b1eb0d4cd5"
+    },
+    "session": {
+      "agent": "Claude Code",
+      "model": "not recorded in either transcript",
+      "session_ids": [
+        "8499e36e-72fd-4ca2-ade7-0fcbe76475c7",
+        "3a2c9660-93da-4e22-b478-9ba9dacaac3d"
+      ]
+    },
+    "generated_by": {
+      "pipeline": "review-assist",
+      "version": "0.1"
+    },
+    "generated_at": "2026-08-25T04:40:00Z",
+    "interview": {
+      "rounds": 19,
+      "questions_asked": 19,
+      "unresolved": 2,
+      "author_attested": 19,
+      "unanswered": 0
+    }
+  },
+  "problem": {
+    "statement": "One commit carries two concurrent sessions: the Intent Document's prose had bloated eightfold behind an inverted renderer, and the product's own site showed nothing of the product.",
+    "origin": "emerged_during_session",
+    "user_asks": [
+      "\"There is a lot of verbosity in the output and I would like to keep the output very simple and point wise as the developer persona wants to know the info in less time. How do we ensure that ? Shall we add a tool that makes the entire intent document terse before submitting ?\"",
+      "\"Phrases prefered as the audience is a developer, that would work well in my opinion.\"",
+      "\"I feel, how the ask evolved may not be a very good output in the intent document as a reviewer is usually not interested in how the ask evolved and rather what choices were considered if applicable.\"",
+      "\"If a constraint shaped design, it should be part of the things tried or considered right ?\"",
+      "\"Cap evolution — ≤ 3 entries, ≤ 20 words, emerged_during_session only. I would say, lets remove the evolution altogether\"",
+      "\"Lets not do that enforcement. It is not needed. What is needed is to change the way.\"",
+      "\"Budget can vary from commit to commit. What we are enforcing is the style.\"",
+      "\"I dont like the non negotiable budget. Non negotiable is the style\"",
+      "\"Mention that to the author as well when it is answering reviewer's questions.\"",
+      "\"Lets redesign the UI to be more informative and talk about the usefulness of this mcp server and the github action. Lets keep it professional. Also, add blogs section and make it for each release so far. Keep it to the point and mention the fix and rationale. Use git to find it out.\"",
+      "\"this is not needed in the releases page.. looks like a robot doing it.\"",
+      "\"It is okay but not as per actual dev sides. Shall we introduce a more sci fi feel but keep it very subtle ?\"",
+      "\"I dont quite like the UI still, its boring. can we make it easy to view and something exciting. No emojis though as that smells AI,\"",
+      "\"Also, I see that there is a lot of real estate in the viewer but it is not utlilized. Can we do one thing. Can we create separate views for mobile and desktop and make sure to utilize entire screen for desktop and change it to fit for mobile ?\"",
+      "\"There is an agent working on the data. Fix the UI\"",
+      "\"Lets commit all the changes..\"",
+      "\"Its okay. Just publish it from this branch itself so that I can view the latest intent file through the new way.\""
+    ],
+    "out_of_scope": [
+      "Validator-side word budgets, warning at the cap and erroring at 2x — declined by the user.",
+      "Token budgets, whether via the Anthropic API or a local tokenizer.",
+      "Numeric per-field budgets in the prompts — declined twice.",
+      "Minting schema 0.2 for the breaking removal — waived by the user.",
+      "Persisting the theme across a reload — pre-existing, flagged three times, deliberately unfixed.",
+      "Tests for anything in this commit."
+    ]
+  },
+  "assumptions": [
+    {
+      "id": "A1",
+      "assumption": "No Intent Document outside this repository still carries problem.evolution.",
+      "impact_if_wrong": "Third-party documents hard-fail against the published 0.1 schema, which is additionalProperties:false on problem.",
+      "how_to_verify": "curl -s https://reviewassist.dev/schema/0.1/intent-doc.schema.json | grep -c evolution",
+      "confidence": "confirmed_by_user"
+    },
+    {
+      "id": "A2",
+      "assumption": "styles.css is generated and stays in step with theme.css and brand.css in every commit.",
+      "impact_if_wrong": "The shipped stylesheet silently lags its source and new classes render unstyled.",
+      "how_to_verify": "npm run build:css -w @review-assist/viewer && git diff --exit-code apps/github-app/viewer/styles.css",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A3",
+      "assumption": "mask-composite: intersect is supported in the browsers reviewers use.",
+      "impact_if_wrong": "The masthead grid loses its fade and shows a hard edge on every side.",
+      "how_to_verify": "Open the landing page in Safari and Firefox; check caniuse for mask-composite.",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A4",
+      "assumption": "The hand-written landing DEMO still resolves all four stops against parseUnifiedDiff and renderHunk.",
+      "impact_if_wrong": "The product's front page renders \"no matching change\" where the demo should be.",
+      "how_to_verify": "Load the landing page and step through all four demo stops.",
+      "depends": [
+        "A5"
+      ],
+      "confidence": "unverified"
+    },
+    {
+      "id": "A5",
+      "assumption": "richHtml only ever receives authored literals from index.html, never document or GitHub content.",
+      "impact_if_wrong": "Unescaped HTML injection, and an unrestricted link scheme, on a page that renders remote content.",
+      "how_to_verify": "grep -n 'html:' apps/github-app/viewer/index.html and check every richHtml call site.",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A6",
+      "assumption": "The figures in the release notes, transcribed from commit-message bodies, are correct.",
+      "impact_if_wrong": "The public site states wrong numbers about the product's own history.",
+      "how_to_verify": "Re-derive against git log for the tag ranges v0.2.1..v1.0.0.",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A7",
+      "assumption": "Installed role subagents are read once at client session start.",
+      "impact_if_wrong": "A rebuilt server serves the new prompts while a running session keeps using the old ones.",
+      "how_to_verify": "Restart the client, then confirm the two files under ~/.claude/agents/ carry \"Non-negotiable: the style\".",
+      "confidence": "unverified"
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Does hunksForStop fall back to fuzzy matching when an anchor's line count does not match the hunk?",
+      "context": "Demo stop T1 claims new_lines: 38 against a hunk carrying 8 lines, and it renders. Not discussed in either session.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q2",
+      "question": "Is the el() html: prop innerHTML, and is richHtml reachable from Intent Document fields or GitHub API content?",
+      "context": "No security discussion of richHtml exists in either transcript. Its link rule does not restrict the URL scheme.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q3",
+      "question": "Below xl, do assumptions and open questions fall beneath the \"Start walkthrough\" button?",
+      "context": "left gets the CTA, right gets assumptions, and ov-split only splits at xl. Never checked at md or lg. Author: \"not checked, not intended, not ruled out\".",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q4",
+      "question": "How much longer is a PR body now that trials render inline rather than behind a fold?",
+      "context": "No before/after measurement and no cap anywhere in the session.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q5",
+      "question": "Is the sticky header's z-10 to z-20 bump there for the new sticky railbar?",
+      "context": "Never mentioned in either transcript; the author marked this inference from code, not from the session.",
+      "raised_by": "author_agent"
+    }
+  ],
+  "approach": {
+    "requirements": [
+      {
+        "text": "Enforce the style, not a word or token budget.",
+        "source": "user, session A: \"I dont like the non negotiable budget. Non negotiable is the style\""
+      },
+      {
+        "text": "No validator-side enforcement of length.",
+        "source": "user, session A: \"Lets not do that enforcement. It is not needed.\""
+      },
+      {
+        "text": "Points and phrases, because the audience is a developer.",
+        "source": "user, session A: \"Phrases prefered as the audience is a developer\""
+      },
+      {
+        "text": "Remove problem.evolution outright rather than cap it.",
+        "source": "user, session A: \"lets remove the evolution altogether\""
+      },
+      {
+        "text": "A constraint that shaped design belongs with what was tried or considered.",
+        "source": "user, session A: \"If a constraint shaped design, it should be part of the things tried or considered right ?\""
+      },
+      {
+        "text": "Apply the points rule to the author role when it answers the reviewer.",
+        "source": "user, session A: \"Mention that to the author as well when it is answering reviewer's questions.\""
+      },
+      {
+        "text": "Instrument-panel direction, kept subtle, spread to the viewer as well as the site.",
+        "source": "user, session B, choosing \"Instrument panel (Recommended)\" and \"Everything, viewer included\""
+      },
+      {
+        "text": "No emojis.",
+        "source": "user, session B: \"No emojis though as that smells AI\""
+      },
+      {
+        "text": "Separate mobile and desktop views; use the entire screen on desktop.",
+        "source": "user, session B"
+      },
+      {
+        "text": "One release-notes entry per release, fix plus rationale, sourced from git.",
+        "source": "user, session B: \"Use git to find it out.\""
+      },
+      {
+        "text": "Commit all 22 files together despite the two-session split.",
+        "source": "user, session A, after being shown the split: \"Lets commit all the changes..\""
+      },
+      {
+        "text": "Publish the breaking schema from this branch without minting 0.2.",
+        "source": "user, session A: \"Its okay. Just publish it from this branch itself\""
+      }
+    ],
+    "trials": [
+      {
+        "what": "A terse-ifier tool run over the finished document before submit — the user's own opening proposal.",
+        "outcome": "Rejected by the agent before the user pushed back.",
+        "why_abandoned": "A second full model pass at the point the reviewer's context is deepest; self-compression keeps connective prose and loses the one fact a diff cannot show; adds a failure point after the coverage and consent gates."
+      },
+      {
+        "what": "Validator word budgets — warn at the cap, error at about 2x, reported like uncovered_hunk_ids.",
+        "outcome": "Designed, not built.",
+        "why_abandoned": "User: \"Lets not do that enforcement. It is not needed. What is needed is to change the way.\""
+      },
+      {
+        "what": "Token budgets via the Anthropic count_tokens API.",
+        "outcome": "Rejected on inspection of the validator's dependencies.",
+        "why_abandoned": "A network call needing credentials in a deterministic validator whose only dep is ajv; counts shift as models change; latency on a gate that reruns on every resubmit."
+      },
+      {
+        "what": "Local tokenizers (tiktoken, gpt-tokenizer) as a workaround for the API call.",
+        "outcome": "Rejected.",
+        "why_abandoned": "They are OpenAI's and undercount Claude by 15-20%, worse on code; and it is the wrong unit — \"cut this to 41 tokens\" is not actionable, and a bullet list and a paragraph tokenize identically."
+      },
+      {
+        "what": "Numeric per-field caps in the prompt — a nine-row table, statement 60w, what 3x20, why 2x20, rationale 4x20.",
+        "outcome": "Written, then dropped twice.",
+        "why_abandoned": "User: \"Budget can vary from commit to commit. What we are enforcing is the style.\" The measurement agreed: per-bullet width is p50 15 vs 19 words between good and bloated docs, so a count cap punishes a big commit for being big."
+      },
+      {
+        "what": "Exempting adopted.rationale from any cap, on the grounds that it holds real reasoning.",
+        "outcome": "Proposed by the agent, then withdrawn on measurement.",
+        "why_abandoned": "main.json's 218-word rationale opens with material already in tour stop 1's why; the genuine trade is about 40 words. The overflow was restatement, not reasoning."
+      },
+      {
+        "what": "Keep problem.evolution but route its contents — narrative dropped, constraints to trials, scope discovery kept.",
+        "outcome": "Abandoned after checking the corpus.",
+        "why_abandoned": "The closeRun constraint already lived in requirements in main.json with source filled; three of that document's six requirements are user constraints like it. The field duplicated a better-typed one."
+      },
+      {
+        "what": "Keep problem.evolution capped — at most 3 entries and 20 words, emerged_during_session only, collapsed in the viewer.",
+        "outcome": "Overturned in the same user turn that proposed it.",
+        "why_abandoned": "User: \"Cap evolution — ≤ 3 entries, ≤ 20 words, emerged_during_session only. I would say, lets remove the evolution altogether\""
+      },
+      {
+        "what": "Deprecate problem.evolution in the schema rather than delete it — property declared with a validator warning until v0.2.",
+        "outcome": "Rejected in favour of delete-and-strip.",
+        "why_abandoned": "All 8 documents are self-authored, and a field nothing writes and nothing renders is exactly what gets re-adopted by accident."
+      },
+      {
+        "what": "Stretch the Overview narrative to full width with no second column.",
+        "outcome": "Rejected before building.",
+        "why_abandoned": "Past about 75 characters a line gets harder to read, so the fix for dead space is another column, not a wider one."
+      },
+      {
+        "what": "Overview left track at 1fr with content capped at max-w-prose.",
+        "outcome": "Failed at 1920: track 1041px, content 648px.",
+        "why_abandoned": "393px moved from the right edge into the middle gutter — the empty space relocated rather than went away."
+      },
+      {
+        "what": "Overview left track at 42rem, a guess at the reading measure.",
+        "outcome": "Failed: body prose at 85-89 characters per line.",
+        "why_abandoned": "Past the readable band, which is precisely what the two-column layout existed to prevent."
+      },
+      {
+        "what": "Overview left track at 72ch, taken from Tailwind's maxWidth.prose.",
+        "outcome": "Failed, and overturned a standing assumption.",
+        "why_abandoned": "ch resolves against the container's 16px zero (~9px) while body prose is 15px with a 6.81px advance — so max-w-prose had always been about 95 characters per line, not 72."
+      },
+      {
+        "what": "A nine-section landing page, about 15KB of copy and 5,150px tall.",
+        "outcome": "Cut to five blocks, about 5KB and 2,057px.",
+        "why_abandoned": "User: \"this is not needed in the releases page.. looks like a robot doing it.\""
+      },
+      {
+        "what": "\"Two installs\" and \"Get started\" as two landing sections.",
+        "outcome": "Merged into a single Install section.",
+        "why_abandoned": "They were the same section written twice; merging removed about 30 lines of duplicate copy and two dead helper functions."
+      }
+    ],
+    "adopted": {
+      "summary": "Rewrite both role prompts and the guide so the style is non-negotiable and the budget is not. Delete problem.evolution from the schema, types, both renderers, both prompts and all 8 committed documents. Route user constraints to trials or requirements instead. Unfold requirements and trials in the PR body and the viewer. Separately, from a concurrent session: rebuild the landing page around a self-advancing demo of the real viewer, add a #/blog release-notes route, apply an instrument-panel design language, and give the viewer a responsive shell.",
+      "rationale": "Measured drift, not taste: tour why averaged 12 words, then 23, then 66, then 96 across successive documents on one unchanged guide. The existing format rule held — 11 of 11 stops used bullets — so the bloat moved inside the bullets, which is why the fix is style and not structure. guide.ts carried an escape clause telling authors to write reasoning in full and never cut it, and a cap plus that sentence means the cap loses. Bullet width barely varies between good and bloated documents while bullet count does, and count follows how much changed — so capping count would punish a big commit for being big. evolution was droppable rather than routable because its only unique content, user constraints, already sat in requirements with source filled. The deeper find was the renderer inversion: evolution held the top slot in both surfaces while trials sat folded and requirements never reached the PR body at all. Two sessions ran concurrently against one working tree; the user was shown the split and chose to commit all 22 files together."
+    }
+  },
+  "tour": [
+    {
+      "id": "T1",
+      "title": "Points, not budgets, in both role prompts",
+      "role": "core",
+      "what": "- Opens reviewer.md with a non-negotiable style block: every field a list of points, a point is one phrase.\n- Names the fields that are one point by nature — problem.statement, tour[].attention, assumptions[].impact_if_wrong, requirements[].source.\n- Deletes guide.ts's escape clause that told authors to write reasoning \"in full\" and cut it last.\n- Rewrites tour[].why as points and splits the worked example's why to match.\n- Mirrors the rule into author.md, with \"Never trade a fact for brevity\" so the author recalls rather than selects.",
+      "why": "- Drift was measured, not felt: why averaged 12 words, then 23, then 66, then 96, max 162, on one unchanged guide.\n- The format rule held — 11 of 11 stops already used bullets — so the bloat moved inside the bullets.\n- The escape clause legitimised every 220-word rationale; a cap beside that sentence always loses.\n- Bullet width barely differs between good and bloated docs (p50 15 vs 19 words); bullet count does, and count follows how much changed.\n- Author and reviewer are given opposite instructions on purpose.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/agents/_roles/author.md",
+          "hunk": {
+            "old_start": 79,
+            "old_lines": 7,
+            "new_start": 79,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/author.md",
+          "hunk": {
+            "old_start": 87,
+            "old_lines": 11,
+            "new_start": 87,
+            "new_lines": 16
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 2,
+            "old_lines": 6,
+            "new_start": 2,
+            "new_lines": 24
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 80,
+            "old_lines": 8,
+            "new_start": 103,
+            "new_lines": 9
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 110,
+            "old_lines": 8,
+            "new_start": 134,
+            "new_lines": 10
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 120,
+            "old_lines": 9,
+            "new_start": 146,
+            "new_lines": 10
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 84,
+            "old_lines": 13,
+            "new_start": 84,
+            "new_lines": 21
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Whether author.md and reviewer.md now read as contradicting each other on terseness — the asymmetry is deliberate."
+    },
+    {
+      "id": "T2",
+      "title": "A user constraint routes to trials or requirements, never to narrative",
+      "role": "core",
+      "what": "- Adds the routing test to reviewer.md: a constraint that killed a candidate is a trial, one that only bounded the work is a requirement with the user named in source.\n- States in questions.md that the ask-evolution narrative is not a field and the play-by-play belongs nowhere.\n- Adds the same routing rule to guide.ts.",
+      "why": "- The removed field's only unique content was user constraints, and those were already better typed elsewhere.\n- The closeRun constraint sat in requirements in main.json with a filled source, and in evolution as well.\n- The author role is still told to reconstruct how the ask evolved: it is input to the interview, not output to the document.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/agents/_roles/questions.md",
+          "hunk": {
+            "old_start": 21,
+            "old_lines": 8,
+            "new_start": 21,
+            "new_lines": 10
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 67,
+            "old_lines": 6,
+            "new_start": 85,
+            "new_lines": 11
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 84,
+            "old_lines": 13,
+            "new_start": 84,
+            "new_lines": 21
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "The guide still asks the author for the evolution narrative — that is intentional, not a leftover."
+    },
+    {
+      "id": "T3",
+      "title": "problem.evolution deleted from the format",
+      "role": "core",
+      "what": "- Removes evolution from the JSON Schema, the TypeScript Problem interface, the example document and the SPEC.md field table.\n- Keeps problem.origin.",
+      "why": "- Breaking change to a published schema version, taken in place with no 0.2 mint.\n- problem is additionalProperties:false, so any document still carrying the field hard-fails.\n- All 8 committed documents were self-authored and were stripped in the same commit; deprecating instead was offered and rejected.\n- origin survives as a single enum telling a reviewer the ask moved, without the play-by-play.",
+      "anchors": [
+        {
+          "path": "SPEC.md",
+          "hunk": {
+            "old_start": 66,
+            "old_lines": 7,
+            "new_start": 66,
+            "new_lines": 6
+          }
+        },
+        {
+          "path": "SPEC.md",
+          "hunk": {
+            "old_start": 141,
+            "old_lines": 7,
+            "new_start": 140,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/schema/src/example.json",
+          "hunk": {
+            "old_start": 22,
+            "old_lines": 10,
+            "new_start": 22,
+            "new_lines": 6
+          }
+        },
+        {
+          "path": "packages/schema/src/index.ts",
+          "hunk": {
+            "old_start": 66,
+            "old_lines": 7,
+            "new_start": 66,
+            "new_lines": 6
+          }
+        },
+        {
+          "path": "packages/schema/src/intent-doc.schema.json",
+          "hunk": {
+            "old_start": 68,
+            "old_lines": 18,
+            "new_start": 68,
+            "new_lines": 6
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "The published 0.1 contract at reviewassist.dev already changed under third parties with no version bump — the user waived it knowingly."
+    },
+    {
+      "id": "T4",
+      "title": "evolution stops rendering, in both surfaces",
+      "role": "core",
+      "what": "- Drops the \"How the ask evolved\" section from renderMarkdown.\n- Drops the matching block from the viewer's renderOverview.",
+      "why": "- Evolution held the top slot in both surfaces while trials sat behind a fold.\n- One document carried 5 entries and 271 words under origin: stated_upfront — a play-by-play of an ask it says never moved.",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 325,
+            "old_lines": 19,
+            "new_start": 788,
+            "new_lines": 14
+          }
+        },
+        {
+          "path": "packages/validator/src/render.ts",
+          "hunk": {
+            "old_start": 64,
+            "old_lines": 14,
+            "new_start": 64,
+            "new_lines": 6
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "H10 also carries the two-column split from the other session; it needs reading twice for two unrelated changes."
+    },
+    {
+      "id": "T5",
+      "title": "Requirements and rejected alternatives come out of the folds",
+      "role": "core",
+      "what": "- Adds a Requirements section to renderMarkdown, which never rendered them.\n- Unwraps trials from <details> and retitles them \"Considered and rejected\".\n- Adds \"Considered and rejected\" to renderPrDescription, which had no trials section at all.\n- Replaces the viewer's disclosure() with subsection(), so both fields render open.",
+      "why": "- Trials hold 4-6 entries and 123-420 words in six of eight documents, all behind a click.\n- requirements is the healthiest field in the schema — 2-8 entries in every document, source filled 100% — and was absent from the PR body entirely.\n- No reviewer-behaviour data was collected anywhere; the case rests on the corpus plus the user's stated preference.",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 367,
+            "old_lines": 22,
+            "new_start": 825,
+            "new_lines": 22
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 392,
+            "old_lines": 25,
+            "new_start": 850,
+            "new_lines": 27
+          }
+        },
+        {
+          "path": "packages/validator/src/render.ts",
+          "hunk": {
+            "old_start": 84,
+            "old_lines": 8,
+            "new_start": 76,
+            "new_lines": 16
+          }
+        },
+        {
+          "path": "packages/validator/src/render.ts",
+          "hunk": {
+            "old_start": 93,
+            "old_lines": 8,
+            "new_start": 93,
+            "new_lines": 6
+          }
+        },
+        {
+          "path": "packages/validator/src/render.ts",
+          "hunk": {
+            "old_start": 133,
+            "old_lines": 8,
+            "new_start": 131,
+            "new_lines": 12
+          }
+        },
+        {
+          "path": "packages/validator/src/render.ts",
+          "hunk": {
+            "old_start": 159,
+            "old_lines": 6,
+            "new_start": 161,
+            "new_lines": 15
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "PR body length with trials now inline was never measured, and there is no cap."
+    },
+    {
+      "id": "T6",
+      "title": "Landing page rebuilt around a live demo of the real viewer",
+      "role": "core",
+      "what": "- Replaces the prose landing with a demo panel self-advancing through four stops every 6 seconds.\n- Renders the demo's diff through renderHunk, the same function the PR viewer uses.\n- Merges \"Two installs\" and \"Get started\" into one Install section.\n- Adds richHtml() for inline code, bold and links in authored copy.",
+      "why": "- The old page described a product nobody could see.\n- Hover pauses the advance, a click stops it for good, and prefers-reduced-motion suppresses it.\n- The void bar.offsetWidth line fixes an observed bug: rAF runs before style recalc, so the browser coalesced width 0 and 100% into no transition and the progress bar was dead after the first stop.",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 157,
+            "old_lines": 15,
+            "new_start": 159,
+            "new_lines": 24
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 198,
+            "old_lines": 61,
+            "new_start": 209,
+            "new_lines": 482
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "The DEMO comment claims the data is the example document from packages/schema — it is not; the constant is hand-transcribed and was edited three times for layout after its only correctness check."
+    },
+    {
+      "id": "T7",
+      "title": "A release-notes route on the same single-page app",
+      "role": "core",
+      "what": "- Adds parseBlogHash for #/blog and #/blog/<version>, routed ahead of the pull-request route in boot().\n- Adds RELEASES: 13 entries from v0.2.1 to v1.0.0, each naming what broke and why.\n- Adds siteHeader and siteFooter, shared by the landing page and the notes.\n- Adds rerenderCurrent() so the theme toggle re-renders whichever of three routes is live.",
+      "why": "- Content was synthesised in-session from git tag and commit-message bodies; no changelog file existed.\n- The figures in the entries are transcribed from those bodies and were never re-derived.\n- The copy contradicts the user's ask on purpose: there is no GitHub Action any more, retired in commit 70f0c3f, so the page says App and not Action.",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 198,
+            "old_lines": 61,
+            "new_start": 209,
+            "new_lines": 482
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 314,
+            "old_lines": 10,
+            "new_start": 764,
+            "new_lines": 23
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Public claims with no test behind them — spot-check one figure, and whether v1.0.0 is actually published rather than merely tagged."
+    },
+    {
+      "id": "T8",
+      "title": "Instrument-panel design language, three devices and a budget",
+      "role": "core",
+      "what": "- Switches .eyebrow and .tag to mono at micro size, so a readout is distinguishable from prose without colour or weight.\n- Adds a 20px accent tick to .section-h via ::after.\n- Adds .grid-field: a 28px hairline grid, masked on both axes, behind page mastheads only.\n- Adds a --grid-line token to both palettes, 0.055 light and 0.045 dark.\n- Records the three-device budget and the still-banned list in DESIGN.md.",
+      "why": "- The user chose \"Instrument panel\" and \"Everything, viewer included\" from a structured question, on the brief \"keep it very subtle\".\n- The three-device budget is the agent's own guard against future drift, not a user constraint.\n- Grid alphas were set by eye; the delta-L* 4.3 and 4.8 figures were measured afterwards as a check, not as the input.\n- Verification deliberately has no grid: the grid marks a page's entry point, and arriving on Verification mid-review is not an arrival.",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/DESIGN.md",
+          "hunk": {
+            "old_start": 47,
+            "old_lines": 6,
+            "new_start": 47,
+            "new_lines": 29
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/src/brand.css",
+          "hunk": {
+            "old_start": 44,
+            "old_lines": 6,
+            "new_start": 44,
+            "new_lines": 9
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/src/brand.css",
+          "hunk": {
+            "old_start": 84,
+            "old_lines": 6,
+            "new_start": 87,
+            "new_lines": 8
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/src/brand.css",
+          "hunk": {
+            "old_start": 123,
+            "old_lines": 5,
+            "new_start": 128,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/src/theme.css",
+          "hunk": {
+            "old_start": 25,
+            "old_lines": 8,
+            "new_start": 25,
+            "new_lines": 9
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/src/theme.css",
+          "hunk": {
+            "old_start": 36,
+            "old_lines": 7,
+            "new_start": 37,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/src/theme.css",
+          "hunk": {
+            "old_start": 55,
+            "old_lines": 6,
+            "new_start": 56,
+            "new_lines": 85
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "mask-composite: intersect was never checked for browser support; without it the grid has a hard edge on every side."
+    },
+    {
+      "id": "T9",
+      "title": "Responsive viewer shell",
+      "role": "core",
+      "what": "- Adds .shell capped at 120rem and .rail, replacing the fixed prose-width main.\n- Adds .railbar, a scrolling chip strip below md where the rail is hidden.\n- Splits a stop into sticky prose plus full-width diff via .stop-split.\n- Splits Overview into narrative left and cards right at xl (.ov-split), and Verification into two columns at lg.\n- Hides the coverage tag below sm and the @user tag below md, moving the coverage figure into the chip strip.",
+      "why": "- Below md there was previously no way to reach a stop at all — the rail was simply hidden.\n- At 1920 diffs scrolled horizontally inside 648px with about 1000px empty; a stop is now 416px of prose beside 1096px of diff.\n- Column widths took four attempts; 72ch failed and revealed max-w-prose had always been about 95 characters, not 72.\n- Prose views keep a reading measure on purpose; only code-bearing views take the whole canvas, and Submit stays narrow because it is a form.\n- The hidden tags came out of a failed first pass: 29px of overflow at 390px with the theme toggle sitting off-screen.",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 264,
+            "old_lines": 25,
+            "new_start": 696,
+            "new_lines": 27
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 290,
+            "old_lines": 18,
+            "new_start": 724,
+            "new_lines": 34
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 325,
+            "old_lines": 19,
+            "new_start": 788,
+            "new_lines": 14
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 359,
+            "old_lines": 7,
+            "new_start": 817,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 367,
+            "old_lines": 22,
+            "new_start": 825,
+            "new_lines": 22
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 392,
+            "old_lines": 25,
+            "new_start": 850,
+            "new_lines": 27
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 421,
+            "old_lines": 19,
+            "new_start": 881,
+            "new_lines": 20
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 713,
+            "old_lines": 12,
+            "new_start": 1174,
+            "new_lines": 14
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/src/theme.css",
+          "hunk": {
+            "old_start": 55,
+            "old_lines": 6,
+            "new_start": 56,
+            "new_lines": 85
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Below xl the Overview collapses to one column and assumptions may fall beneath the Start walkthrough button — never checked at md or lg."
+    },
+    {
+      "id": "T10",
+      "title": "Mermaid diagrams follow the theme",
+      "role": "core",
+      "what": "- Replaces the __mmInit one-shot latch with __mmTheme, re-initialising when the theme changes.\n- Selects mermaid's dark theme in dark mode instead of neutral always.",
+      "why": "- Pre-existing defect, found by a dark-theme contrast measurement during the responsive pass: diagram labels rendered at 1.35:1.\n- Re-render rebuilds the pre element from source, so nodes are fresh and mermaid.run's :not([data-processed]) selector matches.\n- Measured after the fix at 10.91:1 at worst.",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 137,
+            "old_lines": 10,
+            "new_start": 137,
+            "new_lines": 12
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 314,
+            "old_lines": 10,
+            "new_start": 764,
+            "new_lines": 23
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "The only accessibility fix in the commit, and it predates the branch entirely."
+    },
+    {
+      "id": "T11",
+      "title": "Regenerated stylesheet",
+      "role": "incidental",
+      "what": "- Rebuilds styles.css from theme.css and brand.css.",
+      "why": "- Generated by npm run build:css -w @review-assist/viewer, never hand-edited.\n- Must be committed in step with its two sources or the shipped CSS silently lags them.",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/styles.css",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 3,
+            "new_start": 1,
+            "new_lines": 3
+          }
+        }
+      ],
+      "provenance": "from_transcript"
+    }
+  ],
+  "verification": {
+    "performed": [
+      {
+        "kind": "test",
+        "description": "Full unit suite, repo-wide",
+        "result": "142 passed, 142 total",
+        "evidence": "npx vitest run; re-run after the branch switch, still 142/142"
+      },
+      {
+        "kind": "typecheck",
+        "description": "Workspace typecheck",
+        "result": "clean",
+        "evidence": "npm run -s typecheck"
+      },
+      {
+        "kind": "build",
+        "description": "Repo build including the Tailwind stylesheet",
+        "result": "clean",
+        "evidence": "npm run build"
+      },
+      {
+        "kind": "test",
+        "description": "Release-consistency invariants, also as a pre-commit hook on this commit",
+        "result": "release consistency ok — 1.0.0, 15 tools",
+        "evidence": "npm run -s check:release"
+      },
+      {
+        "kind": "test",
+        "description": "All 9 documents (8 in .intent/ plus example.json) validated against the new schema",
+        "result": "9/9 pass"
+      },
+      {
+        "kind": "manual",
+        "description": "Rendered main.json through renderPrDescription and renderMarkdown",
+        "result": "\"Considered and rejected\" present, no evolution section"
+      },
+      {
+        "kind": "manual",
+        "description": "Live MCP server probed over stdio",
+        "result": "15 tools; get_generation_guide returns no evolution and carries \"Every field is a list of points\""
+      },
+      {
+        "kind": "manual",
+        "description": "Viewer PR route in a real browser against a local stub",
+        "result": "no \"How the ask evolved\" anywhere; Requirements (6) and Considered and rejected (6) visible with no disclosure triangle; no console errors",
+        "evidence": "claude -p --chrome against localhost:8931"
+      },
+      {
+        "kind": "manual",
+        "description": "Landing and blog routes at 1440, 1920, 390, 375 and 371px, both themes",
+        "result": "0px horizontal overflow at every mobile width; mermaid dark 1.35:1 to 10.91:1; ordinals 4.60:1 light and 6.82:1 dark; zero console errors across seven views and two theme toggles"
+      },
+      {
+        "kind": "manual",
+        "description": "Demo panel behaviour",
+        "result": "6s cadence over 7+ transitions, hover pause, click-to-stop, no interval leak across navigation; diff body scrollWidth equals clientWidth at all four stops"
+      },
+      {
+        "kind": "manual",
+        "description": "Cloudflare deploy verified against the live site",
+        "result": "published 0.1 schema has 0 occurrences of evolution; served viewer contains subsection x3; apex returns 200",
+        "evidence": "worker version e7e62e6a-96c3-41e0-87c3-9ef2934995ab"
+      }
+    ],
+    "added_tests": [],
+    "not_verified": [
+      "No tests were added. Nothing in the 142 covers the landing page, the blog route, the demo panel, the responsive layout, or the points-style prompt text.",
+      "The planned test asserting terse documents pass and a bloated one fails was dropped with the validator gate the user rejected.",
+      "One browser only — every visual claim rests on a single Chrome instance driven by an agent, with no cross-browser matrix.",
+      "mask-composite: intersect support was never checked.",
+      "Stop-to-hunk resolution in the landing demo was checked once, then the diff string was hand-edited for layout three more times with no re-check.",
+      "Demo stop T1's anchor claims new_lines: 38 against an 8-line hunk; hunksForStop behaviour under a mismatched anchor is unknown.",
+      "Overview reading order below xl was never checked; assumptions may render beneath the Start walkthrough button.",
+      "PR body length with trials now inline was never measured.",
+      "richHtml call-site reachability and its unrestricted link scheme were never audited.",
+      "Release-notes figures were transcribed from commit-message bodies, not independently re-derived.",
+      "v1.0.0 is attested as a git tag and package version only; npm publication is not attested by either transcript.",
+      "The browser agent's reports were fallible — one false pass on line clipping was produced by measuring the wrong viewport box, then self-corrected.",
+      "The theme still does not survive a page reload; known, and left unfixed by decision."
+    ]
+  },
+  "diagrams": [
+    {
+      "title": "Two sessions, one commit",
+      "mermaid": "flowchart TD\n  A[\"Session A - points style, drop evolution\"] --> T[\"one working tree\"]\n  B[\"Session B - landing page, blog, responsive viewer\"] --> T\n  A -.-> N1[\"schema, prompts, both renderers\"]\n  B -.-> N2[\"index.html, theme.css, brand.css, DESIGN.md\"]\n  T --> C[\"one commit, 22 files\"]\n  N1 --> C\n  N2 --> C",
+      "caption": "Session B never committed. Session A found 22 modified files, identified four it had never touched, and the user chose to commit all of them together."
+    }
+  ]
+}
