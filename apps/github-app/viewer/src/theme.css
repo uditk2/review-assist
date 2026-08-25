@@ -117,7 +117,7 @@
   .demo-pane { @apply min-w-0 p-4; }
 
   /* ---- viewer shell: full width on desktop, single column on mobile ---- */
-  .shell { @apply mx-auto flex w-full max-w-[120rem]; }
+  .shell { @apply mx-auto flex w-full max-w-[120rem] overflow-x-clip; }
   .rail { @apply sticky top-[57px] hidden h-[calc(100vh-57px)] w-64 shrink-0 overflow-y-auto border-r border-ink-200 px-3 py-5 md:block xl:w-72; }
   /* Below md the rail is gone, so without this there is no way to reach a stop at all. */
   .railbar { @apply sticky top-[57px] z-10 flex gap-1.5 overflow-x-auto border-b border-ink-200 bg-canvas px-4 py-2 md:hidden; }
@@ -132,16 +132,18 @@
   .stop-prose { @apply min-w-0 lg:sticky lg:top-[73px]; }
   .stop-code { @apply min-w-0 space-y-3; }
   /* Narrative left, self-contained cards right — only once the rail has room to spare. */
-/* Two capped columns, centred. The cap is the point: the left is 15px prose and reads
-     well near 40rem (~75 characters per line), the right is 13px card bodies and reads
-     well at 34rem (~78). Both were measured in a browser, and both get worse in either
-     direction.
+/* 32rem and 34rem are the measured optimum; do not widen them to close the gutter.
+     Measured in a browser with Range.getClientRects(): 32rem gives the 15px prose ~74
+     characters per line and 34rem gives the 13px card bodies ~74 (the dt label eats
+     ~60px of the track). Typographic research puts the comfortable band at 50-75 cpl,
+     optimum ~66, so both sit at its top edge already.
 
-     The leftover air at 1920 is not a bug to close. Letting the right column take 1fr
-     ran the cards to 112-142 cpl; pinning it to 42rem starved the left column to 397px
-     at 1500. Two columns held to a reading measure cannot also fill a wide display --
-     centring is what keeps the remainder symmetric rather than a band down one edge. */
-  .ov-split { @apply grid grid-cols-1 items-start gap-8 xl:grid-cols-[minmax(0,40rem)_minmax(0,34rem)] xl:justify-center xl:gap-12; }
+     Three attempts to reclaim the gutter all measured worse and were reverted: 40rem
+     on the left read 93 cpl, letting the right take 1fr ran the card bodies to 112-142,
+     and pinning it to 42rem starved the left to 397px at 1500. Two columns held to a
+     reading measure cannot also fill a 1920px display; centring keeps the remainder
+     symmetric instead of banked down one edge. The gutter is the cost of the measure. */
+  .ov-split { @apply grid grid-cols-1 items-start gap-8 xl:grid-cols-[minmax(0,32rem)_minmax(0,34rem)] xl:justify-center xl:gap-12; }
   .ver-split { @apply grid grid-cols-1 items-start gap-8 lg:grid-cols-2 lg:gap-12; }
 
   .note { @apply rounded-md border border-warn-border bg-warn-bg px-3.5 py-3 text-ink-800; }
