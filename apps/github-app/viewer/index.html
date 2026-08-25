@@ -461,7 +461,8 @@ function richHtml(text){
     .replace(/`([^`]+)`/g, "<code class=\"code-inline\">$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong class=\"font-medium text-ink-900\">$1</strong>")
     .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "<a href=\"$2\">$1</a>");
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,
+      (m, text, href) => /^(https?:|#|\/)/i.test(href) ? `<a href="${href}">${text}</a>` : text);
 }
 
 // ---------- release notes ----------
@@ -781,7 +782,27 @@ function rerenderCurrent() {
   window.scrollTo(0, y);
 }
 
+// Document fields are point lists: "- one\n- two". As a text node the newlines collapse
+// and the dashes show up mid-sentence, so split them back into a real list. A field with
+// no bullets stays inline, which is what the single-point fields want.
+function points(text, cls){
+  const lines = String(text ?? "").split("\n").filter(l => l.trim());
+  const isBullet = l => /^[-*+]\s+/.test(l.trim());
+  if (lines.length <= 1 || !lines.some(isBullet)) return el("span",{class:cls}, String(text ?? ""));
+  const list = el("ul",{class:"list-disc space-y-1 pl-5 "+(cls||"")});
+  let li = null;
+  for (const l of lines){
+    const t = l.trim();
+    if (isBullet(t)) { li = el("li",{}, t.replace(/^[-*+]\s+/, "")); list.append(li); }
+    else if (li) li.append(" " + t);            // continuation of the bullet above
+    else list.append(el("li",{}, t));
+  }
+  return list;
+}
+
 function labeled(label, ...body){
+  if (body.length === 1 && body[0] && body[0].tagName === "UL")
+    return el("div",{class:"mt-3"}, el("p",{class:"font-medium text-ink-900"}, label), body[0]);
   return el("p",{class:"mt-3"}, el("span",{class:"font-medium text-ink-900"}, label+" "), ...body);
 }
 
@@ -830,8 +851,8 @@ function renderOverview(doc){
 
   const ap = doc.approach;
   const asec = section("Approach");
-  asec.append(el("p",{class:"text-ink-800"}, ap.adopted.summary));
-  asec.append(labeled("Rationale.", el("span",{class:"text-ink-700"}, ap.adopted.rationale)));
+  asec.append(points(ap.adopted.summary, "text-ink-800"));
+  asec.append(labeled("Rationale.", points(ap.adopted.rationale, "text-ink-700")));
   if (ap.requirements?.length) asec.append(subsection(`Requirements (${ap.requirements.length})`,
     el("ul",{class:"mt-2 list-disc space-y-1 pl-5 text-ink-700"}, ...ap.requirements.map(r=>
       el("li",{}, r.text, r.source ? el("span",{class:"text-ink-400"}, " — "+r.source) : null)))));
@@ -853,10 +874,10 @@ function renderOverview(doc){
     left.append(dsec);
   }
 
-  left.append(el("div",{class:"mt-8 flex items-center gap-3 border-t border-ink-200 pt-6"},
+  f.append(el("div",{class:"ov-split"}, left, right));
+  f.append(el("div",{class:"mt-8 flex items-center gap-3 border-t border-ink-200 pt-6"},
     el("button",{class:"btn-primary", onclick:()=>{STATE.view="tour";STATE.stopIndex=0;render();}}, "Start walkthrough"),
     el("span",{class:"text-sm text-ink-500"}, `${STATE.ordered.length} stops`)));
-  f.append(el("div",{class:"ov-split"}, left, right));
   return f;
 }
 
@@ -877,8 +898,8 @@ function renderStop(){
       s.parent ? el("span",{}, `follows ${s.parent}`) : null,
       el("span",{class:"ml-auto"}, titleCase(s.provenance))),
     el("h1",{class:"mb-4"}, el("span",{class:"id-chip mr-2 text-ink-400"}, s.id), s.title),
-    labeled("What.", el("span",{class:"text-ink-800"}, s.what)),
-    labeled("Why.", el("span",{class:"text-ink-800"}, s.why)),
+    labeled("What.", points(s.what, "text-ink-800")),
+    labeled("Why.", points(s.why, "text-ink-800")),
     s.attention ? el("div",{class:"note mt-4"}, el("p",{class:"mb-0.5 text-sm font-semibold text-warn-fg"},"Reviewer note"), el("p",{class:"text-ink-800"}, s.attention)) : null));
 
   const code = el("div",{class:"stop-code"});

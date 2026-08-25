@@ -72,10 +72,8 @@ export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): s
   // Approach.
   p(`### 🛠 Approach`);
   p();
-  p(escape(doc.approach.adopted.summary));
-  p();
-  p(`_Why:_ ${escape(doc.approach.adopted.rationale)}`);
-  p();
+  for (const line of blockMarkdown("", doc.approach.adopted.summary)) p(line);
+  for (const line of blockMarkdown("_Why:_ ", doc.approach.adopted.rationale)) p(line);
   if (doc.approach.requirements?.length) {
     p(`**Requirements**`);
     p();
@@ -103,8 +101,8 @@ export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): s
   for (const stop of orderTour(doc.tour)) {
     const badge = stop.role === "incidental" ? " _(incidental)_" : stop.role === "supporting" ? " _(supporting)_" : "";
     p(`#### ${stop.id}. ${escape(stop.title)}${badge}`);
-    for (const line of whatMarkdown(stop.what)) p(line);
-    p(`- **Why:** ${escape(stop.why)}`);
+    for (const line of fieldMarkdown("What", stop.what)) p(line);
+    for (const line of fieldMarkdown("Why", stop.why)) p(line);
     if (stop.attention) p(`- **👀 Look here:** ${escape(stop.attention)}`);
     const files = [...new Set(stop.anchors.map((a) => a.path))];
     if (files.length) p(`- **Files:** ${files.map((f) => `\`${f}\``).join(", ")}`);
@@ -144,10 +142,8 @@ export function renderPrDescription(doc: IntentDocument, opts: RenderOptions = {
 
   p(`## ${escape(doc.problem.statement)}`);
   p();
-  p(`**What changed.** ${escape(doc.approach.adopted.summary)}`);
-  p();
-  p(`_Why:_ ${escape(doc.approach.adopted.rationale)}`);
-  p();
+  for (const line of blockMarkdown("**What changed.** ", doc.approach.adopted.summary)) p(line);
+  for (const line of blockMarkdown("_Why:_ ", doc.approach.adopted.rationale)) p(line);
 
   for (const line of diagramsMarkdown(doc)) p(line);
 
@@ -235,16 +231,36 @@ function escape(s: string): string {
  * still renders inline, because indenting a lone fragment under an empty label reads as
  * a rendering fault rather than a list.
  */
-function whatMarkdown(what: string): string[] {
-  const lines = what.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  const isBullet = (l: string) => /^[-*+]\s+/.test(l.trim());
-  if (lines.length <= 1 || !lines.some(isBullet)) return [`- **What:** ${escape(what)}`];
+const isBullet = (l: string) => /^[-*+]\s+/.test(l.trim());
+
+/** Split a point-list field into lines; a single unbulleted value stays one line. */
+function pointLines(text: string): string[] | null {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length <= 1 || !lines.some(isBullet)) return null;
+  return lines;
+}
+
+/**
+ * A labelled field, nested under a parent bullet. Every document field is a list of
+ * points now, so a field rendered as one string collapses its newlines and shows the
+ * dashes inline — which is what a reader sees instead of a list.
+ */
+function fieldMarkdown(label: string, text: string): string[] {
+  const lines = pointLines(text);
+  if (!lines) return [`- **${label}:** ${escape(text)}`];
   return [
-    `- **What:**`,
+    `- **${label}:**`,
     ...lines.map((l) => {
       const t = l.trim();
       // Two spaces indents a bullet under the label; four continues the bullet above it.
       return isBullet(t) ? `  - ${t.replace(/^[-*+]\s+/, "")}` : `    ${t}`;
     }),
   ];
+}
+
+/** A top-level field: bullets must start on their own line or the list does not form. */
+function blockMarkdown(lead: string, text: string): string[] {
+  const lines = pointLines(text);
+  if (!lines) return [`${lead}${escape(text)}`, ``];
+  return [lead.trim(), ``, ...lines.map((l) => (isBullet(l.trim()) ? `- ${l.trim().replace(/^[-*+]\s+/, "")}` : l.trim())), ``];
 }
