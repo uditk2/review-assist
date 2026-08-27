@@ -75,6 +75,7 @@
   }
 
   /* Hairline grid behind a page masthead, fading out before the content starts. */
+  .page { @apply overflow-x-clip; }
   .grid-field { position: relative; }
   .grid-field::before {
     content: "";
@@ -129,8 +130,10 @@
   .view-wide { @apply w-full; }
   /* A stop is prose plus code: the prose sticks at its measure, the diff takes the rest. */
   .stop-split { @apply grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] xl:gap-10; }
-  .stop-prose { @apply min-w-0 xl:sticky xl:top-[73px]; }
+  .stop-prose { @apply min-w-0 max-w-prose xl:max-w-none xl:sticky xl:top-[73px]; }
   .stop-code { @apply min-w-0 space-y-3; }
+  /* Same reason as .stop-prose: the single-column fallback still needs a measure. */
+  .ov-main { @apply min-w-0 max-w-prose xl:max-w-none; }
   /* Narrative left, self-contained cards right — only once the rail has room to spare. */
 /* 32rem and 34rem are the measured optimum; do not widen them to close the gutter.
      Measured in a browser with Range.getClientRects(): 32rem gives the 15px prose ~74
