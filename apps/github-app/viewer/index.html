@@ -212,7 +212,7 @@ function renderLanding(){
     el("span",{class:"ordinal pt-1"}, n),
     el("div",{}, el("span",{class:"font-medium text-ink-900"}, title+". "), el("span",{class:"text-ink-600", html:richHtml(body)})));
 
-  return el("div",{class:"min-h-screen"},
+  return el("div",{class:"page min-h-screen"},
     siteHeader("home"),
     el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
 
@@ -476,7 +476,7 @@ function releaseRow(r){
 }
 
 function renderBlogIndex(){
-  return el("div",{class:"min-h-screen"},
+  return el("div",{class:"page min-h-screen"},
     siteHeader("blog"),
     el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
       el("section",{class:"grid-field is-short mb-8"},
@@ -506,7 +506,7 @@ function renderPost(slug){
   }
 
   const newer = RELEASES[i-1], older = RELEASES[i+1];
-  return el("div",{class:"min-h-screen"},
+  return el("div",{class:"page min-h-screen"},
     siteHeader("blog"),
     el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
       el("p",{class:"mb-4 text-sm"}, el("a",{class:"text-ink-500", href:"#/blog"}, "← Release notes")),
@@ -809,7 +809,7 @@ function labeled(label, ...body){
 function renderOverview(doc){
   const p = doc.problem;
   const f = document.createDocumentFragment();
-  const left = el("div",{class:"min-w-0"});
+  const left = el("div",{class:"ov-main"});
   const right = el("div",{class:"min-w-0"});
   left.append(el("section",{class:"grid-field mb-8"},
     el("p",{class:"eyebrow mb-1"}, p.origin==="emerged_during_session" ? "The problem was defined over the course of the session" : "Problem stated up front"),
