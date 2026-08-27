@@ -702,7 +702,7 @@ function render(){
           : `${cov.unexplained.length} change${cov.unexplained.length>1?"s":""} uncovered`);
 
   const header = el("header",{class:"sticky top-0 z-20 border-b border-ink-200 bg-canvas"},
-    el("div",{class:"mx-auto flex w-full max-w-[120rem] items-center gap-3 px-4 py-3 md:px-6"},
+    el("div",{class:"flex w-full max-w-[120rem] items-center gap-3 px-4 py-3 md:px-6"},
       el("span",{class:"min-w-0 truncate font-mono text-sm text-ink-700"}, `${m.owner}/${m.repo}`),
       el("span",{class:"id-chip shrink-0"}, `#${m.pull}`),
       el("span",{class:"hidden truncate text-ink-500 sm:inline"}, m.title || ""),

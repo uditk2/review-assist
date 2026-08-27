@@ -117,10 +117,10 @@
   .demo-pane { @apply min-w-0 p-4; }
 
   /* ---- viewer shell: full width on desktop, single column on mobile ---- */
-  .shell { @apply mx-auto flex w-full max-w-[120rem] overflow-x-clip; }
-  .rail { @apply sticky top-[57px] hidden h-[calc(100vh-57px)] w-64 shrink-0 overflow-y-auto border-r border-ink-200 px-3 py-5 md:block xl:w-72; }
+  .shell { @apply flex w-full max-w-[120rem] overflow-x-clip; }
+  .rail { @apply sticky top-[57px] hidden h-[calc(100vh-57px)] w-64 shrink-0 overflow-y-auto border-r border-ink-200 px-3.5 py-5 lg:block xl:w-72; }
   /* Below md the rail is gone, so without this there is no way to reach a stop at all. */
-  .railbar { @apply sticky top-[57px] z-10 flex gap-1.5 overflow-x-auto border-b border-ink-200 bg-canvas px-4 py-2 md:hidden; }
+  .railbar { @apply sticky top-[57px] z-10 flex gap-1.5 overflow-x-auto border-b border-ink-200 bg-canvas px-4 py-2 lg:hidden; }
   .chip-link { @apply flex shrink-0 items-baseline gap-1.5 rounded border border-ink-200 bg-surface px-2 py-1 text-sm text-ink-600; }
   .chip-link.is-active { @apply border-accent-600 bg-accent-50 font-medium text-ink-900; }
   .view { @apply min-w-0 flex-1 px-4 py-6 md:px-8 lg:px-10; }
@@ -128,8 +128,8 @@
   .view-prose { @apply max-w-prose; }
   .view-wide { @apply w-full; }
   /* A stop is prose plus code: the prose sticks at its measure, the diff takes the rest. */
-  .stop-split { @apply grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:gap-10; }
-  .stop-prose { @apply min-w-0 lg:sticky lg:top-[73px]; }
+  .stop-split { @apply grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] xl:gap-10; }
+  .stop-prose { @apply min-w-0 xl:sticky xl:top-[73px]; }
   .stop-code { @apply min-w-0 space-y-3; }
   /* Narrative left, self-contained cards right — only once the rail has room to spare. */
 /* 32rem and 34rem are the measured optimum; do not widen them to close the gutter.
@@ -141,10 +141,16 @@
      Three attempts to reclaim the gutter all measured worse and were reverted: 40rem
      on the left read 93 cpl, letting the right take 1fr ran the card bodies to 112-142,
      and pinning it to 42rem starved the left to 397px at 1500. Two columns held to a
-     reading measure cannot also fill a 1920px display; centring keeps the remainder
-     symmetric instead of banked down one edge. The gutter is the cost of the measure. */
-  .ov-split { @apply grid grid-cols-1 items-start gap-8 xl:grid-cols-[minmax(0,32rem)_minmax(0,34rem)] xl:justify-center xl:gap-12; }
-  .ver-split { @apply grid grid-cols-1 items-start gap-8 lg:grid-cols-2 lg:gap-12; }
+     reading measure cannot also fill a 1920px display. The gutter is the cost of the
+     measure.
+
+     The remainder now banks to the right rather than splitting: the columns are
+     left-aligned, so the rail, the header and both tracks share one left edge and
+     nothing shifts sideways as the window grows. That is a deliberate call, not an
+     oversight — it is the same choice a documentation shell makes. Do not "fix" it by
+     widening the tracks; see the measurements above. */
+  .ov-split { @apply grid grid-cols-1 items-start justify-start gap-8 xl:grid-cols-[minmax(0,32rem)_minmax(0,34rem)] xl:gap-12; }
+  .ver-split { @apply grid grid-cols-1 items-start justify-start gap-8 xl:grid-cols-[minmax(0,30rem)_minmax(0,30rem)] xl:gap-12; }
 
   .note { @apply rounded-md border border-warn-border bg-warn-bg px-3.5 py-3 text-ink-800; }
   .rule { @apply border-t border-ink-200; }
