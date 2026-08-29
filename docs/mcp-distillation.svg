@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1120" viewBox="0 0 1240 1120" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1190" viewBox="0 0 1240 1190" role="img" aria-labelledby="title desc">
 <title id="title">Review Assist MCP distillation detail</title>
-<desc id="desc">A component-level detail of local intent distillation. The coding agent orchestrates separate Author and Intent Reviewer subagents. They use role-scoped tool surfaces exposed by the Review Assist MCP Server. The server makes no model calls. The Reviewer asks questions, the Author returns transcript-grounded evidence, and the server validates and writes the Intent Document after repository consent.</desc>
+<desc id="desc">A component-level detail of local intent distillation. The coding agent orchestrates separate Author and Intent Reviewer subagents. They use role-scoped tool surfaces exposed by the Review Assist MCP Server. The server makes no model calls. compute_diff only opens the run; read_diff pages the change itself. The interview is two-sided and server-attested: the Reviewer records questions and gets a q_id back for each, the Author answers by id, and the Reviewer reads the answers in the Author's own words. The server validates and writes the Intent Document after repository consent. get_role_definitions, manage_consent, and import_session belong to neither role — they set up the split itself and are called by the orchestrating agent.</desc>
 <defs>
       <style>
         .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
@@ -34,7 +34,7 @@
         <path d="M0 1.2 L8.5 5 L0 8.8" fill="none" stroke="#0a6ae0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
       </marker>
     </defs>
-<rect width="1240" height="1120" fill="#fbfaf9"/>
+<rect width="1240" height="1190" fill="#fbfaf9"/>
 <text x="40" y="52" class="sans title">MCP distillation</text>
 <text x="40" y="80" class="sans subtitle">Component-level detail · developer machine only</text>
 <rect x="60" y="110" width="1120" height="390" rx="12" class="boundary"/>
@@ -61,7 +61,7 @@
 <text x="620" y="379" class="sans small" text-anchor="middle">questions</text>
 <path d="M538 430 L702 430" class="blue-arrow"/>
 <text x="620" y="451" class="sans small" text-anchor="middle">transcript-grounded evidence</text>
-<rect x="60" y="540" width="1120" height="430" rx="12" class="accent-node"/>
+<rect x="60" y="540" width="1120" height="530" rx="12" class="accent-node"/>
 <text x="88" y="572" class="sans boundary-title">Review Assist MCP Server</text>
 <text x="1152" y="572" class="sans small" text-anchor="end">stdio · role-scoped registration · no model calls</text>
 <line x1="88" y1="587" x2="1152" y2="587" class="divider"/>
@@ -69,7 +69,7 @@
 <path d="M925 464 L925 604" class="blue-arrow"/>
 <text x="329" y="526" class="sans small">uses Author tools</text>
 <text x="939" y="526" class="sans small">uses Reviewer tools</text>
-<rect x="90" y="604" width="470" height="232" rx="8" class="node"/>
+<rect x="90" y="604" width="470" height="254" rx="8" class="node"/>
 <text x="116" y="634" class="sans node-title">Author tool surface</text>
 <text x="534" y="634" class="sans small" text-anchor="end">no submit / consent</text>
 <rect x="116" y="654" width="202" height="28" rx="14" class="pill"/>
@@ -77,43 +77,63 @@
 <rect x="328" y="654" width="206" height="28" rx="14" class="pill"/>
 <text x="431" y="673" class="mono pill-text" text-anchor="middle">list_transcripts</text>
 <rect x="116" y="692" width="202" height="28" rx="14" class="pill"/>
-<text x="217" y="711" class="mono pill-text" text-anchor="middle">search_transcript</text>
+<text x="217" y="711" class="mono pill-text" text-anchor="middle">get_spine</text>
 <rect x="328" y="692" width="206" height="28" rx="14" class="pill"/>
 <text x="431" y="711" class="mono pill-text" text-anchor="middle">read_transcript</text>
 <rect x="116" y="730" width="202" height="28" rx="14" class="pill"/>
 <text x="217" y="749" class="mono pill-text" text-anchor="middle">compute_diff</text>
-<rect x="680" y="604" width="470" height="232" rx="8" class="node"/>
+<rect x="328" y="730" width="206" height="28" rx="14" class="pill"/>
+<text x="431" y="749" class="mono pill-text" text-anchor="middle">read_diff</text>
+<rect x="116" y="768" width="202" height="28" rx="14" class="pill"/>
+<text x="217" y="787" class="mono pill-text" text-anchor="middle">get_questions</text>
+<rect x="328" y="768" width="206" height="28" rx="14" class="pill"/>
+<text x="431" y="787" class="mono pill-text" text-anchor="middle">answer_questions</text>
+<rect x="680" y="604" width="470" height="254" rx="8" class="node"/>
 <text x="706" y="634" class="sans node-title">Reviewer tool surface</text>
 <text x="1124" y="634" class="sans small" text-anchor="end">no transcript access</text>
 <rect x="706" y="654" width="202" height="28" rx="14" class="pill"/>
 <text x="807" y="673" class="mono pill-text" text-anchor="middle">get_generation_guide</text>
 <rect x="918" y="654" width="206" height="28" rx="14" class="pill"/>
-<text x="1021" y="673" class="mono pill-text" text-anchor="middle">get_role_definitions</text>
+<text x="1021" y="673" class="mono pill-text" text-anchor="middle">compute_diff</text>
 <rect x="706" y="692" width="202" height="28" rx="14" class="pill"/>
-<text x="807" y="711" class="mono pill-text" text-anchor="middle">compute_diff</text>
+<text x="807" y="711" class="mono pill-text" text-anchor="middle">read_diff</text>
 <rect x="918" y="692" width="206" height="28" rx="14" class="pill"/>
 <text x="1021" y="711" class="mono pill-text" text-anchor="middle">record_interview_round</text>
-<rect x="706" y="730" width="160" height="28" rx="14" class="pill"/>
-<text x="786" y="749" class="mono pill-text" text-anchor="middle">submit_document</text>
-<rect x="876" y="730" width="112" height="28" rx="14" class="pill"/>
-<text x="932" y="749" class="mono pill-text" text-anchor="middle">set_consent</text>
-<rect x="998" y="730" width="126" height="28" rx="14" class="pill"/>
-<text x="1061" y="749" class="mono pill-text" text-anchor="middle">manage_consent</text>
-<rect x="90" y="860" width="1060" height="84" rx="8" class="soft-node"/>
-<text x="116" y="894" class="mono body strong">submit_document</text>
-<rect x="270" y="876" width="118" height="28" rx="14" class="pill"/>
-<text x="329" y="895" class="mono pill-text" text-anchor="middle">repo consent</text>
-<path d="M392 890 L428 890" class="blue-arrow"/>
-<rect x="436" y="860" width="184" height="28" rx="14" class="pill-accent"/>
-<text x="528" y="879" class="mono pill-text" text-anchor="middle">interview attestation</text>
-<rect x="436" y="896" width="184" height="28" rx="14" class="pill-accent"/>
-<text x="528" y="915" class="mono pill-text" text-anchor="middle">5 local checks</text>
-<text x="644" y="884" class="sans body">allow → write</text>
-<text x="644" y="910" class="sans small">never → no write</text>
-<text x="1114" y="884" class="sans tiny" text-anchor="end">schema · coverage · staleness</text>
-<text x="1114" y="907" class="sans tiny" text-anchor="end">cross-references · redaction</text>
-<path d="M620 970 L620 1004" class="blue-arrow"/>
-<rect x="360" y="1012" width="520" height="66" rx="8" class="node"/>
-<text x="388" y="1040" class="mono node-title">.intent/&lt;branch&gt;.json</text>
-<text x="388" y="1064" class="sans small">Intent Document · transcript remains local</text>
+<rect x="706" y="730" width="202" height="28" rx="14" class="pill"/>
+<text x="807" y="749" class="mono pill-text" text-anchor="middle">get_answers</text>
+<rect x="918" y="730" width="206" height="28" rx="14" class="pill"/>
+<text x="1021" y="749" class="mono pill-text" text-anchor="middle">submit_document</text>
+<rect x="706" y="768" width="202" height="28" rx="14" class="pill"/>
+<text x="807" y="787" class="mono pill-text" text-anchor="middle">set_consent</text>
+<rect x="90" y="878" width="1060" height="62" rx="8" class="soft-node"/>
+<text x="116" y="908" class="mono body strong">the interview</text>
+<rect x="270" y="890" width="206" height="28" rx="14" class="pill-accent"/>
+<text x="373" y="909" class="mono pill-text" text-anchor="middle">record_interview_round</text>
+<path d="M476 904 L508 904" class="blue-arrow"/>
+<rect x="508" y="890" width="142" height="28" rx="14" class="pill-accent"/>
+<text x="579" y="909" class="mono pill-text" text-anchor="middle">get_questions</text>
+<path d="M650 904 L682 904" class="blue-arrow"/>
+<rect x="682" y="890" width="156" height="28" rx="14" class="pill-accent"/>
+<text x="760" y="909" class="mono pill-text" text-anchor="middle">answer_questions</text>
+<path d="M838 904 L870 904" class="blue-arrow"/>
+<rect x="870" y="890" width="120" height="28" rx="14" class="pill-accent"/>
+<text x="930" y="909" class="mono pill-text" text-anchor="middle">get_answers</text>
+<text x="1114" y="908" class="sans tiny" text-anchor="end">→ q_id each way</text>
+<rect x="90" y="960" width="1060" height="84" rx="8" class="soft-node"/>
+<text x="116" y="994" class="mono body strong">submit_document</text>
+<rect x="270" y="976" width="118" height="28" rx="14" class="pill"/>
+<text x="329" y="995" class="mono pill-text" text-anchor="middle">repo consent</text>
+<path d="M392 990 L428 990" class="blue-arrow"/>
+<rect x="436" y="960" width="184" height="28" rx="14" class="pill-accent"/>
+<text x="528" y="979" class="mono pill-text" text-anchor="middle">interview attestation</text>
+<rect x="436" y="996" width="184" height="28" rx="14" class="pill-accent"/>
+<text x="528" y="1015" class="mono pill-text" text-anchor="middle">5 local checks</text>
+<text x="644" y="984" class="sans body">allow → write</text>
+<text x="644" y="1010" class="sans small">never → no write</text>
+<text x="1114" y="984" class="sans tiny" text-anchor="end">schema · coverage · staleness</text>
+<text x="1114" y="1007" class="sans tiny" text-anchor="end">cross-references · redaction</text>
+<path d="M620 1044 L620 1090" class="blue-arrow"/>
+<rect x="360" y="1098" width="520" height="66" rx="8" class="node"/>
+<text x="388" y="1126" class="mono node-title">.intent/&lt;branch&gt;.json</text>
+<text x="388" y="1150" class="sans small">Intent Document · transcript remains local</text>
 </svg>

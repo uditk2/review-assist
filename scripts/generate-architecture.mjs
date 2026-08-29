@@ -193,9 +193,9 @@ function buildSystemArchitecture() {
 function buildMcpDetail() {
   const c = canvas(
     1240,
-    1120,
+    1190,
     "Review Assist MCP distillation detail",
-    "A component-level detail of local intent distillation. The coding agent orchestrates separate Author and Intent Reviewer subagents. They use role-scoped tool surfaces exposed by the Review Assist MCP Server. The server makes no model calls. The Reviewer asks questions, the Author returns transcript-grounded evidence, and the server validates and writes the Intent Document after repository consent."
+    "A component-level detail of local intent distillation. The coding agent orchestrates separate Author and Intent Reviewer subagents. They use role-scoped tool surfaces exposed by the Review Assist MCP Server. The server makes no model calls. compute_diff only opens the run; read_diff pages the change itself. The interview is two-sided and server-attested: the Reviewer records questions and gets a q_id back for each, the Author answers by id, and the Reviewer reads the answers in the Author's own words. The server validates and writes the Intent Document after repository consent. get_role_definitions, manage_consent, and import_session belong to neither role — they set up the split itself and are called by the orchestrating agent."
   );
   const { rect, text, line, path, pill } = c;
 
@@ -234,7 +234,7 @@ function buildMcpDetail() {
   text(620, 451, "transcript-grounded evidence", "sans small", 'text-anchor="middle"');
 
   // The MCP Server is a separate mechanism: role-scoped tools and deterministic gates.
-  rect(60, 540, 1120, 430, "accent-node", 12);
+  rect(60, 540, 1120, 530, "accent-node", 12);
   text(88, 572, "Review Assist MCP Server", "sans boundary-title");
   text(1152, 572, "stdio · role-scoped registration · no model calls", "sans small", 'text-anchor="end"');
   line(88, 587, 1152, 587);
@@ -244,43 +244,62 @@ function buildMcpDetail() {
   text(329, 526, "uses Author tools", "sans small");
   text(939, 526, "uses Reviewer tools", "sans small");
 
-  // Exact tool lists remain pills, grouped by the role that can call them.
-  rect(90, 604, 470, 232, "node");
+  // Exact tool lists remain pills, grouped by the role that can call them. Orchestrator-only
+  // tools (get_role_definitions, manage_consent, import_session) belong to neither surface —
+  // they set up the split itself, not the interview.
+  rect(90, 604, 470, 254, "node");
   text(116, 634, "Author tool surface", "sans node-title");
   text(534, 634, "no submit / consent", "sans small", 'text-anchor="end"');
   pill(116, 654, 202, "get_generation_guide");
   pill(328, 654, 206, "list_transcripts");
-  pill(116, 692, 202, "search_transcript");
+  pill(116, 692, 202, "get_spine");
   pill(328, 692, 206, "read_transcript");
   pill(116, 730, 202, "compute_diff");
+  pill(328, 730, 206, "read_diff");
+  pill(116, 768, 202, "get_questions");
+  pill(328, 768, 206, "answer_questions");
 
-  rect(680, 604, 470, 232, "node");
+  rect(680, 604, 470, 254, "node");
   text(706, 634, "Reviewer tool surface", "sans node-title");
   text(1124, 634, "no transcript access", "sans small", 'text-anchor="end"');
   pill(706, 654, 202, "get_generation_guide");
-  pill(918, 654, 206, "get_role_definitions");
-  pill(706, 692, 202, "compute_diff");
+  pill(918, 654, 206, "compute_diff");
+  pill(706, 692, 202, "read_diff");
   pill(918, 692, 206, "record_interview_round");
-  pill(706, 730, 160, "submit_document");
-  pill(876, 730, 112, "set_consent");
-  pill(998, 730, 126, "manage_consent");
+  pill(706, 730, 202, "get_answers");
+  pill(918, 730, 206, "submit_document");
+  pill(706, 768, 202, "set_consent");
+
+  // The interview itself: two independent writes, keyed by q_id, so the server can attest
+  // which half of an answer actually came from the Author rather than the Reviewer's own
+  // transcription of it.
+  rect(90, 878, 1060, 62, "soft-node", 8);
+  text(116, 908, "the interview", "mono body strong");
+  pill(270, 890, 206, "record_interview_round", "pill-accent");
+  path("M476 904 L508 904", "blue-arrow");
+  pill(508, 890, 142, "get_questions", "pill-accent");
+  path("M650 904 L682 904", "blue-arrow");
+  pill(682, 890, 156, "answer_questions", "pill-accent");
+  path("M838 904 L870 904", "blue-arrow");
+  pill(870, 890, 120, "get_answers", "pill-accent");
+  text(1114, 908, "→ q_id each way", "sans tiny", 'text-anchor="end"');
 
   // One local submission gate; consent precedes sibling checks.
-  rect(90, 860, 1060, 84, "soft-node", 8);
-  text(116, 894, "submit_document", "mono body strong");
-  pill(270, 876, 118, "repo consent");
-  path("M392 890 L428 890", "blue-arrow");
-  pill(436, 860, 184, "interview attestation", "pill-accent");
-  pill(436, 896, 184, "5 local checks", "pill-accent");
-  text(644, 884, "allow → write", "sans body");
-  text(644, 910, "never → no write", "sans small");
-  text(1114, 884, "schema · coverage · staleness", "sans tiny", 'text-anchor="end"');
-  text(1114, 907, "cross-references · redaction", "sans tiny", 'text-anchor="end"');
+  rect(90, 960, 1060, 84, "soft-node", 8);
+  text(116, 994, "submit_document", "mono body strong");
+  pill(270, 976, 118, "repo consent");
+  path("M392 990 L428 990", "blue-arrow");
+  pill(436, 960, 184, "interview attestation", "pill-accent");
+  pill(436, 996, 184, "5 local checks", "pill-accent");
+  text(644, 984, "allow → write", "sans body");
+  text(644, 1010, "never → no write", "sans small");
+  text(1114, 984, "schema · coverage · staleness", "sans tiny", 'text-anchor="end"');
+  text(1114, 1007, "cross-references · redaction", "sans tiny", 'text-anchor="end"');
 
-  path("M620 970 L620 1004", "blue-arrow");
-  rect(360, 1012, 520, 66, "node");
-  text(388, 1040, ".intent/<branch>.json", "mono node-title");
-  text(388, 1064, "Intent Document · transcript remains local", "sans small");
+  path("M620 1044 L620 1090", "blue-arrow");
+  rect(360, 1098, 520, 66, "node");
+  text(388, 1126, ".intent/<branch>.json", "mono node-title");
+  text(388, 1150, "Intent Document · transcript remains local", "sans small");
 
   return c.finish();
 }

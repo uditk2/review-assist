@@ -5,7 +5,7 @@ was really solving, the assumptions it made, the approaches it rejected, and an 
 walkthrough of every change — validated against the diff before it is written.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/uditk2/review-assist/main/docs/mcp-distillation.png" alt="The coding agent spawns two role-locked subagents. The Author holds the session transcript and has no submission tools. The Intent Reviewer never sees the transcript and is the only role that can submit. The Reviewer asks questions, the Author answers from transcript evidence, and submit_document gates the write behind repository consent, interview attestation, and five local checks." width="820">
+  <img src="https://raw.githubusercontent.com/uditk2/review-assist/main/docs/mcp-distillation.png" alt="The coding agent spawns two role-locked subagents. The Author holds the session transcript and has no submission tools. The Intent Reviewer never sees the transcript and is the only role that can submit. record_interview_round hands the Reviewer's questions back with a q_id each; the Author answers by id and the Reviewer reads the answers verbatim. submit_document gates the write behind repository consent, interview attestation, and five local checks." width="820">
 </p>
 
 This server never calls a model. Generation is the calling agent's job; the server
@@ -78,7 +78,8 @@ Everything the Reviewer knows about intent, it had to ask for. This is enforced,
 advised: `REVIEW_ASSIST_ROLE` makes the server refuse to register the other role's tools,
 so an author instance has no `submit_document` and a reviewer instance has no
 `read_transcript`. Call `get_role_definitions` to install both as subagents for your
-client.
+client — that tool, like `manage_consent` and `import_session`, belongs to neither role;
+it is the orchestrating agent's, not the Author's or Reviewer's.
 
 ## Tools
 
@@ -92,6 +93,7 @@ Author role:
 | `read_transcript` | A window of the full transcript around a spine index, for the tool output behind a claim. |
 | `compute_diff` | Opens the run: handle, numbered hunk index, resolved SHAs. No diff text. |
 | `read_diff` | The diff itself, paged by hunk. Follow `next_cursor`, or ask for `hunks`/`paths`. |
+| `get_questions` | The reviewer's questions, with their `q_id`s, read straight off the run. |
 | `answer_questions` | The author's own answers, by `q_id`. Its only write, and the half of the interview the server can attest. |
 
 Reviewer role:
@@ -99,12 +101,12 @@ Reviewer role:
 | Tool | Purpose |
 |---|---|
 | `get_generation_guide` | Schema plus the authoring protocol. |
-| `get_role_definitions` | Author and reviewer subagent definitions for your client. |
 | `compute_diff` | Opens the run: handle, numbered hunk index, resolved SHAs. No diff text. |
 | `read_diff` | The change, as a reviewer first meets it — a page at a time. |
 | `record_interview_round` | The reviewer's questions, recorded before they are relayed. Each comes back with a `q_id`; the author answers by that id, so the server hears both sides rather than the reviewer's account of both. |
+| `get_answers` | The author's answers, in the author's own words, read straight off the run. |
 | `submit_document` | The gate. Validates, then writes `.intent/<branch>.json`. |
-| `set_consent` / `manage_consent` | Per-repository opt in and out. |
+| `set_consent` | Per-repository opt in and out. |
 
 ## Consent and validation
 

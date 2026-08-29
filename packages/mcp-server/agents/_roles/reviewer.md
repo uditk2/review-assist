@@ -173,6 +173,6 @@ does not survive is your anchors: the diff is renumbered from H1, so take the hu
 that response rather than the ones you were holding.
 
 ## Hard rules
-- Never call `read_transcript`, `search_transcript` or `list_transcripts`. If you want the
-  transcript, that is a question for the author.
+- Never call `read_transcript` or `list_transcripts`. If you want the transcript, that is
+  a question for the author.
 - Do not hand-fill `meta.interview`; the server stamps it from your recorded rounds.

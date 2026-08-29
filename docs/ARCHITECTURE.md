@@ -38,15 +38,25 @@ Tool access is a component-level concern, so it is kept in a separate view.
 
 <p align="center">
   <a href="mcp-distillation.svg">
-    <img src="mcp-distillation.svg" alt="Review Assist MCP distillation detail. The coding agent orchestrates separate Author and Intent Reviewer subagents. They do not run inside the MCP Server. Each subagent calls a role-scoped MCP tool surface: the Author has transcript tools but no submission tools, while the Intent Reviewer has interview, submission, and consent tools but no transcript tools. The Reviewer sends questions to the Author and receives transcript-grounded evidence. Repository consent and local validation gate writing the Intent Document." width="1000">
+    <img src="mcp-distillation.svg" alt="Review Assist MCP distillation detail. The coding agent orchestrates separate Author and Intent Reviewer subagents. They do not run inside the MCP Server. Each subagent calls a role-scoped MCP tool surface: the Author has transcript and diff-reading tools but no submission tools, while the Intent Reviewer has diff-reading, interview, submission, and consent tools but no transcript tools. The interview is two-sided and server-attested: record_interview_round hands back a q_id per question, the Author answers by id through get_questions and answer_questions, and the Reviewer reads the answers back through get_answers. Repository consent and local validation gate writing the Intent Document." width="1000">
   </a>
 </p>
 
 The coding agent orchestrates the **Author** and **Intent Reviewer** as separate local
 subagents. They do not live inside the MCP Server. Each connects to a role-scoped server
 session; `REVIEW_ASSIST_ROLE` makes the split structural by not registering tools that
-belong to the other role. The Reviewer asks the questions; the Author supplies
-transcript-grounded evidence.
+belong to the other role. `compute_diff` only opens the run and returns its handle and
+hunk index; `read_diff` pages the change itself, so no response grows with the size of a
+change.
+
+The interview is two-sided and server-attested, not a prose relay: the Reviewer's
+`record_interview_round` hands back a `q_id` per question, the Author reads and answers
+them by id (`get_questions` / `answer_questions`), and the Reviewer reads the answers back
+in the Author's own words (`get_answers`). An answer the Reviewer merely transcribes on
+the Author's behalf is recorded too, but marked reviewer-sourced rather than attested.
+`get_role_definitions`, `manage_consent`, and `import_session` belong to neither role —
+they set up the split and the consent list themselves, and are called by the orchestrating
+agent rather than the Author or Reviewer.
 
 `submit_document` first applies repository consent (`always`, `once`, or `never`). On
 allow, interview attestation and the five local checks are sibling gates: schema,
