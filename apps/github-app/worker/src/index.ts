@@ -11,7 +11,8 @@
  * Statelessness (normative, per SPEC §6.2):
  *   - no KV/D1/R2/DO; the only "state" is the encrypted cookie
  *   - responses carrying repo content are `private, no-store` and MUST NOT be cached
- *   - static assets (the SPA) MAY be edge-cached; they contain no repo content
+ *   - static assets (the SPA) ARE edge- and browser-cached (see cacheableAsset below);
+ *     they contain no repo content, and the deploy workflow purges the zone on release
  */
 
 import { handleWebhook } from "./webhook.js";
@@ -70,7 +71,7 @@ export default {
     }
 
     // Everything else: the static viewer SPA (edge-cacheable, no repo content).
-    return env.ASSETS.fetch(request);
+    return cacheableAsset(await env.ASSETS.fetch(request));
   },
 };
 
@@ -397,6 +398,22 @@ function json(body: unknown, status = 200, noStore = false): Response {
   // Any response that may carry repo content is private + uncacheable, by contract.
   headers["Cache-Control"] = noStore ? "private, no-store" : "no-cache";
   return new Response(JSON.stringify(body), { status, headers });
+}
+
+/**
+ * The asset store's own default is `public, max-age=0, must-revalidate` — every request,
+ * from every visitor, at every edge PoP, revalidates. Fine for private API responses;
+ * wasteful for a static SPA shell that contains no repo content and changes only on
+ * deploy. One day of edge + browser cache, with the deploy workflow purging the zone
+ * right after `wrangler deploy` — see .github/workflows/deploy-app.yml — so a release is
+ * live within seconds rather than up to a day, and a missed purge still self-heals in
+ * one day rather than staying stale forever (nothing here is filename-hashed).
+ */
+function cacheableAsset(res: Response): Response {
+  if (res.status !== 200) return res;
+  const headers = new Headers(res.headers);
+  headers.set("Cache-Control", "public, max-age=86400, must-revalidate");
+  return new Response(res.body, { status: res.status, headers });
 }
 
 function safeReturn(returnTo: string, origin: string): string {

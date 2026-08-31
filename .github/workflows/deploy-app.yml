@@ -1,6 +1,9 @@
 # Manually deploy the GitHub App (Cloudflare Worker + static viewer).
 # Trigger: Actions tab → "Deploy review app" → Run workflow.
-# Requires repo secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
+# Requires repo secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_ZONE_ID.
+# CLOUDFLARE_API_TOKEN needs Zone > Cache Purge > Purge on the reviewassist.dev zone, in
+# addition to whatever scope `wrangler deploy` already needs — the purge step below reuses
+# it rather than adding a second token.
 name: Deploy review app
 on:
   workflow_dispatch:
@@ -34,3 +37,16 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Static assets now carry a 24h Cache-Control (see cacheableAsset in src/index.ts),
+      # so they no longer revalidate on every request — but nothing is filename-hashed, so
+      # without a purge here a stale edge copy would outlive this deploy by up to a day.
+      # Scoped to production: staging isn't served from the reviewassist.dev zone.
+      - name: Purge Cloudflare cache
+        if: inputs.environment == 'production'
+        run: |
+          curl -sS --fail-with-body -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_ZONE_ID }}/purge_cache" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}'
