@@ -3,7 +3,73 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Review Assist — guided review for AI-written code</title>
+<title>Review Assist: free AI code review MCP server for GitHub</title>
+<meta name="description" content="Review AI-written code as fast as agents write it. Review Assist is a free, open-source MCP server that turns a coding agent's session into an Intent Document, then a GitHub App renders it as a guided, verifiable pull-request review. No code stored.">
+<link rel="canonical" href="https://reviewassist.dev/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Review Assist">
+<meta property="og:title" content="Review Assist: free AI code review MCP server for GitHub">
+<meta property="og:description" content="Turn a coding agent's session into a guided, verifiable pull-request review. Free, open source, no code stored.">
+<meta property="og:url" content="https://reviewassist.dev/">
+<meta property="og:image" content="https://reviewassist.dev/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<!-- Mirrors the FAQ section rendered in renderLanding() below — keep the two in sync.
+     reviewassist.dev is a single-page app; every hash route serves this same document, and
+     the default (no-hash) view is the landing page, so the FAQPage schema describes what's
+     actually shown at the canonical URL. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Why is this needed?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "AI agents now write code faster than any team can read it by hand. The context that makes review fast (what was asked, what was tried and abandoned, what was actually verified) disappears the moment the pull request opens. Review Assist captures it at the source: the agent's session becomes an Intent Document, a validator proves it actually covers the diff, and a GitHub App renders it as a guided review on the pull request."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Review Assist free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. The MCP server and the GitHub App are both free and open source under Apache-2.0. There is no paid tier."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is my code stored anywhere?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Your session transcript never leaves your machine. The GitHub App has no database: it reads the Intent Document and diff from GitHub per request, holds them in memory for that request, and serves them private, no-store to your browser. Nothing is written down, but your code does pass through the hosted service in transit. Self-host the App if that matters to you."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I self-host it?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Review Assist is fully open source. Run the GitHub App on your own infrastructure if you'd rather your diffs never pass through the hosted service, even in transit."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which coding agents does it work with?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It ships tested with Claude Code, the Claude desktop app, and Codex. It's a standard MCP server, so any MCP-compatible agent client can register it."
+      }
+    }
+  ]
+}
+</script>
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Review Assist: free AI code review MCP server for GitHub">
+<meta name="twitter:description" content="Turn a coding agent's session into a guided, verifiable pull-request review. Free, open source, no code stored.">
+<meta name="twitter:image" content="https://reviewassist.dev/social-preview.png">
 <!-- Microsoft Clarity. Worker metrics count invocations, which lump GitHub's webhook
      POSTs and every asset fetch in with real visitors; this separates people from
      machines.
@@ -207,72 +273,139 @@ function codeBlock(text){
   for (const line of String(text).split("\n")) body.append(el("code",{class:"diff-line is-ctx"}, line));
   return el("div",{class:"diff"}, body);
 }
-function renderLanding(){
-  const step = (n, title, body) => el("li",{class:"flex gap-3"},
-    el("span",{class:"ordinal pt-1"}, n),
-    el("div",{}, el("span",{class:"font-medium text-ink-900"}, title+". "), el("span",{class:"text-ink-600", html:richHtml(body)})));
 
+/**
+ * The hero's visual anchor: Code -> Validate -> Review, the same three words as "How it
+ * works" below and the shape of the social-preview card. Colored with the page's own
+ * Tailwind fill- and stroke- utilities rather than hex, so it repaints for dark mode
+ * exactly like everything else on the page — el() can't build this (document.createElement
+ * has no SVG namespace), so it's injected as markup via the same `html:` path richHtml() uses.
+ */
+function flowStrip(){
+  const node = (x, label, sub) => `
+    <g>
+      <rect x="${x}" y="4" width="140" height="52" rx="6" class="fill-surface stroke-ink-200" stroke-width="1.1"></rect>
+      <text x="${x+70}" y="27" text-anchor="middle" class="fill-ink-900" style="font-size:13px;font-weight:600;font-family:inherit">${label}</text>
+      <text x="${x+70}" y="43" text-anchor="middle" class="fill-ink-500 font-mono" style="font-size:10px">${sub}</text>
+    </g>`;
+  const arrow = (x1, x2) =>
+    `<path d="M${x1} 30 L${x2} 30" class="stroke-accent-600" stroke-width="1.6" fill="none" marker-end="url(#flow-arrow)"></path>`;
+  return `<svg viewBox="0 0 520 60" style="width:100%;min-width:420px;height:auto" class="block" role="img" aria-label="Code, on your machine. Validate, on GitHub. Review, in your browser.">
+    <defs>
+      <marker id="flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0 1.2 L8.5 5 L0 8.8" class="fill-none stroke-accent-600" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+      </marker>
+    </defs>
+    ${node(0, "Code", "on your machine")}
+    ${arrow(140, 189)}
+    ${node(190, "Validate", "on GitHub")}
+    ${arrow(330, 379)}
+    ${node(380, "Review", "in your browser")}
+  </svg>`;
+}
+
+function renderLanding(){
   return el("div",{class:"page min-h-screen"},
     siteHeader("home"),
-    el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
+    el("main",{class:"mx-auto max-w-6xl px-6 py-16"},
 
-      el("section",{class:"grid-field mb-12"},
-        el("p",{class:"eyebrow mb-2"}, "Guided review for AI-written code"),
-        el("h1",{class:"mb-4 text-[2rem] leading-tight"}, "Review AI-written code as fast as agents write it."),
-        el("p",{class:"max-w-prose text-[1.05rem] text-ink-700"},
-          "A diff is the residue of a decision, not the decision. Review Assist has the agent distil its own session into an Intent Document — the ask, the assumptions, the rejected approaches, an anchored walkthrough — proves the document covers the diff, and renders it as a guided review on the pull request."),
+      // Same width as every section below — no seam. The headline and the flow strip are
+      // free to use it; only the paragraphs cap to a reading measure, same as body copy
+      // does everywhere else on the page.
+      el("section",{class:"grid-field mb-14"},
+        el("p",{class:"eyebrow mb-2"}, "Free, open-source AI code review"),
+        el("h1",{class:"mb-6 text-[2.25rem] leading-tight lg:text-[2.75rem]"}, "Review AI-written code as fast as agents write it."),
+        el("div",{class:"mb-6 max-w-[30rem] overflow-x-auto", html: flowStrip()}),
+        el("p",{class:"max-w-[46rem] text-[1.05rem] text-ink-700", html: richHtml(
+          "**AI agents** now write more code than any team can read by hand. The context that would make review fast (what was asked, what was tried and abandoned, what was actually verified) **disappears the moment the pull request opens**.")}),
+        el("p",{class:"mt-3 max-w-[46rem] text-[1.05rem] text-ink-700", html: richHtml(
+          "Review Assist gets it back: a **free, open-source MCP server** that turns the session into a guided, verifiable review on every pull request.")}),
         el("div",{class:"mt-6 flex flex-wrap items-center gap-3"},
           el("a",{class:"btn-primary", href:APP_INSTALL}, "Install the GitHub App →"),
           el("a",{class:"btn-ghost", href:"#get-started", onclick:(e)=>{
             e.preventDefault();
             document.getElementById("get-started")?.scrollIntoView({behavior:"smooth"});
           }}, "Register the MCP server"),
-          el("a",{class:"btn-ghost", href:REPO_URL}, "View source"))),
+          el("a",{class:"btn-ghost", href:REPO_URL}, "View source")),
+        el("p",{class:"mt-4 font-mono text-micro text-ink-500"},
+          "Listed on the MCP registry · Works with Claude Code and Codex · Apache-2.0")),
 
-      el("section",{class:"mb-12"},
+      el("section",{class:"mb-16"},
+        el("h2",{class:"section-h mb-5"}, "The guided review"),
         renderDemo(),
         el("p",{class:"mt-2 text-sm text-ink-500"},
           "A real Intent Document and the diff it describes, rendered by the viewer your reviewers get. Pick a stop.")),
 
-      el("section",{class:"mb-12"},
-        el("h2",{class:"section-h mb-4"}, "How it works"),
-        el("ol",{class:"space-y-2.5"},
-          step("01","Capture","Your agent distils the session as it commits. The transcript never leaves your machine."),
-          step("02","Validate","Every push, the App checks the document against the diff and names anything unexplained."),
-          step("03","Review","Assumptions first, then a walkthrough anchored to the hunks. Comments and the verdict post as you."))),
+      el("section",{class:"mb-16"},
+        el("h2",{class:"section-h mb-5"}, "How it works"),
+        el("ol",{class:"grid grid-cols-1 gap-x-10 gap-y-6 xl:grid-cols-3"},
+          ...[
+            ["01","Capture","Your agent distils the session as it commits. The transcript never leaves your machine."],
+            ["02","Validate","Every push, the App checks the document against the diff and names anything unexplained."],
+            ["03","Review","Assumptions first, then a walkthrough anchored to the hunks. Comments and the verdict post as you."],
+          ].map(([n, title, body]) => el("li",{},
+            el("div",{class:"flex items-baseline gap-2.5"},
+              el("span",{class:"ordinal"}, n),
+              el("span",{class:"font-medium text-ink-900"}, title)),
+            el("p",{class:"mt-1.5 text-ink-600"}, body))))),
+
       // "Two installs" described them and "Get started" then installed them — two stacks
       // of prose saying the same thing. One section, each part ending in its own action.
-      el("section",{class:"mb-12", id:"get-started"},
+      // Each step: prose left at its measure, the code/action banking right — same split
+      // as the hero above.
+      el("section",{class:"mb-16", id:"get-started"},
         el("h2",{class:"section-h mb-4"}, "Install"),
-        el("p",{class:"mb-5 text-ink-600"}, "Two one-time installs — the server on the developer’s side, the App on the repository’s."),
+        el("p",{class:"mb-5 max-w-prose text-ink-600"}, "Two one-time installs — the server on the developer’s side, the App on the repository’s."),
 
-        el("div",{class:"border-t border-ink-200 pt-4"},
-          el("div",{class:"flex items-baseline gap-2.5"},
-            el("span",{class:"ordinal"},"01"),
-            el("p",{class:"font-medium text-ink-900"}, "The MCP server"),
-            el("span",{class:"ml-auto text-sm text-ink-500"}, "beside your agent")),
-          el("p",{class:"mt-0.5 text-ink-600", html:richHtml(
-            "Never calls a model. It supplies ground truth, enforces the role split — one subagent holds the transcript and cannot submit, one reads the diff cold — and runs five deterministic checks before a word is written.")}),
-          el("div",{class:"mt-3"},
-            codeBlock("claude mcp add -s user review-assist -- npx -y review-assist-mcp\ncodex mcp add review-assist -- npx -y review-assist-mcp")),
-          el("p",{class:"mt-2 text-sm text-ink-500", html:richHtml(
-            "Claude desktop app: [download the .mcpb](" + MCPB_DOWNLOAD + "). Editor launched from the Dock? `npx` is not on a GUI app’s PATH — [use the form in the README](" + REPO_URL + "#claude-code).")})),
+        el("div",{class:"grid grid-cols-1 gap-5 border-t border-ink-200 pt-4 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] xl:items-start xl:gap-10"},
+          el("div",{},
+            el("div",{class:"flex items-baseline gap-2.5"},
+              el("span",{class:"ordinal"},"01"),
+              el("p",{class:"font-medium text-ink-900"}, "The MCP server"),
+              el("span",{class:"ml-auto text-sm text-ink-500"}, "beside your agent")),
+            el("p",{class:"mt-0.5 text-ink-600", html:richHtml(
+              "Never calls a model. It supplies ground truth, enforces the role split — one subagent holds the transcript and cannot submit, one reads the diff cold — and runs five deterministic checks before a word is written.")})),
+          el("div",{},
+            codeBlock("claude mcp add -s user review-assist -- npx -y review-assist-mcp\ncodex mcp add review-assist -- npx -y review-assist-mcp"),
+            el("p",{class:"mt-2 text-sm text-ink-500", html:richHtml(
+              "Claude desktop app: [download the .mcpb](" + MCPB_DOWNLOAD + "). Editor launched from the Dock? `npx` is not on a GUI app’s PATH — [use the form in the README](" + REPO_URL + "#claude-code).")}))),
 
-        el("div",{class:"mt-6 border-t border-ink-200 pt-4"},
-          el("div",{class:"flex items-baseline gap-2.5"},
-            el("span",{class:"ordinal"},"02"),
-            el("p",{class:"font-medium text-ink-900"}, "The GitHub App"),
-            el("span",{class:"ml-auto text-sm text-ink-500"}, "on your repositories")),
-          el("p",{class:"mt-0.5 text-ink-600", html:richHtml(
-            "A GitHub App, **not** an Action — no workflow file, no runner minutes. It posts a non-blocking check with the coverage result, a summary comment linking to the guided review, and fills in the PR description from the document. No database: it reads from GitHub per request and discards.")}),
-          el("a",{class:"btn-primary mt-3", href:APP_INSTALL}, "Install the GitHub App →")),
+        el("div",{class:"mt-6 grid grid-cols-1 gap-5 border-t border-ink-200 pt-4 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] xl:items-start xl:gap-10"},
+          el("div",{},
+            el("div",{class:"flex items-baseline gap-2.5"},
+              el("span",{class:"ordinal"},"02"),
+              el("p",{class:"font-medium text-ink-900"}, "The GitHub App"),
+              el("span",{class:"ml-auto text-sm text-ink-500"}, "on your repositories")),
+            el("p",{class:"mt-0.5 text-ink-600", html:richHtml(
+              "A GitHub App, **not** an Action — no workflow file, no runner minutes. It posts a non-blocking check with the coverage result, a summary comment linking to the guided review, and fills in the PR description from the document. No database: it reads from GitHub per request and discards.")})),
+          el("div",{}, el("a",{class:"btn-primary", href:APP_INSTALL}, "Install the GitHub App →"))),
 
         el("p",{class:"mt-5 text-sm"}, el("a",{class:"text-ink-500", href:REPO_URL+"/blob/main/docs/ARCHITECTURE.md"}, "Architecture & internals →"))),
 
-      el("section",{class:"mb-12"},
+      el("section",{class:"mb-16"},
         el("h2",{class:"section-h"}, "Release notes"),
         el("div",{}, ...RELEASES.slice(0,3).map(releaseRow)),
         el("p",{class:"mt-4 text-sm"}, el("a",{href:"#/blog"}, "All releases →"))),
+
+      // Text kept byte-for-byte with the FAQPage JSON-LD in <head> — the two describe the
+      // same content on the same canonical URL, so they should never drift.
+      el("section",{class:"mb-16"},
+        el("h2",{class:"section-h mb-5"}, "FAQ"),
+        el("div",{class:"max-w-[46rem]"},
+          ...[
+            ["Why is this needed?",
+             "AI agents now write code faster than any team can read it by hand. The context that makes review fast (what was asked, what was tried and abandoned, what was actually verified) disappears the moment the pull request opens. Review Assist captures it at the source: the agent's session becomes an Intent Document, a validator proves it actually covers the diff, and a GitHub App renders it as a guided review on the pull request."],
+            ["Is Review Assist free?",
+             "Yes. The MCP server and the GitHub App are both free and open source under Apache-2.0. There is no paid tier."],
+            ["Is my code stored anywhere?",
+             "No. Your session transcript never leaves your machine. The GitHub App has no database: it reads the Intent Document and diff from GitHub per request, holds them in memory for that request, and serves them `private, no-store` to your browser. Nothing is written down, but your code does pass through the hosted service in transit. Self-host the App if that matters to you."],
+            ["Can I self-host it?",
+             "Yes. Review Assist is fully open source. Run the GitHub App on your own infrastructure if you'd rather your diffs never pass through the hosted service, even in transit."],
+            ["Which coding agents does it work with?",
+             "It ships tested with Claude Code, the Claude desktop app, and Codex. It's a standard MCP server, so any MCP-compatible agent client can register it."],
+          ].map(([q,a]) => el("details",{class:"border-t border-ink-200 py-3"},
+            el("summary",{class:"font-medium text-ink-900"}, q),
+            el("p",{class:"mt-1.5 text-ink-600", html:richHtml(a)}))))),
 
       siteFooter()));
 }
@@ -440,7 +573,7 @@ function paintDemo(){
 function siteHeader(active){
   const navLink = (href, label, key) => el("a",{class:"site-nav"+(active===key?" is-active":""), href}, label);
   return el("header",{class:"border-b border-ink-200"},
-    el("div",{class:"mx-auto flex max-w-3xl items-center gap-1 px-6 py-3"},
+    el("div",{class:"mx-auto flex max-w-6xl items-center gap-1 px-6 py-3"},
       el("a",{class:"font-semibold text-ink-900 hover:no-underline", href:"#"}, "Review Assist"),
       el("span",{class:"flex-1"}),
       navLink("#","Overview","home"),
