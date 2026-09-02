@@ -1,0 +1,21 @@
+# Review Assist
+
+> Free, open-source MCP server and GitHub App that turns a coding agent's session into a guided, verifiable pull-request review.
+
+AI agents now write more code than any team can read by hand, and the context that makes review fast (what was asked, what was tried, what was actually verified) disappears the moment the pull request opens. Review Assist captures it at the source: the agent's session becomes an Intent Document, a deterministic validator proves it actually covers the diff, and a GitHub App renders it as a guided review anchored to the code.
+
+Two one-time installs, no paid tier: an MCP server that runs beside the coding agent (Claude Code, the Claude desktop app, or Codex) and distills the session as it commits, and a GitHub App — not a GitHub Action, no workflow file — that validates the document against every push and posts the guided review. Nothing is stored: the session transcript never leaves the developer's machine, and the App reads from GitHub per request and discards. Fully open source under Apache-2.0 and self-hostable.
+
+## Docs
+
+- [Install and usage (README)](https://github.com/uditk2/review-assist#readme)
+- [Architecture and internals](https://github.com/uditk2/review-assist/blob/main/docs/ARCHITECTURE.md)
+- [Release notes](https://reviewassist.dev/#/blog)
+- [Source code](https://github.com/uditk2/review-assist)
+- [MCP server package](https://www.npmjs.com/package/review-assist-mcp)
+
+## Install
+
+- Claude Code: `claude mcp add -s user review-assist -- npx -y review-assist-mcp`
+- Codex: `codex mcp add review-assist -- npx -y review-assist-mcp`
+- GitHub App: https://github.com/apps/review-assist-guided-review

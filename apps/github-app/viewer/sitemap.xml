@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Just the one canonical URL. This is a single-page app: the release notes and every
+  PR-viewer route live under hash fragments (#/blog, #owner/repo/pull/123) on this same
+  document, which the fragment's own canonical tag always resolves back to "/" — listing
+  them here would contradict that and ask crawlers to index pages the app itself says
+  aren't distinct.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://reviewassist.dev/</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
