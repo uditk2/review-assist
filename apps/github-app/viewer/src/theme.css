@@ -105,8 +105,34 @@
   /* Ordinal in its own gutter: 01, 02, 03. */
   .ordinal { @apply shrink-0 font-mono text-micro tracking-[0.02em] text-ink-500; }
 
+  /* The logo ships as two designed SVGs, not one CSS-var-driven icon (see siteLogo() in
+     index.html) — light and dark use different gradient stops and node colors, not a
+     currentColor swap. Same override shape as the color tokens above: OS preference, then
+     the explicit toggle wins. */
+  .logo-dark { display: none; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .logo-light { display: none; }
+    :root:not([data-theme="light"]) .logo-dark { display: block; }
+  }
+  [data-theme="dark"] .logo-light { display: none; }
+  [data-theme="dark"] .logo-dark { display: block; }
+
+  /* A soft blue wash behind the header and hero only — anchored top-right, over the demo
+     panel, fading to canvas by the time the hero ends. Deliberately scoped to just these
+     two elements: "How it works" and everything below reads as plain page, not a
+     continuation of the glow. */
+  .hero-wash {
+    background:
+      radial-gradient(1200px 800px at 82% 0%, var(--wash-glow), var(--wash-fade) 65%),
+      linear-gradient(180deg, var(--wash-top) 0%, var(--canvas) 92%);
+  }
+
   /* Landing demo: the viewer's own chrome, shrunk to a panel. */
-  .demo { @apply overflow-hidden rounded-md border border-ink-200 bg-surface; }
+  /* The four stops differ in length (316px to 453px at desktop width), so the panel used
+     to resize under the reader as autoplay advanced, shoving the rest of the page down
+     with it. Pinned to the tallest stop; min-height only ever pads, so narrower viewports
+     that genuinely need more room still get it. */
+  .demo { @apply min-h-[28.5rem] overflow-hidden rounded-md border border-ink-200 bg-surface; }
   .demo-bar { @apply flex items-center gap-2 border-b border-ink-200 bg-ink-50 px-3 py-2 font-mono text-micro text-ink-600; }
   .demo-track { @apply h-px w-full bg-ink-200; }
   .demo-progress { @apply h-px w-0 bg-accent-600; }
@@ -116,6 +142,19 @@
   .demo-stop.is-active { @apply bg-accent-50 font-medium text-ink-900; }
   .demo-stop.is-active .id-chip { @apply text-accent-700; }
   .demo-pane { @apply min-w-0 p-4; }
+
+  /* A slight perspective on the hero demo, echoing a landing page that angled its product
+     screenshot for depth. This is real, interactive UI though, not a static image, so the
+     tilt is skipped below tablet width (no room to spare) and straightens on hover/focus —
+     a keyboard user tabbing into a stop button gets the flat, legible panel too. */
+  .demo-tilt { transition: transform .25s ease, box-shadow .25s ease; }
+  @media (min-width: 768px) {
+    .demo-tilt {
+      transform: perspective(1400px) rotateY(6deg) rotateX(1.5deg);
+      box-shadow: 0 24px 48px -24px var(--lift), 0 0 0 1px var(--lift-rim);
+    }
+    .demo-tilt:hover, .demo-tilt:focus-within { transform: none; box-shadow: none; }
+  }
 
   /* ---- viewer shell: full width on desktop, single column on mobile ---- */
   .shell { @apply flex w-full max-w-[120rem] overflow-x-clip; }

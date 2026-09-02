@@ -47,6 +47,18 @@
   /* Hairline grid behind page mastheads. */
   --grid-line: rgba(28, 25, 23, 0.055);
 
+  /* Hero wash. The radial fades to the canvas at zero alpha, not the `transparent`
+     keyword: `transparent` is rgba(0,0,0,0), so fading to it drags every stop through
+     black and leaves a grey cast midway. */
+  --wash-top:  #eff5fd;
+  --wash-glow: #dbe8fb;
+  --wash-fade: rgba(251, 250, 249, 0);
+
+  /* Depth under the tilted hero demo. Light lifts with a shadow; dark can't (a shadow on
+     a near-black canvas is invisible), so it lifts with a hairline rim instead. */
+  --lift:     rgba(28, 25, 23, 0.28);
+  --lift-rim: transparent;
+
   color-scheme: light;
 }
 
@@ -89,6 +101,15 @@
 
     --grid-line: rgba(244, 241, 236, 0.045);
 
+    /* Dark takes the wash down to a hint: accent-50/100 are saturated navy, and a navy band
+       over this warm near-black canvas reads as a second surface rather than a glow. */
+    --wash-top:  #171a20;
+    --wash-glow: #1a2839;
+    --wash-fade: rgba(19, 18, 16, 0);
+
+    --lift:     rgba(0, 0, 0, 0.6);
+    --lift-rim: rgba(244, 241, 236, 0.07);
+
     color-scheme: dark;
   }
 }
@@ -129,6 +150,15 @@
   --warn-border: #5c4a1b;
 
   --grid-line: rgba(244, 241, 236, 0.045);
+
+  /* Dark takes the wash down to a hint: accent-50/100 are saturated navy, and a navy band
+     over this warm near-black canvas reads as a second surface rather than a glow. */
+  --wash-top:  #171a20;
+  --wash-glow: #1a2839;
+  --wash-fade: rgba(19, 18, 16, 0);
+
+  --lift:     rgba(0, 0, 0, 0.6);
+  --lift-rim: rgba(244, 241, 236, 0.07);
 
   color-scheme: dark;
 }
