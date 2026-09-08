@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Review Assist">
+  <style>
+    .logo-dark { display: none; }
+    @media (prefers-color-scheme: dark) {
+      .logo-light { display: none; }
+      .logo-dark { display: block; }
+    }
+  </style>
+  <g class="logo-light">
+    <defs>
+      <linearGradient id="agentBlue-lt" x1="72" y1="74" x2="174" y2="438" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#1684FF"/><stop offset="1" stop-color="#0667E8"/>
+      </linearGradient>
+      <linearGradient id="reviewNode-lt" x1="279" y1="164" x2="438" y2="365" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#263348"/><stop offset="1" stop-color="#101827"/>
+      </linearGradient>
+      <filter id="nodeShadow-lt" x="253" y="145" width="214" height="230" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+        <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#0F172A" flood-opacity="0.18"/>
+      </filter>
+    </defs>
+    <g fill="url(#agentBlue-lt)">
+      <rect x="60" y="70" width="122" height="92" rx="24"/>
+      <rect x="60" y="210" width="122" height="92" rx="24"/>
+      <rect x="60" y="350" width="122" height="92" rx="24"/>
+    </g>
+    <g fill="#FFFFFF">
+      <path d="M111.3 104.2 97.6 116l13.7 11.8-5.8 6.8L84 116l21.5-18.6 5.8 6.8Zm19.4 23.6 13.7-11.8-13.7-11.8 5.8-6.8L158 116l-21.5 18.6-5.8-6.8Z"/>
+      <circle cx="102" cy="256" r="6.5"/><circle cx="121" cy="256" r="6.5"/><circle cx="140" cy="256" r="6.5"/>
+      <path transform="translate(-2.6 -17)" d="M108.7 382c-8.1 0-11.7 3.7-11.7 12.1v7.1c0 5.4-1.9 7.7-6.4 7.7h-4.1v8.2h4.1c4.5 0 6.4 2.3 6.4 7.7v7.1c0 8.4 3.6 12.1 11.7 12.1h5.2v-8h-3.1c-3.5 0-4.9-1.7-4.9-5.7v-7.5c0-5.1-1.8-8.2-5.8-9.8 4-1.6 5.8-4.7 5.8-9.8v-7.5c0-4 1.4-5.7 4.9-5.7h3.1v-8h-5.2Zm24.6 0v8h3.1c3.5 0 4.9 1.7 4.9 5.7v7.5c0 5.1 1.8 8.2 5.8 9.8-4 1.6-5.8 4.7-5.8 9.8v7.5c0 4-1.4 5.7-4.9 5.7h-3.1v8h5.2c8.1 0 11.7-3.7 11.7-12.1v-7.1c0-5.4 1.9-7.7 6.4-7.7h4.1v-8.2h-4.1c-4.5 0-6.4-2.3-6.4-7.7v-7.1c0-8.4-3.6-12.1-11.7-12.1h-5.2Z"/>
+    </g>
+    <g stroke="#0875F5" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M182 116h39c26 0 47 21 47 47v93"/><path d="M182 256h103"/>
+      <path d="M182 396h39c26 0 47-21 47-47v-93"/><path d="M268 256h41"/>
+    </g>
+    <circle cx="268" cy="256" r="13" fill="#0875F5"/>
+    <g filter="url(#nodeShadow-lt)"><circle cx="377" cy="256" r="92" fill="url(#reviewNode-lt)"/></g>
+    <circle cx="377" cy="256" r="75" stroke="#3A4B64" stroke-width="3"/>
+    <path d="m337 256 25.5 25.5L418 226" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g class="logo-dark">
+    <defs>
+      <linearGradient id="agentBlue-dk" x1="72" y1="74" x2="174" y2="438" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#42A0FF"/><stop offset="1" stop-color="#1677FF"/>
+      </linearGradient>
+      <linearGradient id="reviewNode-dk" x1="279" y1="164" x2="438" y2="365" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#FFFFFF"/><stop offset="1" stop-color="#DCEAFF"/>
+      </linearGradient>
+      <filter id="nodeGlow-dk" x="249" y="140" width="256" height="256" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+        <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#147BFF" flood-opacity="0.30"/>
+      </filter>
+    </defs>
+    <g fill="url(#agentBlue-dk)">
+      <rect x="60" y="70" width="122" height="92" rx="24"/>
+      <rect x="60" y="210" width="122" height="92" rx="24"/>
+      <rect x="60" y="350" width="122" height="92" rx="24"/>
+    </g>
+    <g fill="#FFFFFF">
+      <path d="M111.3 104.2 97.6 116l13.7 11.8-5.8 6.8L84 116l21.5-18.6 5.8 6.8Zm19.4 23.6 13.7-11.8-13.7-11.8 5.8-6.8L158 116l-21.5 18.6-5.8-6.8Z"/>
+      <circle cx="102" cy="256" r="6.5"/><circle cx="121" cy="256" r="6.5"/><circle cx="140" cy="256" r="6.5"/>
+      <path transform="translate(-2.6 -17)" d="M108.7 382c-8.1 0-11.7 3.7-11.7 12.1v7.1c0 5.4-1.9 7.7-6.4 7.7h-4.1v8.2h4.1c4.5 0 6.4 2.3 6.4 7.7v7.1c0 8.4 3.6 12.1 11.7 12.1h5.2v-8h-3.1c-3.5 0-4.9-1.7-4.9-5.7v-7.5c0-5.1-1.8-8.2-5.8-9.8 4-1.6 5.8-4.7 5.8-9.8v-7.5c0-4 1.4-5.7 4.9-5.7h3.1v-8h-5.2Zm24.6 0v8h3.1c3.5 0 4.9 1.7 4.9 5.7v7.5c0 5.1 1.8 8.2 5.8 9.8-4 1.6-5.8 4.7-5.8 9.8v7.5c0 4-1.4 5.7-4.9 5.7h-3.1v8h5.2c8.1 0 11.7-3.7 11.7-12.1v-7.1c0-5.4 1.9-7.7 6.4-7.7h4.1v-8.2h-4.1c-4.5 0-6.4-2.3-6.4-7.7v-7.1c0-8.4-3.6-12.1-11.7-12.1h-5.2Z"/>
+    </g>
+    <g stroke="#2D8CFF" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M182 116h39c26 0 47 21 47 47v93"/><path d="M182 256h103"/>
+      <path d="M182 396h39c26 0 47-21 47-47v-93"/><path d="M268 256h41"/>
+    </g>
+    <circle cx="268" cy="256" r="13" fill="#2D8CFF"/>
+    <g filter="url(#nodeGlow-dk)"><circle cx="377" cy="256" r="92" fill="url(#reviewNode-dk)"/></g>
+    <circle cx="377" cy="256" r="75" stroke="#A9C9F4" stroke-width="3"/>
+    <path d="m337 256 25.5 25.5L418 226" stroke="#142238" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
