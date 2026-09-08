@@ -49,6 +49,10 @@
       "description": "Read the diff a page at a time, broken on hunk boundaries; follow next_cursor, or ask for specific hunks/paths."
     },
     {
+      "name": "get_reviewer_instructions",
+      "description": "Reviewer role: read the repository's own .reviewer/ house rules, the extra questions this repo always wants asked."
+    },
+    {
       "name": "list_transcripts",
       "description": "Locate and rank the session transcript(s) for the repo."
     },

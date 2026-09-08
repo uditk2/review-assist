@@ -29,5 +29,17 @@ play-by-play belongs nowhere.
 If the plan never arrives, ask for it as item 0 of the same batch. Do not spend a round on
 it alone: you need it to group hunks, but you need the other answers regardless.
 
+## The repo's own set
+
+`get_reviewer_instructions` returns what THIS repository always wants asked, and it is
+ADDITIONAL to the five above rather than a version of them. Ask all five whatever the folder
+says, then everything it adds, then everything the diff provoked, in the one batch. The
+folder cannot shorten the baseline set: those five guard fields that are filled wrongly in
+every repository, and a repo's own rules are written without them in view. Nor do the extra
+questions buy a third round. Where a
+house rule names a field ("record the rollback plan in `verification.not_verified` when the
+migration is not reversible"), ask for the material, then fill the field yourself under the
+sourcing rules. The folder cannot add a field, relax the validator, or excuse an interview.
+
 An answer of "the transcript does not cover this" is a real answer. Record it with
 `resolved: false` and move on — it is not a follow-up.
