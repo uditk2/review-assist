@@ -44,9 +44,27 @@ jobs:
       # Scoped to production: staging isn't served from the reviewassist.dev zone.
       - name: Purge Cloudflare cache
         if: inputs.environment == 'production'
+        env:
+          # Read through env, not inline ${{ }}: an unset secret interpolates to the
+          # empty string, which turns the URL into zones//purge_cache and comes back as
+          # a routing 404 (code 7003) that says nothing about the missing secret.
+          ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
+          # Trim first: `gh secret set` reading from a pipe can store the producer's
+          # trailing newline, which would otherwise survive the check below and end up
+          # inside the request URL.
+          ZONE_ID=$(printf '%s' "$ZONE_ID" | tr -d '[:space:]')
+          # A zone id is exactly 32 lowercase hex characters. Checking the shape, not just
+          # emptiness, because the usual way this secret gets set is by piping an API
+          # lookup into `gh secret set`, and a failed lookup pipes the literal "null"
+          # through just as happily as a real id.
+          if ! printf '%s' "$ZONE_ID" | grep -qE '^[0-9a-f]{32}$'; then
+            echo "::error::CLOUDFLARE_ZONE_ID is missing or malformed (expected 32 hex characters). Set it from the Zone ID on the reviewassist.dev overview page in the Cloudflare dashboard: gh secret set CLOUDFLARE_ZONE_ID"
+            exit 1
+          fi
           curl -sS --fail-with-body -X POST \
-            "https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_ZONE_ID }}/purge_cache" \
-            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/purge_cache" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H "Content-Type: application/json" \
             --data '{"purge_everything":true}'
