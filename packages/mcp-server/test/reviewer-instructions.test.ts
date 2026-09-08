@@ -44,6 +44,25 @@ describe("a repository with no house rules", () => {
     mkdirSync(dir, { recursive: true });
     expect(summarizeReviewerInstructions(repo).present).toBe(false);
   });
+
+  it("agrees with the summary about an empty folder, so the two never contradict", () => {
+    // They disagreed: the summary asked whether there was anything readable, the reader
+    // asked only whether the directory existed. compute_diff then said absent while the
+    // tool answered present with zero sections and a how_to_use line pointing at nothing.
+    mkdirSync(dir, { recursive: true });
+    const r = readReviewerInstructions(repo);
+    expect(r.present).toBe(false);
+    expect(r.present).toBe(summarizeReviewerInstructions(repo).present);
+  });
+
+  it("is absent when the folder holds nothing it can read, and still lists what is there", () => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "checklist.yaml"), "- ask about proration\n");
+    const r = readReviewerInstructions(repo);
+    expect(r.present).toBe(false);
+    expect(r.files.map((f) => f.path)).toEqual(["checklist.yaml"]);
+    expect(r.omitted).toEqual(["checklist.yaml"]);
+  });
 });
 
 describe("reading the folder", () => {
