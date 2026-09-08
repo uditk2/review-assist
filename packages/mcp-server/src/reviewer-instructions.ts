@@ -116,19 +116,28 @@ export function readReviewerInstructions(
   opts: { files?: string[]; maxBytes?: number } = {}
 ): ReviewerInstructions {
   const dir = join(resolve(repo), REVIEWER_DIR);
-  let present = false;
+  let isDir = false;
   try {
-    present = statSync(dir).isDirectory();
+    isDir = statSync(dir).isDirectory();
   } catch {
-    present = false;
+    isDir = false;
   }
-  if (!present) {
+  if (!isDir) {
     return { dir, present: false, files: [], sections: [], omitted: [], total_bytes: 0 };
   }
 
   const files: InstructionFile[] = [];
   walk(dir, dir, 1, files);
   const total_bytes = files.reduce((n, f) => n + f.bytes, 0);
+  // `present` means "there are house rules to read", not "the directory exists" — and it
+  // means that in `summarizeReviewerInstructions` too. The two disagreed while the folder
+  // existed but held nothing readable, so `compute_diff` said absent and the tool then
+  // answered `present: true` with zero sections and a how_to_use line pointing at content
+  // that was not there. An empty folder is a repo with no house rules.
+  const present = files.some((f) => f.readable);
+  if (!present) {
+    return { dir, present: false, files, sections: [], omitted: files.map((f) => f.path), total_bytes };
+  }
 
   const wanted = opts.files?.length
     ? new Set(opts.files.map((p) => p.replace(/^\.reviewer\//, "").split(sep).join("/")))
@@ -169,7 +178,7 @@ export function readReviewerInstructions(
     sections.push({ path: f.path, content, ...(truncated ? { truncated: true } : {}) });
   }
 
-  return { dir, present: true, files, sections, omitted, total_bytes };
+  return { dir, present, files, sections, omitted, total_bytes };
 }
 
 /** Cheap presence check for `compute_diff`, which must not carry the content itself. */

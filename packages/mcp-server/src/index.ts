@@ -222,13 +222,18 @@ registerTool(
         "Anchor tour stops by hunk id — `\"anchors\": [\"H3\", \"H4\"]` — not by hand-copied line numbers. " +
         "The server expands them on submit, so the stored document is unchanged. Every hunk with " +
         "coverage_required=true must appear in some stop; one hunk may serve two stops.";
+      // The house-rules nudge is appended to BOTH arms, not just the opted-in one. Consent
+      // and house rules are independent facts about the repo, and a reviewer that has to
+      // settle consent first still records round one afterwards — under the old shape it
+      // did so having never been told the folder existed.
+      const houseRulesNote = houseRules.present
+        ? ` This repo ships ${houseRules.files} reviewer instruction file(s) in ${REVIEWER_DIR}/. Call get_reviewer_instructions BEFORE you record round one: they name what this repository always wants asked, in addition to your baseline set and the questions the diff provoked, and a question you skip there cannot be recovered in round two.`
+        : "";
       envelope.next =
-        consent === "unknown"
+        (consent === "unknown"
           ? "This repo is not opted in yet. Resolve consent NOW, before writing the document: present the choice to the user and call set_consent({ repo, decision }). Submitting first only wastes the document."
-          : "Pass `run_id` to read_diff, record_interview_round and submit_document. Do not pass `repo` to those tools — the run already knows it." +
-            (houseRules.present
-              ? ` This repo ships ${houseRules.files} reviewer instruction file(s) in ${REVIEWER_DIR}/. Call get_reviewer_instructions BEFORE you record round one: they name what this repository always wants asked, in addition to your baseline set and the questions the diff provoked, and a question you skip there cannot be recovered in round two.`
-              : "");
+          : "Pass `run_id` to read_diff, record_interview_round and submit_document. Do not pass `repo` to those tools — the run already knows it.") +
+        houseRulesNote;
 
       return textResult(JSON.stringify(envelope));
     } catch (e) {
