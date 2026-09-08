@@ -109,13 +109,62 @@ jobs:
       # whoever controls that GitHub account. github-oidc proves it from the workflow,
       # so there is no device-code step and no cached token on anyone's laptop, and the
       # registry entry tracks each release instead of drifting.
+      #
+      # Runs on release_only too, unlike the npm publish above. When this step fails the
+      # release is already on npm and tagged, so the only way back is a run that skips
+      # the publish and finishes the registration — which is exactly release_only. The
+      # guard below keeps that rerun safe.
       - name: Publish to the MCP registry
-        if: ${{ !inputs.dry_run && !inputs.release_only }}
+        if: ${{ !inputs.dry_run }}
+        env:
+          V: ${{ steps.v.outputs.version }}
+          SERVER_NAME: io.github.uditk2/review-assist-mcp
         run: |
+          # The registry refuses to register a version it cannot find on npm, and npm does
+          # not serve a new version to outside readers the instant `npm publish` returns.
+          # v1.0.3 published, tagged, and then failed here with a 404 on its own package,
+          # leaving the release half-finished: on npm, tagged, absent from the registry,
+          # and with no GitHub release because that step never ran.
+          for i in $(seq 1 30); do
+            # -f not -sSf: a 404 here is the expected state while waiting, and -S would
+            # print a curl error line on every one of the thirty polls.
+            if curl -sf -o /dev/null "https://registry.npmjs.org/review-assist-mcp/$V"; then
+              echo "npm is serving $V"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "::error::npm still does not serve review-assist-mcp@$V after 5 minutes"
+              exit 1
+            fi
+            echo "waiting for npm to serve $V ($i/30)"
+            sleep 10
+          done
+
+          # A version already registered is success, not a duplicate to force through.
+          # Without this a release_only rerun would fail on the versions it did manage to
+          # publish, which is the common case when only the release step needs redoing.
+          registered=$(curl -sS "https://registry.modelcontextprotocol.io/v0/servers?search=$SERVER_NAME" \
+            | jq -r --arg n "$SERVER_NAME" --arg v "$V" \
+                '[.servers[]? | (.server // .) | select(.name == $n and .version == $v)] | length')
+          if [ "${registered:-0}" -gt 0 ]; then
+            echo "$SERVER_NAME $V is already registered, nothing to do"
+            exit 0
+          fi
+
           curl -sSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
             | tar xz mcp-publisher
           ./mcp-publisher login github-oidc
-          ./mcp-publisher publish
+          # Retry the publish itself: the npm check above reads npm directly, while the
+          # registry reads it from its own side, so the two can disagree for a few seconds.
+          for i in 1 2 3; do
+            if ./mcp-publisher publish; then
+              exit 0
+            fi
+            echo "publish attempt $i failed"
+            sleep 20
+          done
+          echo "::error::mcp-publisher publish failed after 3 attempts"
+          exit 1
 
       - name: Create the GitHub release
         if: ${{ !inputs.dry_run }}
