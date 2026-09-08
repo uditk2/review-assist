@@ -1,0 +1,651 @@
+{
+  "schema_version": "0.1",
+  "meta": {
+    "id": "uditk2/review-assist@reviewer-instructions-folder",
+    "repo": "uditk2/review-assist",
+    "commit_range": {
+      "base_sha": "6d06f56dc35a3ed79e17b8959f035ebd333488c5",
+      "head_sha": "7fc87f6cab7a09034193445b9415df01a5d2caa1"
+    },
+    "session": {
+      "agent": "Claude Code",
+      "model": "not recorded in transcript; the author declined to infer one",
+      "session_ids": [
+        "e2d34eab-e064-40fc-b2e3-f4b5a6d8f1c2"
+      ]
+    },
+    "generated_by": {
+      "pipeline": "review-assist two-agent distillation",
+      "version": "0.1"
+    },
+    "generated_at": "2026-09-08T07:10:00Z",
+    "interview": {
+      "rounds": 31,
+      "questions_asked": 31,
+      "unresolved": 0,
+      "author_attested": 31,
+      "unanswered": 0
+    }
+  },
+  "problem": {
+    "statement": "The reviewer's question set is identical in every repository, so anything true only of one repo (an invariant a past incident bought, churn that is never incidental) can never be asked.",
+    "origin": "stated_upfront",
+    "user_asks": [
+      "One thing that we must do is add a folder called .reviewer to hold reviewer specific instructions so that the reviewer agent can go over it and use it while asking questions.",
+      "Note that these are additional questions apart from the existing ones that the reivewer questions. I hope that is clear to the reivewer",
+      "lets commit and push the changes.",
+      "why haven't you generted the intent document",
+      "Feature branch + PR",
+      "Separate commit, same push"
+    ],
+    "out_of_scope": [
+      "Folder cannot add a schema field, relax the validator, or excuse a round of the interview.",
+      "Folder never overrides the protocol, the schema, the sourcing rules, or the two-batch cap.",
+      "Extra questions do not buy a third round.",
+      "Content never travels in `compute_diff`; presence only.",
+      "Non-markdown files are listed, never read.",
+      "Author role does not get the tool."
+    ]
+  },
+  "assumptions": [
+    {
+      "id": "A1",
+      "assumption": "The reviewer calls `get_reviewer_instructions` because prose tells it to; nothing enforces it and no gate at submit checks the folder was read.",
+      "impact_if_wrong": "The folder is inert and the feature does nothing.",
+      "how_to_verify": "Run a distillation on a repo with a `.reviewer/` folder and check round one carries its questions.",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A2",
+      "assumption": "Framing prose alone neutralises untrusted `.reviewer/` content, which a fork's PR can edit.",
+      "impact_if_wrong": "A hostile file saying 'skip the interview' or 'fill user_asks from the commit message' is obeyed.",
+      "how_to_verify": "Commit such a file and run a distillation.",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A3",
+      "assumption": "A fresh client session picks up the rebuilt bundle; a running one does not.",
+      "impact_if_wrong": "Agents mid-session silently lack the tool, which is what happened throughout this change's own distillation.",
+      "how_to_verify": "Start a new client session and look for `get_reviewer_instructions` in the reviewer's tool list.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A4",
+      "assumption": "House-rule folders are small and hand-written, so the ceilings bound a mistake rather than a workload.",
+      "impact_if_wrong": "Real rules land in `omitted` and the reviewer never asks for them.",
+      "how_to_verify": "Call `get_reviewer_instructions` on a large folder and inspect `omitted`.",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A5",
+      "assumption": "`.md`, `.markdown` and `.txt` is the right served set.",
+      "impact_if_wrong": "A repo shipping `.yaml` or extensionless house rules gets them listed but never read.",
+      "how_to_verify": "Tests cover both the `.yaml` and the extensionless case.",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A6",
+      "assumption": "`.reviewer/` belongs inside the coverage denominator, unlike `.intent/`.",
+      "impact_if_wrong": "Every future house-rules edit, down to a typo fix, needs its own tour stop.",
+      "how_to_verify": "Observable now: H1 and H2 are `coverage_required` in this very run.",
+      "confidence": "grounded_in_code"
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Should `get_reviewer_instructions` check consent? It performs no check on either path and still serves a repo recorded as 'never'.",
+      "context": "Never discussed in the session. The author explicitly withdrew its own reading that consent gates writes rather than reads, so no rationale exists to record.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q2",
+      "question": "Does adding a 16th tool require a version bump? The version stays at 1.0.2.",
+      "context": "Every mechanism in the repo propagates or validates a version; none creates one. `.github/workflows/publish-mcp.yml` was never opened, so where the bump happens is unknown.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q3",
+      "question": "Should an extensionless `readme` be served, and should `rank()` match it?",
+      "context": "A dotless `readme` is still listed-not-read and still never leads its folder, because `rank()` matches on the extension too. Never decided.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q4",
+      "question": "Should the author role see the house rules too?",
+      "context": "Reviewer-only was decided in one line and tested in the same breath. Whether an author benefits from knowing what the repo will be asked about was never weighed.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q5",
+      "question": "What is the cost of keeping `.reviewer/` in the coverage denominator?",
+      "context": "Nobody weighed a typo fix in the house rules forcing a tour stop.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q6",
+      "question": "Should this reuse an existing agent-instruction convention such as CLAUDE.md or AGENTS.md?",
+      "context": "Neither is mentioned anywhere in the session.",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q7",
+      "question": "Should submit enforce that the folder was actually read?",
+      "context": "Never raised. Also never raised: per-directory scoping, a schema field for house rules, a format version for the folder, and any GitHub App or viewer surfacing.",
+      "raised_by": "reviewer_agent"
+    }
+  ],
+  "approach": {
+    "requirements": [
+      {
+        "text": "Add a folder named `.reviewer` holding reviewer-specific instructions.",
+        "source": "user, opening ask, verbatim including the folder name"
+      },
+      {
+        "text": "House rules are additional to the questions the reviewer already asks, and the reviewer must be clear on it.",
+        "source": "user, second turn"
+      },
+      {
+        "text": "Land the work on a feature branch with a PR.",
+        "source": "user, answering a structured question"
+      },
+      {
+        "text": "Ship the pre-existing favicon work as a separate commit on the same push.",
+        "source": "user, answering a structured question"
+      },
+      {
+        "text": "The reviewer has no filesystem tools; anything it learns arrives through a bounded tool.",
+        "source": "existing role-split design, read in-session"
+      },
+      {
+        "text": "Every registered tool must also be declared in manifest.json.",
+        "source": "pre-commit release-consistency hook, which rejected the first commit"
+      }
+    ],
+    "trials": [
+      {
+        "what": "Carry the house-rules content inside `compute_diff`'s own response.",
+        "outcome": "Never built; the first wiring edit already put presence-only into the envelope.",
+        "why_abandoned": "A repo can grow its house rules until the `run_id` falls out of a truncated result, and a reviewer that loses the handle cannot submit."
+      },
+      {
+        "what": "Sort files in the folder by `localeCompare` alone.",
+        "outcome": "Writing the ordering test exposed the question; `rank()` added so README sorts first.",
+        "why_abandoned": "A truncated budget would leave the reader with the details and none of the framing."
+      },
+      {
+        "what": "State the additive framing once, in questions.md.",
+        "outcome": "User said it was not clear; framing now appears at seven points of contact plus a test pinning it.",
+        "why_abandoned": "The reviewer meets the folder at the tool description and at reviewer.md step 2 before it ever reads questions.md."
+      },
+      {
+        "what": "Pin the additive framing with a strict regex.",
+        "outcome": "Test failed on a line wrap.",
+        "why_abandoned": "The prompt is hard-wrapped; replaced with a whitespace-tolerant match."
+      },
+      {
+        "what": "Commit the favicon first, then the `.reviewer` work.",
+        "outcome": "Pre-commit hook rejected it.",
+        "why_abandoned": "The hook blocks any commit while manifest.json is dirty, and that edit belongs with the `.reviewer` commit."
+      },
+      {
+        "what": "Register the tool without declaring it in manifest.json.",
+        "outcome": "Hook failed with 'tools registered but missing from manifest: get_reviewer_instructions'.",
+        "why_abandoned": "An undeclared tool ships a short list to `.mcpb` clients; the repo has hit this before at eight-versus-ten."
+      }
+    ],
+    "adopted": {
+      "summary": "- Adds a `.reviewer/` folder convention: repo-committed markdown naming the extra questions that repository always wants asked.\n- Serves it through a new reviewer-only MCP tool, `get_reviewer_instructions`, bounded and refetchable by name.\n- Reports presence only on `compute_diff`, with a nudge to read the folder before round one.\n- Rewrites the reviewer role prose, the questions set and the generation guide so house rules read as additional, never as a replacement.\n- Dogfoods the convention: this repo ships its own seven house rules and a verification file.",
+      "rationale": "- The server serves the folder because the reviewer has no filesystem tools; handing it `Read` would open the door to the transcript, which is exactly what the split forbids.\n- `compute_diff` carries presence only, so a growing folder can never push the `run_id` out of a truncated result.\n- The additive framing is repeated at every point of contact because the reviewer meets the folder at the tool description before the prompt it read earlier is relevant.\n- Reviewer-only, because house rules are questions and the author's job is answering them.\n- README sorts first so it survives a byte budget the rest of the folder does not.\n- `.reviewer/` stays in the coverage denominator: unlike `.intent/`, it is not the document's own output, and changing it changes review behaviour for every future PR.\n- Untrusted content is handled by framing plus one named refusal case in the prompt, and by nothing else."
+    }
+  },
+  "tour": [
+    {
+      "id": "T1",
+      "title": "The loader: reading `.reviewer/` under a budget",
+      "role": "core",
+      "what": "- Adds `readReviewerInstructions`, which walks the folder and returns files, sections, `omitted` and `total_bytes`.\n- Adds `summarizeReviewerInstructions`, a cheap presence check for `compute_diff`.\n- Ranks README first, then files by name, then subfolders, so a citation means the same thing tomorrow.\n- Cuts a single file at 64,000 bytes and the whole response at the caller's budget, marking `truncated` and naming the remainder in `omitted`.\n- Serves `.md`, `.markdown` and `.txt` only; anything else is listed but not read.",
+      "why": "- The reviewer has no filesystem tools by design, so house rules must arrive through a bounded tool like the diff does.\n- README-first is not cosmetic: it makes the framing the file that survives a budget the details do not.\n- The ceilings bound a mistake, not a workload; they were picked, not measured, and none of the three has a test.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/reviewer-instructions.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 239
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Whether `omitted` is a contract a caller can act on, or a way to lose rules silently."
+    },
+    {
+      "id": "T2",
+      "title": "`compute_diff` reports the folder exists, never what is in it",
+      "role": "core",
+      "what": "- Adds a `reviewer_instructions` key to the `compute_diff` envelope carrying presence, file count and byte total.\n- Appends a nudge to `envelope.next` telling the reviewer to read the folder before recording round one.",
+      "why": "- Content deliberately stays out of this response: a repo could otherwise grow its house rules until the `run_id` falls out of a truncated result.\n- Round one is the only round these questions can land in, because the two-batch cap means a rule picked up later arrives too late.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 152,
+            "old_lines": 6,
+            "new_start": 159,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 167,
+            "old_lines": 6,
+            "new_start": 175,
+            "new_lines": 10
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 211,
+            "old_lines": 10,
+            "new_start": 223,
+            "new_lines": 18
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "That the nudge now hangs off both consent arms, not just the opted-in one."
+    },
+    {
+      "id": "T3",
+      "title": "`get_reviewer_instructions`, granted to the reviewer alone",
+      "role": "core",
+      "what": "- Registers the tool, taking either a `run_id` or a bare `repo`, plus optional `files` and `max_bytes`.\n- Returns the folder's content with an advice line framing it as reference material.\n- Adds the tool to the reviewer's `ROLE_TOOLS` and `TOOL_BLURB`; the author does not get it.",
+      "why": "- House rules are questions, and the author's job is to answer them, so only the reviewer needs them.\n- The content is untrusted (a fork's PR can edit it), so the description frames it as reference that never overrides the protocol, the schema or the sourcing rules.\n- Nothing enforces any of that: obedience happens in the agent, not the server.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 7,
+            "old_lines": 6,
+            "new_start": 7,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 68,
+            "old_lines": 6,
+            "new_start": 69,
+            "new_lines": 12
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 280,
+            "old_lines": 6,
+            "new_start": 300,
+            "new_lines": 58
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 299,
+            "old_lines": 6,
+            "new_start": 299,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/roles.ts",
+          "hunk": {
+            "old_start": 322,
+            "old_lines": 6,
+            "new_start": 323,
+            "new_lines": 8
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "The bare-`repo` path performs no consent check and serves a repo recorded as 'never' (Q1)."
+    },
+    {
+      "id": "T4",
+      "title": "Making the house rules read as additional, not as the whole set",
+      "role": "core",
+      "what": "- Rewrites reviewer.md step 2 to read the folder, and step 3 to ask the union of baseline, house rules and diff questions.\n- Adds 'The repo's own set' to questions.md, stating the folder cannot shorten the baseline set.\n- Adds a house-rules paragraph to the generation guide ahead of batch one.\n- Renumbers reviewer.md steps 3-5 to 4-6, forced by the new step 2.",
+      "why": "- Driven by a user turn predicting the failure mode, not by an observed one: no reviewer was ever seen reading a short house-rules file and shipping a short interview.\n- The named risk is that a folder is written by maintainers without the baseline set in view, so it reads as complete when it is not.\n- Record all of this as untested prose: the repo's own house rule says an answer describing new wording rather than an old failure means the change is unverified.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/agents/_roles/questions.md",
+          "hunk": {
+            "old_start": 29,
+            "old_lines": 5,
+            "new_start": 29,
+            "new_lines": 17
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 40,
+            "old_lines": 15,
+            "new_start": 40,
+            "new_lines": 36
+          }
+        },
+        {
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 63,
+            "old_lines": 18,
+            "new_start": 84,
+            "new_lines": 18
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/guide.ts",
+          "hunk": {
+            "old_start": 42,
+            "old_lines": 7,
+            "new_start": 42,
+            "new_lines": 18
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "H9 is pure renumbering, but it is the tail of H8 rather than churn; do not read it alone."
+    },
+    {
+      "id": "T5",
+      "title": "This repo's own house rules, dogfooded",
+      "role": "core",
+      "what": "- Adds `.reviewer/README.md` with seven rules: what a prompt change fixed, tool descriptions as prose, which half of a duplicated fact moved, what bounds a response, schema changes are never incidental, transcript evidence behind an interview claim, and consent paths.\n- Adds `.reviewer/verification.md` with three: a rebuilt server is not a reloaded one, prompt changes are not covered by `npm test`, and the viewer is verified in a browser or not at all.",
+      "why": "- Written by the assistant in one pass from reading this codebase; the user neither supplied nor reviewed them.\n- Only one rule has an incident on record: the duplicated-fact rule, whose check script notes 'The manifest said eight while the server registered ten', and which this session then reproduced.\n- The response-bounds and consent rules cite incidents that read as real but are not narrated in this session, so they are not attested here.\n- Two rules are purely structural, with no incident behind them: the schema rule and the consent rule.",
+      "anchors": [
+        {
+          "path": ".reviewer/README.md",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 56
+          }
+        },
+        {
+          "path": ".reviewer/verification.md",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 18
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Two of these rules caught defects in the very diff that introduced them, and two were violated by it."
+    },
+    {
+      "id": "T6",
+      "title": "Declaring the tool in the release manifest",
+      "role": "supporting",
+      "what": "- Adds a `get_reviewer_instructions` entry to manifest.json's tools array.",
+      "why": "- Not planned: the pre-commit hook rejected the first commit with 'tools registered but missing from manifest'.\n- The array is hand-maintained on purpose; `check-release-consistency.mjs` validates it and does not emit it, and the only generator touching the file syncs the version.\n- Without it, `.mcpb` clients would see a short tool list.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/manifest.json",
+          "hunk": {
+            "old_start": 48,
+            "old_lines": 6,
+            "new_start": 48,
+            "new_lines": 10
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "The version stays at 1.0.2 with a 16th tool, and nobody raised a bump (Q2)."
+    },
+    {
+      "id": "T7",
+      "title": "Tests: the loader's contract and the framing that could be edited away",
+      "role": "supporting",
+      "what": "- Adds `reviewer-instructions.test.ts` covering absence, an empty folder, ordering, named subsets, the `.reviewer/` path prefix, non-markdown and extensionless files, dotfiles, the byte budget, and all three advice-line branches.\n- Adds two tests to roles.test.ts: the reviewer-only grant, and the additive framing wording in the rendered reviewer definition.",
+      "why": "- The framing test exists because the wording lives in prose that a future edit could quietly remove.\n- It pins that the wording is present; it does not verify the wording works, and no test can, because obedience happens in the agent.\n- No test feeds hostile content through the reader.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/test/reviewer-instructions.test.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 173
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/roles.test.ts",
+          "hunk": {
+            "old_start": 59,
+            "old_lines": 6,
+            "new_start": 59,
+            "new_lines": 26
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "What the suite cannot reach: no agent runs anywhere in it."
+    },
+    {
+      "id": "T8",
+      "title": "Documenting the convention and the coverage decision",
+      "role": "supporting",
+      "what": "- Adds a README section teaching the `.reviewer/` folder, with the layout and the caveat that most repos need none.\n- Adds an ARCHITECTURE paragraph stating the reviewer's questions come from three places, why the tool is reviewer-only, and that `.reviewer/` stays in the coverage denominator.",
+      "why": "- The exclusion mechanism for `.intent/` was read in-session and deliberately not reused: `.intent/` is excluded because a document cannot explain the file it is, which does not apply here.\n- A change to the house rules changes review behaviour for every future PR, so it should be justified like any other change.",
+      "anchors": [
+        {
+          "path": "README.md",
+          "hunk": {
+            "old_start": 110,
+            "old_lines": 6,
+            "new_start": 110,
+            "new_lines": 24
+          }
+        },
+        {
+          "path": "docs/ARCHITECTURE.md",
+          "hunk": {
+            "old_start": 58,
+            "old_lines": 6,
+            "new_start": 58,
+            "new_lines": 18
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Nobody weighed the cost of a typo fix in the house rules forcing a tour stop (Q5)."
+    },
+    {
+      "id": "T9",
+      "title": "Four defects this interview found, fixed before the document existed",
+      "role": "core",
+      "what": "- Makes `present` mean 'there are house rules to read' in both the reader and the summary, which previously disagreed about a folder that exists but holds nothing readable.\n- Appends the house-rules nudge to both consent arms, so a repo that never opted in is still told the folder exists.\n- Extracts the advice line into `howToUse` with three branches, so a folder holding only non-readable files is no longer told it does not exist while its files are listed.\n- Types a dotless filename as having no extension, instead of taking its last character.",
+      "why": "- Two were found by reading the diff cold; two only became findable after the first pair was fixed, by drafting this document against the corrected code.\n- The consent-arm defect is exactly what this change's own new house rule predicts, applied to the change that introduced it.\n- The advice-line defect was collateral from the first fix: changing what `present` means did not revisit every consumer of it.\n- The extension fix changes nothing observable; neither an 'e' nor an empty string is served, and a dotless `readme` still does not lead its folder because `rank()` matches on the extension too.",
+      "anchors": [
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 211,
+            "old_lines": 10,
+            "new_start": 223,
+            "new_lines": 18
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 280,
+            "old_lines": 6,
+            "new_start": 300,
+            "new_lines": 58
+          }
+        },
+        {
+          "path": "packages/mcp-server/src/reviewer-instructions.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 239
+          }
+        },
+        {
+          "path": "packages/mcp-server/test/reviewer-instructions.test.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 173
+          }
+        }
+      ],
+      "provenance": "confirmed_in_interview",
+      "attention": "The consent-arm fix has no test and is verified by reading; the other three now have tests."
+    },
+    {
+      "id": "T10",
+      "title": "Favicon, unrelated to the feature",
+      "role": "incidental",
+      "what": "- Adds `favicon.svg` with light and dark variants and links it from the viewer's index.html.",
+      "why": "- Pre-existing uncommitted work in the tree before this session began; nothing to do with `.reviewer/`.\n- Not swept in: the user was asked and chose 'Separate commit, same push', so it is its own commit on this branch.\n- Never inspected in this session beyond `git diff --stat`.",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/favicon.svg",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 71
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 6,
+            "old_lines": 6,
+            "new_start": 6,
+            "new_lines": 7
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Never opened in a browser, so the prefers-color-scheme block is unexercised."
+    }
+  ],
+  "verification": {
+    "performed": [
+      {
+        "kind": "typecheck",
+        "description": "npm --prefix packages/mcp-server run typecheck",
+        "result": "clean"
+      },
+      {
+        "kind": "build",
+        "description": "npm --prefix packages/mcp-server run build",
+        "result": "clean"
+      },
+      {
+        "kind": "test",
+        "description": "npx vitest run",
+        "result": "162 passing at head; 154 after the first implementation, 155 with the framing test, 157 and 158 after the first two fix commits"
+      },
+      {
+        "kind": "lint",
+        "description": "npm run check:release",
+        "result": "release consistency ok, 1.0.2, 16 tools, io.github.uditk2/review-assist-mcp"
+      },
+      {
+        "kind": "test",
+        "description": "husky pre-commit hook",
+        "result": "failed once with 'tools registered but missing from manifest: get_reviewer_instructions', passed after the manifest entry"
+      },
+      {
+        "kind": "manual",
+        "description": "Live stdio harness: two throwaway node scripts spawning the freshly built server as a raw MCP client, once as reviewer and once as author",
+        "result": "reviewer had get_reviewer_instructions and not read_transcript; author did not have the tool; folder read as README.md then verification.md; compute_diff carried presence and the nudge",
+        "evidence": "Ran before all three fix commits, so it tests a binary that no longer matches the branch."
+      },
+      {
+        "kind": "manual",
+        "description": "Two-round reviewer interview against the diff, 31 questions, all author-attested",
+        "result": "four defects found and fixed on the branch before the document existed"
+      }
+    ],
+    "added_tests": [
+      {
+        "covers": "Loader contract: absence, empty folder, ordering, named subsets, path prefix, non-markdown and extensionless files, dotfiles, byte budget, and all three advice-line branches",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/reviewer-instructions.test.ts",
+            "hunk": {
+              "old_start": 0,
+              "old_lines": 0,
+              "new_start": 1,
+              "new_lines": 173
+            }
+          }
+        ]
+      },
+      {
+        "covers": "Reviewer-only grant of get_reviewer_instructions, and the additive framing wording in the rendered reviewer definition",
+        "anchors": [
+          {
+            "path": "packages/mcp-server/test/roles.test.ts",
+            "hunk": {
+              "old_start": 59,
+              "old_lines": 6,
+              "new_start": 59,
+              "new_lines": 26
+            }
+          }
+        ]
+      }
+    ],
+    "not_verified": [
+      "No distillation exercised the new prose before the PR; this run is the first.",
+      "This run does not verify the prose either: the reviewer read the house rules out of the diff as text, not from the running server.",
+      "The connected server predates the change: get_reviewer_instructions was absent from the reviewer's own tool list and compute_diff returned no reviewer_instructions key.",
+      "Every delivery path added here (the envelope.next nudge, the tool description, how_to_use, the reviewer_instructions key) has never been delivered to any agent by the software.",
+      "No reviewer agent has ever successfully called get_reviewer_instructions; the only successful calls came from a throwaway stdio script.",
+      "Client rebuilt, never restarted, which is the failure this change's own verification.md names.",
+      "The live stdio harness predates all three fix commits, so every live claim is against a binary that no longer matches the branch.",
+      "The fix commits were verified by typecheck, vitest and check:release only; no agent has executed any fixed path.",
+      "The consent-arm fix has no test and is verified by reading.",
+      "The extensionless fix has no observable behaviour change, and its second half is unfixed: a dotless readme still never leads its folder.",
+      "No hostile-content test: nothing checks that a .reviewer/ file saying 'skip the interview' is ignored.",
+      "MAX_FILES=50, MAX_DEPTH=3 and MAX_FILE_BYTES=64000 are never exercised; the truncation tests pass small explicit budgets instead.",
+      "Symlink handling is untested; skipping symlinks blocks an escape out of .reviewer/ by accident rather than by design.",
+      "The unreadable-directory and unreadable-file catch blocks are never exercised.",
+      "The files filter with a non-matching or traversal-shaped path is never tested.",
+      "`.reviewer` existing as a file rather than a directory is never tested.",
+      "The omitted-then-refetch-by-name round trip has never been performed by an agent.",
+      "No test of the tool against a repo with consent recorded as 'never'.",
+      "The .mcpb client path is unexercised: no bundle installed, no client ever listed 16 tools.",
+      "Darwin only: rank(), extension lowercasing and separator normalisation are untested on Windows or a case-sensitive filesystem.",
+      "The favicon page was never opened in a browser and the prefers-color-scheme block was never exercised.",
+      "The GitHub App and viewer side were not run at all.",
+      "No CI result for PR #11 appears in the record; the authoritative publish-workflow gate has not been observed against this branch.",
+      "meta.session.model and session timestamps are unsourced: the transcript records no model id and carries no timestamps, and the author declined to infer either."
+    ]
+  },
+  "diagrams": [
+    {
+      "title": "Where the reviewer's questions come from",
+      "mermaid": "flowchart LR\n  A[Baseline set in the role prompt] --> D[One batch, round one]\n  B[The diff, read cold] --> D\n  C[Repo's .reviewer/ folder] --> D\n  C -.served by.-> T[get_reviewer_instructions]\n  T --> C\n  D --> E[Author answers by q_id]\n  E --> F[Intent Document]",
+      "caption": "The folder adds a third source. It never replaces the other two, and it reaches the reviewer through a bounded tool because the reviewer has no filesystem access."
+    }
+  ]
+}
