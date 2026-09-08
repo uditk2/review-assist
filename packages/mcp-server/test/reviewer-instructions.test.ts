@@ -14,6 +14,7 @@ import { join } from "node:path";
 import {
   readReviewerInstructions,
   summarizeReviewerInstructions,
+  howToUse,
   REVIEWER_DIR,
 } from "../src/reviewer-instructions.js";
 
@@ -137,5 +138,36 @@ describe("bounding the response", () => {
     const r = readReviewerInstructions(repo, { maxBytes: 4_000 });
     expect(r.sections[0].content.length).toBe(4_000);
     expect(r.sections[0].truncated).toBe(true);
+  });
+});
+
+describe("the advice line served beside the content", () => {
+  it("distinguishes a folder with nothing readable from no folder at all", () => {
+    // The bug this replaced: keyed off `present` alone, a repo shipping only
+    // .reviewer/checklist.yaml was told "No .reviewer/ folder in this repository" in the
+    // same response whose `files` array listed checklist.yaml.
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "checklist.yaml"), "- ask about proration\n");
+    const line = howToUse(readReviewerInstructions(repo));
+    expect(line).toContain("exists here but holds nothing this tool reads");
+    expect(line).not.toContain("No .reviewer/ folder");
+  });
+
+  it("names the extensions it serves, so the reader can rename a file and be read", () => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "checklist.yaml"), "x\n");
+    expect(howToUse(readReviewerInstructions(repo))).toContain(".md");
+  });
+
+  it("says the folder is absent only when it really is", () => {
+    expect(howToUse(readReviewerInstructions(repo))).toContain(`No ${REVIEWER_DIR}/ folder`);
+  });
+
+  it("gives the additive framing when there are rules to read", () => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "README.md"), "ask about the migration\n");
+    const line = howToUse(readReviewerInstructions(repo));
+    expect(line).toContain("ADD what applies");
+    expect(line).toContain("baseline set");
   });
 });
