@@ -299,6 +299,7 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
     "get_generation_guide",
     "compute_diff",
     "read_diff",
+    "get_reviewer_instructions",
     "record_interview_round",
     "get_answers",
     "submit_document",
@@ -322,6 +323,8 @@ const TOOL_BLURB: Record<string, string> = {
   compute_diff:
     "the run handle, the numbered hunk index and the SHAs. Opens the run. Returns no diff text.",
   read_diff: "the diff itself, paged by hunk. Follow `next_cursor` to the end, or ask for hunks/paths.",
+  get_reviewer_instructions:
+    "this repo's own `.reviewer/` house rules: what it always wants asked. Reference material, not a second protocol. Most repos have none.",
   record_interview_round: "your questions. Records them and hands back a `q_id` each; the author reads them off the run itself.",
   get_questions: "the reviewer's questions, with their `q_id`s. Read them here rather than waiting to be told them.",
   get_answers: "the author's answers, in the author's own words. This is where the interview reaches you.",

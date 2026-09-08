@@ -59,6 +59,26 @@ describe("rendered definitions", () => {
     expect(ROLE_TOOLS.author).not.toContain("submit_document");
   });
 
+  it("give the repo's house rules to the reviewer only, since they are questions the author answers", () => {
+    expect(ROLE_TOOLS.reviewer).toContain("get_reviewer_instructions");
+    expect(ROLE_TOOLS.author).not.toContain("get_reviewer_instructions");
+    // It is the reviewer's one read of repository content, so the prompt has to say what
+    // that content may and may not do. Untrusted text arriving through a tool is exactly
+    // the shape of an instruction injection.
+    expect(bundle.roles.reviewer!.definition).toContain(".reviewer/");
+  });
+
+  it("tell the reviewer the house rules ADD to the baseline set rather than replace it", () => {
+    // The failure this guards: a repo ships a three-line .reviewer/ folder, the reviewer
+    // reads it as the question set, and the five baseline questions go unasked. The folder
+    // is written without them in view, so it can never be the whole set.
+    const def = bundle.roles.reviewer!.definition;
+    expect(def).toContain("EXTRA questions");
+    // Whitespace-tolerant: the prompt is hard-wrapped, so "baseline set below" spans a line.
+    expect(def).toMatch(/baseline\s+set below[\s\S]{0,120}house rules/);
+    expect(def).toContain("They replace neither.");
+  });
+
   it("let each role read the other's half of the interview, and only that half", () => {
     // The run is the channel between two agents that cannot talk. Before these, the
     // questions and the answers both had to be hand-carried as chat text by whoever

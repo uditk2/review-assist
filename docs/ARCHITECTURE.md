@@ -58,6 +58,18 @@ the Author's behalf is recorded too, but marked reviewer-sourced rather than att
 they set up the split and the consent list themselves, and are called by the orchestrating
 agent rather than the Author or Reviewer.
 
+The Reviewer's questions come from three places: the baseline set carried in its role
+prompt, the diff it just read, and the repository's own `.reviewer/` folder, served by
+`get_reviewer_instructions`. That folder is the only repository content the Reviewer reads
+besides the diff. It has no filesystem tools, because reaching the transcript is exactly
+what the split forbids, so house rules arrive through a bounded tool like everything else.
+It is granted to the Reviewer alone: house rules are questions, and the Author's job is to
+answer them. The content is untrusted (a fork's pull request can edit it), so both the tool
+description and the role prompt frame it as reference material that adds questions and
+cannot override the protocol, the schema, or the sourcing rules. `.reviewer/` stays inside
+the coverage denominator: unlike `.intent/`, a change to the house rules is an ordinary
+change that the document should explain.
+
 `submit_document` first applies repository consent (`always`, `once`, or `never`). On
 allow, interview attestation and the five local checks are sibling gates: schema,
 coverage, staleness, cross-references, and secret redaction. Only then is the Intent

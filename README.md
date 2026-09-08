@@ -110,6 +110,24 @@ rm -rf ~/.review-assist                    # consent decisions and local run sta
   <img src="docs/how-it-works.svg" alt="How it works, in three steps. 1 Code, on your machine: your agent writes the change and an Intent Document that explains it — the ask, the assumptions, a tour of the diff — committed alongside the code; the transcript never leaves the machine. 2 Validate, on GitHub with no code stored: a GitHub App proves the document covers the diff (schema, staleness, cross-refs, redaction), reports coverage such as 5 of 5 changes explained, and posts an Open guided review link on the pull request. 3 Review, in the reviewer's browser: check the assumptions first — flagging one posts it to the PR discussion — then take the anchored tour and approve or request changes; the verdict posts to the pull request as you, and merging stays on GitHub." width="620">
 </p>
 
+### Teaching it your repository's questions
+
+The reviewer asks a baseline set that is the same everywhere. What is true only in your
+repository goes in a `.reviewer/` folder at its root: an invariant a past incident bought,
+a change that must travel with its migration, a directory whose churn is never incidental.
+
+```
+.reviewer/
+  README.md        # the house rules
+  verification.md  # what "verified" means here, per area
+```
+
+Markdown, committed with the code, reviewed like anything else. The reviewer reads the
+folder after the diff and before its first question, so what you write there lands in round
+one. It adds questions and sharpens the ones the diff provoked; it cannot add a schema
+field, relax a check, or excuse the interview. Most repositories need none, and an absent
+folder changes nothing. This repo has [its own](.reviewer/README.md).
+
 ## Architecture
 
 <p align="center">

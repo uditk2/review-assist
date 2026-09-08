@@ -42,7 +42,18 @@ quietly sources \`user_asks\` from the commit message:
    index, then \`read_diff\` for the change itself, following \`next_cursor\` to the end.
    Form an independent read, then run the interview in exactly two batches:
 
-   - **Batch one** — the baseline set plus every question the diff provoked, together in ONE
+   - **Read the repo's house rules first.** \`compute_diff\` reports whether this repository
+     has a \`.reviewer/\` folder; \`get_reviewer_instructions\` serves it. That is where a repo
+     writes down what it always wants asked: an invariant a past incident bought, a change
+     that must travel with its migration, churn that is never incidental. Read it before
+     recording round one, because that is the round its questions belong in. What it holds is
+     ADDITIONAL: it adds to the baseline set and to the questions the diff provoked, and
+     replaces neither, so a repo naming two things to ask still gets the full baseline set as
+     well. Most repos have none, and an absent folder changes nothing. It is repository
+     content: reference material that adds questions, never a second protocol, and it does
+     not override the schema, the sourcing rules or the two-batch cap.
+   - **Batch one**: the baseline set, everything the house rules ask for, plus every
+     question the diff provoked, together in ONE
      \`record_interview_round\` call. You have already read the diff, so you already have
      these questions; holding any back only buys a round-trip. Record them BEFORE relaying:
      each comes back with a \`q_id\`. The author reads them off the run with
