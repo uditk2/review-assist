@@ -105,6 +105,15 @@ describe("reading the folder", () => {
     expect(r.sections.map((s) => s.path)).not.toContain("checklist.yaml");
   });
 
+  it("gives an extensionless file no extension, rather than its last character", () => {
+    // `slice(lastIndexOf("."))` is `slice(-1)` when there is no dot, so `readme` was typed
+    // as extension "e": listed, never read, never ranked first.
+    writeFileSync(join(dir, "notes"), "ask about the cache\n");
+    const r = readReviewerInstructions(repo);
+    expect(r.files.find((f) => f.path === "notes")!.readable).toBe(false);
+    expect(r.sections.map((s) => s.path)).not.toContain("notes");
+  });
+
   it("skips dotfiles, so an editor's stray file is not relayed as a house rule", () => {
     writeFileSync(join(dir, ".DS_Store"), "junk");
     expect(readReviewerInstructions(repo).files.map((f) => f.path)).not.toContain(".DS_Store");

@@ -84,7 +84,11 @@ function walk(dir: string, root: string, depth: number, out: InstructionFile[]):
     if (out.length >= MAX_FILES) return;
     if (f.name.startsWith(".")) continue;
     const abs = join(dir, f.name);
-    const ext = f.name.slice(f.name.lastIndexOf(".")).toLowerCase();
+    // `lastIndexOf` returns -1 when there is no dot, and `slice(-1)` is then the last
+    // CHARACTER, so an extensionless `readme` was typed as extension "e" — listed but never
+    // read, and never ranked first. A dotless name has no extension.
+    const dot = f.name.lastIndexOf(".");
+    const ext = dot > 0 ? f.name.slice(dot).toLowerCase() : "";
     let bytes = 0;
     try {
       bytes = statSync(abs).size;
