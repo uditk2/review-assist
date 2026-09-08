@@ -89,6 +89,16 @@ stamps it from the two roles' own calls, so it reflects the real interview (a si
 generation with no reviewer will show rounds: 0, and one where the reviewer wrote both
 halves will show author_attested: 0).
 
+**The findings leave the run twice.** They belong in the document, and they belong in the
+reviewer's last message back to whoever dispatched it: questions the author could not
+answer, everything in \`verification.not_verified\`, and any defect reading the diff cold
+exposed. The document is for the human who will review the pull request; the report is for
+the session that can still fix the code, and it is the only channel that reaches it, since
+the orchestrator never reads the run. The reviewer carries this alone. The author answers
+questions and does not judge the change, so an issue it raises ("the transcript does not
+cover this") reaches the session as a finding the reviewer recorded, not as a report of its
+own.
+
 ## Content rules
 - **Say it once.** The waste in these documents is not long sentences, it is the same
   point restated in \`problem.statement\`, then \`approach.adopted.summary\`, then a tour
