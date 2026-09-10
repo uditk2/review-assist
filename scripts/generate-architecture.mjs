@@ -32,6 +32,8 @@ function canvas(width, height, title, description) {
         .tiny { font-size: 11.5px; fill: #57534e; }
         .strong { font-weight: 600; fill: #292524; }
         .pill-text { font-size: 12px; fill: #292524; }
+        .badge { fill: #0a6ae0; stroke: none; }
+        .badge-text { font-size: 12.5px; font-weight: 700; fill: #ffffff; }
         .boundary { fill: #f7f6f5; stroke: #d6d3d1; stroke-width: 1.2; }
         .node { fill: #ffffff; stroke: #d6d3d1; stroke-width: 1.1; }
         .application { fill: #f7f6f5; stroke: #60a5fa; stroke-width: 1.4; }
@@ -68,9 +70,15 @@ function canvas(width, height, title, description) {
     rect(x, y, w, 28, cls, 14);
     text(x + w / 2, y + 19, label, "mono pill-text", 'text-anchor="middle"');
   };
+  // A numbered step marker. The distillation reads as a sequence, and a reader who cannot
+  // tell which box happens first has to reconstruct the order from the arrows.
+  const badge = (cx, cy, n) => {
+    circle(cx, cy, 11, "badge");
+    text(cx, cy + 4.5, String(n), "sans badge-text", 'text-anchor="middle"');
+  };
   const finish = () => `${out.concat("</svg>").join("\n")}\n`;
 
-  return { rect, text, line, path, circle, raw, pill, finish };
+  return { rect, text, line, path, circle, raw, pill, badge, finish };
 }
 
 function buildSystemArchitecture() {
@@ -193,113 +201,172 @@ function buildSystemArchitecture() {
 function buildMcpDetail() {
   const c = canvas(
     1240,
-    1190,
-    "Review Assist MCP distillation detail",
-    "A component-level detail of local intent distillation. The coding agent orchestrates separate Author and Intent Reviewer subagents. They use role-scoped tool surfaces exposed by the Review Assist MCP Server. The server makes no model calls. compute_diff only opens the run; read_diff pages the change itself. The interview is two-sided and server-attested: the Reviewer records questions and gets a q_id back for each, the Author answers by id, and the Reviewer reads the answers in the Author's own words. The server validates and writes the Intent Document after repository consent. get_role_definitions, manage_consent, and import_session belong to neither role — they set up the split itself and are called by the orchestrating agent."
+    1450,
+    "How Review Assist distills intent",
+    "A component-level detail of local intent distillation, read as six numbered steps. The coding agent spawns two role-locked subagents. The Author holds this session's transcript and supplies what the diff cannot show: the ask in the user's own words, what was tried and abandoned, and what was and was not run. The Intent Reviewer never sees the session; it reads the diff cold, and its questions come from three places: the baseline set in its role prompt, the diff itself, and the repository's own .reviewer/ house rules, served by get_reviewer_instructions. Every question and answer passes through the Review Assist MCP Server, which registers a different tool surface per role: the Author has transcript and diff tools but cannot submit or set consent, the Reviewer has diff, house-rule, interview, submission and consent tools but no transcript tools, and get_role_definitions, import_session and manage_consent belong to neither role because the coding agent calls them itself. The interview is server-attested through q_ids. submit_document gates the write behind repository consent, interview attestation and five local checks, and writes .intent/<branch>.json. The Reviewer's closing report carries what the document could not settle back to the session that can still fix the code. The server makes no model calls and the transcript never leaves the machine."
   );
-  const { rect, text, line, path, pill } = c;
+  const { rect, text, line, path, pill, badge } = c;
 
-  text(40, 52, "MCP distillation", "sans title");
-  text(40, 80, "Component-level detail · developer machine only", "sans subtitle");
+  text(40, 52, "How Review Assist distills intent", "sans title");
+  text(
+    40,
+    80,
+    "All of it runs on the developer's machine. The server makes no model calls, and the session transcript never leaves it.",
+    "sans subtitle"
+  );
 
   // The model-driven roles live in the calling agent runtime, not in the MCP Server.
-  rect(60, 110, 1120, 390, "boundary", 12);
-  text(88, 142, "Calling agent runtime", "sans boundary-title");
-  text(1152, 142, "orchestrates model-driven subagents", "sans small", 'text-anchor="end"');
-  line(88, 157, 1152, 157);
+  rect(60, 108, 1120, 448, "boundary", 12);
+  text(88, 140, "Your coding agent", "sans boundary-title");
+  text(1152, 140, "runs both roles as subagents, in separate contexts", "sans small", 'text-anchor="end"');
+  line(88, 155, 1152, 155);
 
-  rect(420, 178, 400, 64, "node");
-  text(446, 206, "Coding agent + implementation session", "sans node-title");
-  text(446, 228, "code · decisions · local transcript", "sans small");
+  rect(400, 176, 440, 66, "node");
+  text(426, 204, "The session that wrote the code", "sans node-title");
+  text(426, 226, "code · decisions · the local transcript", "sans small");
 
-  path("M570 242 L315 276", "arrow");
-  path("M670 242 L925 276", "arrow");
-  text(620, 266, "spawns · coordinates", "sans small", 'text-anchor="middle"');
+  path("M560 242 L332 300", "arrow");
+  path("M680 242 L908 300", "arrow");
+  badge(519, 276, 1);
+  text(541, 281, "spawns two role-locked subagents", "sans small");
 
-  rect(90, 284, 440, 180, "node");
-  text(116, 314, "Author", "sans node-title");
-  text(504, 314, "SUBAGENT", "sans tiny strong", 'text-anchor="end"');
-  text(116, 338, "Transcript-grounded witness", "sans body");
-  text(116, 361, "answers only from implementation evidence", "sans small");
+  // Step 6 travels the other way: the reviewer's last message is the only channel that
+  // reaches the session while the code can still be changed.
+  path("M1020 300 L1020 270 L800 270 L800 248", "arrow");
+  badge(806, 258, 6);
+  text(828, 263, "closing report to the session", "sans small");
 
-  rect(710, 284, 440, 180, "node");
-  text(736, 314, "Intent Reviewer", "sans node-title");
-  text(1124, 314, "SUBAGENT", "sans tiny strong", 'text-anchor="end"');
-  text(736, 338, "Cold reader and document author", "sans body");
-  text(736, 361, "interrogates assumptions · distills intent", "sans small");
+  rect(88, 300, 470, 230, "node");
+  badge(125, 330, 2);
+  text(148, 336, "Author", "sans node-title");
+  text(532, 336, "SUBAGENT", "sans tiny strong", 'text-anchor="end"');
+  text(114, 364, "Holds this session's transcript. Cannot submit.", "sans body");
+  rect(114, 382, 418, 104, "soft-node", 8);
+  text(132, 406, "What only it can supply", "sans small");
+  text(132, 431, "· the ask, in the user's own words", "sans tiny");
+  text(132, 453, "· what was tried and abandoned", "sans tiny");
+  text(132, 475, "· what was run, and what was not", "sans tiny");
+  text(114, 508, "Answers by q_id, so the server can attest the words are its own", "sans small");
 
-  path("M702 390 L538 390", "blue-arrow");
-  text(620, 379, "questions", "sans small", 'text-anchor="middle"');
-  path("M538 430 L702 430", "blue-arrow");
-  text(620, 451, "transcript-grounded evidence", "sans small", 'text-anchor="middle"');
+  rect(682, 300, 470, 230, "node");
+  badge(719, 330, 3);
+  text(742, 336, "Intent Reviewer", "sans node-title");
+  text(1126, 336, "SUBAGENT", "sans tiny strong", 'text-anchor="end"');
+  text(708, 364, "Never sees the session. Reads the diff cold.", "sans body");
+  rect(708, 382, 418, 104, "soft-node", 8);
+  text(726, 406, "Its questions come from three places", "sans small");
+  text(726, 431, "· the baseline set carried in its role prompt", "sans tiny");
+  text(726, 453, "· the diff it has just read", "sans tiny");
+  text(726, 475, "· this repository's own .reviewer/ house rules", "sans tiny");
+  text(708, 508, "Two outputs: the document, and a report back to the session", "sans small");
+
+  path("M323 530 L323 612", "blue-arrow");
+  path("M917 530 L917 612", "blue-arrow");
+  text(620, 576, "every question and answer passes through the server,", "sans small", 'text-anchor="middle"');
+  text(620, 598, "so it can attest who actually answered", "sans small", 'text-anchor="middle"');
 
   // The MCP Server is a separate mechanism: role-scoped tools and deterministic gates.
-  rect(60, 540, 1120, 530, "accent-node", 12);
-  text(88, 572, "Review Assist MCP Server", "sans boundary-title");
-  text(1152, 572, "stdio · role-scoped registration · no model calls", "sans small", 'text-anchor="end"');
-  line(88, 587, 1152, 587);
+  rect(60, 616, 1120, 590, "accent-node", 12);
+  text(88, 648, "Review Assist MCP Server", "sans boundary-title");
+  text(1152, 648, "stdio · role-scoped registration · no model calls", "sans small", 'text-anchor="end"');
+  line(88, 663, 1152, 663);
 
-  path("M315 464 L315 604", "blue-arrow");
-  path("M925 464 L925 604", "blue-arrow");
-  text(329, 526, "uses Author tools", "sans small");
-  text(939, 526, "uses Reviewer tools", "sans small");
+  // Exact tool lists remain pills, grouped by the role that can call them.
+  rect(88, 680, 470, 238, "node");
+  text(114, 710, "Author tools", "sans node-title");
+  text(532, 710, "no submit, no consent", "sans small", 'text-anchor="end"');
+  text(114, 734, "read the session, read the diff, answer questions", "sans small");
+  pill(114, 755, 203, "get_generation_guide");
+  pill(329, 755, 203, "list_transcripts");
+  pill(114, 793, 203, "get_spine");
+  pill(329, 793, 203, "read_transcript");
+  pill(114, 831, 203, "compute_diff");
+  pill(329, 831, 203, "read_diff");
+  pill(114, 869, 203, "get_questions");
+  pill(329, 869, 203, "answer_questions");
 
-  // Exact tool lists remain pills, grouped by the role that can call them. Orchestrator-only
-  // tools (get_role_definitions, manage_consent, import_session) belong to neither surface —
-  // they set up the split itself, not the interview.
-  rect(90, 604, 470, 254, "node");
-  text(116, 634, "Author tool surface", "sans node-title");
-  text(534, 634, "no submit / consent", "sans small", 'text-anchor="end"');
-  pill(116, 654, 202, "get_generation_guide");
-  pill(328, 654, 206, "list_transcripts");
-  pill(116, 692, 202, "get_spine");
-  pill(328, 692, 206, "read_transcript");
-  pill(116, 730, 202, "compute_diff");
-  pill(328, 730, 206, "read_diff");
-  pill(116, 768, 202, "get_questions");
-  pill(328, 768, 206, "answer_questions");
+  rect(682, 680, 470, 238, "node");
+  text(708, 710, "Reviewer tools", "sans node-title");
+  text(1126, 710, "no transcript access", "sans small", 'text-anchor="end"');
+  text(708, 734, "read the diff and the house rules, ask, submit", "sans small");
+  pill(708, 755, 203, "get_generation_guide");
+  pill(923, 755, 203, "compute_diff");
+  pill(708, 793, 203, "read_diff");
+  pill(923, 793, 203, "get_reviewer_instructions");
+  pill(708, 831, 203, "record_interview_round");
+  pill(923, 831, 203, "get_answers");
+  pill(708, 869, 203, "submit_document");
+  pill(923, 869, 203, "set_consent");
 
-  rect(680, 604, 470, 254, "node");
-  text(706, 634, "Reviewer tool surface", "sans node-title");
-  text(1124, 634, "no transcript access", "sans small", 'text-anchor="end"');
-  pill(706, 654, 202, "get_generation_guide");
-  pill(918, 654, 206, "compute_diff");
-  pill(706, 692, 202, "read_diff");
-  pill(918, 692, 206, "record_interview_round");
-  pill(706, 730, 202, "get_answers");
-  pill(918, 730, 206, "submit_document");
-  pill(706, 768, 202, "set_consent");
+  // Three tools belong to neither surface: they set the split up rather than run the
+  // interview, and the orchestrating agent is what calls them.
+  rect(88, 936, 1064, 62, "soft-node", 8);
+  text(114, 964, "Called by the coding agent", "sans small");
+  text(114, 982, "itself, not by either role", "sans small");
+  pill(280, 953, 205, "get_role_definitions");
+  pill(497, 953, 165, "import_session");
+  pill(674, 953, 180, "manage_consent");
+  text(1126, 972, "they set up the split and the consent list", "sans tiny", 'text-anchor="end"');
 
   // The interview itself: two independent writes, keyed by q_id, so the server can attest
   // which half of an answer actually came from the Author rather than the Reviewer's own
   // transcription of it.
-  rect(90, 878, 1060, 62, "soft-node", 8);
-  text(116, 908, "the interview", "mono body strong");
-  pill(270, 890, 206, "record_interview_round", "pill-accent");
-  path("M476 904 L508 904", "blue-arrow");
-  pill(508, 890, 142, "get_questions", "pill-accent");
-  path("M650 904 L682 904", "blue-arrow");
-  pill(682, 890, 156, "answer_questions", "pill-accent");
-  path("M838 904 L870 904", "blue-arrow");
-  pill(870, 890, 120, "get_answers", "pill-accent");
-  text(1114, 908, "→ q_id each way", "sans tiny", 'text-anchor="end"');
+  rect(88, 1016, 1064, 62, "soft-node", 8);
+  badge(120, 1047, 4);
+  text(140, 1052, "the interview", "mono body strong");
+  pill(270, 1033, 206, "record_interview_round", "pill-accent");
+  path("M476 1047 L508 1047", "blue-arrow");
+  pill(508, 1033, 142, "get_questions", "pill-accent");
+  path("M650 1047 L682 1047", "blue-arrow");
+  pill(682, 1033, 156, "answer_questions", "pill-accent");
+  path("M838 1047 L870 1047", "blue-arrow");
+  pill(870, 1033, 120, "get_answers", "pill-accent");
+  text(1126, 1052, "q_id each way", "sans tiny", 'text-anchor="end"');
 
   // One local submission gate; consent precedes sibling checks.
-  rect(90, 960, 1060, 84, "soft-node", 8);
-  text(116, 994, "submit_document", "mono body strong");
-  pill(270, 976, 118, "repo consent");
-  path("M392 990 L428 990", "blue-arrow");
-  pill(436, 960, 184, "interview attestation", "pill-accent");
-  pill(436, 996, 184, "5 local checks", "pill-accent");
-  text(644, 984, "allow → write", "sans body");
-  text(644, 1010, "never → no write", "sans small");
-  text(1114, 984, "schema · coverage · staleness", "sans tiny", 'text-anchor="end"');
-  text(1114, 1007, "cross-references · redaction", "sans tiny", 'text-anchor="end"');
+  rect(88, 1096, 1064, 84, "soft-node", 8);
+  badge(120, 1138, 5);
+  text(140, 1143, "submit_document", "mono body strong");
+  pill(290, 1124, 118, "repo consent");
+  path("M412 1138 L440 1138", "blue-arrow");
+  pill(448, 1108, 184, "interview attestation", "pill-accent");
+  pill(448, 1144, 184, "5 local checks", "pill-accent");
+  text(656, 1132, "allow → write", "sans body");
+  text(656, 1158, "never → no write", "sans small");
+  text(1126, 1132, "schema · coverage · staleness", "sans tiny", 'text-anchor="end"');
+  text(1126, 1155, "cross-references · redaction", "sans tiny", 'text-anchor="end"');
 
-  path("M620 1044 L620 1090", "blue-arrow");
-  rect(360, 1098, 520, 66, "node");
-  text(388, 1126, ".intent/<branch>.json", "mono node-title");
-  text(388, 1150, "Intent Document · transcript remains local", "sans small");
+  // The two repository paths the server touches: one it reads for the reviewer, one it
+  // writes once the gate passes. Nothing else on disk is exposed to either role.
+  path("M360 1252 L360 1212", "arrow");
+  text(374, 1237, "read by get_reviewer_instructions", "sans small");
+  path("M880 1212 L880 1248", "blue-arrow");
+  text(894, 1237, "written by submit_document", "sans small");
+
+  rect(150, 1252, 420, 94, "node");
+  text(176, 1284, ".reviewer/", "mono node-title");
+  text(176, 1310, "this repository's house rules: what it", "sans small");
+  text(176, 1332, "always wants the reviewer to ask", "sans small");
+
+  rect(670, 1252, 420, 94, "node");
+  text(696, 1284, ".intent/<branch>.json", "mono node-title");
+  text(696, 1310, "the Intent Document, committed with", "sans small");
+  text(696, 1332, "the code and read by the human reviewer", "sans small");
+
+  line(40, 1382, 1200, 1382);
+  text(
+    40,
+    1407,
+    "The split is structural: REVIEW_ASSIST_ROLE decides which tools the server registers, so the reviewer cannot reach the transcript at all.",
+    "sans small"
+  );
+  text(1200, 1407, "github.com/uditk2/review-assist", "mono small", 'text-anchor="end"');
+  text(
+    40,
+    1429,
+    "The closing report carries what the document could not settle: unanswered questions, anything left unverified, defects the cold read exposed.",
+    "sans small"
+  );
 
   return c.finish();
 }

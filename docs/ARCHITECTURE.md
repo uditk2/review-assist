@@ -38,7 +38,7 @@ Tool access is a component-level concern, so it is kept in a separate view.
 
 <p align="center">
   <a href="mcp-distillation.svg">
-    <img src="mcp-distillation.svg" alt="Review Assist MCP distillation detail. The coding agent orchestrates separate Author and Intent Reviewer subagents. They do not run inside the MCP Server. Each subagent calls a role-scoped MCP tool surface: the Author has transcript and diff-reading tools but no submission tools, while the Intent Reviewer has diff-reading, interview, submission, and consent tools but no transcript tools. The interview is two-sided and server-attested: record_interview_round hands back a q_id per question, the Author answers by id through get_questions and answer_questions, and the Reviewer reads the answers back through get_answers. Repository consent and local validation gate writing the Intent Document." width="1000">
+    <img src="mcp-distillation.svg" alt="Review Assist MCP distillation detail, in six numbered steps. The coding agent spawns separate Author and Intent Reviewer subagents; they do not run inside the MCP Server. The Author holds this session's transcript and supplies the ask in the user's own words, what was tried and abandoned, and what was and was not run. The Intent Reviewer never sees the session and reads the diff cold; its questions come from three places: the baseline set in its role prompt, the diff itself, and the repository's own .reviewer/ house rules. Each subagent calls a role-scoped MCP tool surface: the Author has transcript and diff-reading tools but no submission or consent tools, while the Intent Reviewer has diff-reading, house-rule, interview, submission and consent tools but no transcript tools. get_role_definitions, import_session and manage_consent belong to neither surface and are called by the coding agent itself. The interview is two-sided and server-attested: record_interview_round hands back a q_id per question, the Author answers by id through get_questions and answer_questions, and the Reviewer reads the answers back through get_answers. Repository consent, interview attestation and five local checks gate writing .intent/&lt;branch&gt;.json, and get_reviewer_instructions is the only other repository path the server exposes. The Reviewer's closing report carries what the document could not settle back to the session." width="1000">
   </a>
 </p>
 
@@ -74,6 +74,13 @@ change that the document should explain.
 allow, interview attestation and the five local checks are sibling gates: schema,
 coverage, staleness, cross-references, and secret redaction. Only then is the Intent
 Document written. The MCP server never calls a model, and the transcript stays local.
+
+The run leaves two things behind, not one. The Intent Document is for the human who will
+review the pull request, and it arrives after the fact. The Reviewer's closing message
+back to whoever dispatched it is the other, and the only channel that reaches the session
+while the code can still be changed: questions the Author could not answer, everything in
+`verification.not_verified`, and any defect reading the diff cold exposed. The Reviewer
+carries this alone, because the Author answers questions rather than judging the change.
 
 ## Application interfaces
 
