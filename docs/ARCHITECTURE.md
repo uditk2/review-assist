@@ -38,7 +38,7 @@ Tool access is a component-level concern, so it is kept in a separate view.
 
 <p align="center">
   <a href="mcp-distillation.svg">
-    <img src="mcp-distillation.svg" alt="Review Assist MCP distillation detail, in six numbered steps. The coding agent spawns separate Author and Intent Reviewer subagents; they do not run inside the MCP Server. The Author holds this session's transcript and supplies the ask in the user's own words, what was tried and abandoned, and what was and was not run. The Intent Reviewer never sees the session and reads the diff cold; its questions come from three places: the baseline set in its role prompt, the diff itself, and the repository's own .reviewer/ house rules. Each subagent calls a role-scoped MCP tool surface: the Author has transcript and diff-reading tools but no submission or consent tools, while the Intent Reviewer has diff-reading, house-rule, interview, submission and consent tools but no transcript tools. get_role_definitions, import_session and manage_consent belong to neither surface and are called by the coding agent itself. The interview is two-sided and server-attested: record_interview_round hands back a q_id per question, the Author answers by id through get_questions and answer_questions, and the Reviewer reads the answers back through get_answers. Repository consent, interview attestation and five local checks gate writing .intent/&lt;branch&gt;.json, and get_reviewer_instructions is the only other repository path the server exposes. The Reviewer's closing report carries what the document could not settle back to the session." width="1000">
+    <img src="mcp-distillation.svg" alt="A component-level view of the local two-agent distillation, all of it on the developer's machine. The orchestrating coding agent spawns two role-locked subagents and holds the three setup tools that belong to neither role: get_role_definitions, import_session and manage_consent. REVIEW_ASSIST_ROLE decides which tools the server registers, so the other role's tools are absent rather than merely disallowed. The Author holds this session's transcript and is registered eight tools: get_generation_guide, list_transcripts, get_spine, read_transcript, compute_diff, read_diff, get_questions and answer_questions. The Intent Reviewer reads the diff cold with no transcript tools and no file-reading tools, and is registered eight of its own: get_generation_guide, compute_diff, read_diff, get_reviewer_instructions, record_interview_round, get_answers, submit_document and set_consent. compute_diff opens the run and returns the run_id, the numbered hunk index, the SHAs, the consent state and whether a .reviewer folder exists; it returns no diff text, which read_diff pages. The two role sessions are separate processes, and the run file at ~/.review-assist/runs/&lt;run_id&gt;.json is the only thing they share: the reviewer records questions and gets a q_id for each, the author answers by q_id, and the reviewer reads those answers back in the author's own words. The repository's .reviewer folder carries its own house rules, served to the reviewer by get_reviewer_instructions after the diff and before round one; it adds questions but cannot relax a check. submit_document is the reviewer's call alone and gates the write behind repository consent, head drift, anchor resolution, interview attestation and the validator's five checks, then writes .intent/&lt;branch&gt;.json. The run leaves two outputs: the Intent Document for the human who will review the pull request, and the reviewer's closing message for the session that can still fix the code." width="1000">
   </a>
 </p>
 
@@ -49,6 +49,19 @@ belong to the other role. `compute_diff` only opens the run and returns its hand
 hunk index; `read_diff` pages the change itself, so no response grows with the size of a
 change.
 
+The two roles start together rather than one after the other. Their reads are independent
+(the Author needs only the transcript, the Reviewer only the diff), but the Author's one
+write takes `q_id`s, and those used to exist only once the Reviewer had paged the whole
+diff. So the Author sat idle through the Reviewer's read and the Reviewer through the
+Author's: measured over 15 runs, that phase was 670s of a 1400s median. `compute_diff` now
+seeds the STANDING questions on the run at open (the plan, and the five that guard fields a
+diff cannot fill), so the Author answers them off the spine unprompted while the Reviewer
+reads. Both roles derive the same `q_id`s without speaking, because the id is a hash of the
+question text. A seeded question nobody answered is not counted as an interview round, so
+`rounds: 0` still means no Author ever ran. What is deliberately NOT seeded is anything
+needing the hunk index: the incidental question is asked by file, and assigning hunk ids to
+plan items stays the Reviewer's own read of the change.
+
 The interview is two-sided and server-attested, not a prose relay: the Reviewer's
 `record_interview_round` hands back a `q_id` per question, the Author reads and answers
 them by id (`get_questions` / `answer_questions`), and the Reviewer reads the answers back
@@ -58,9 +71,10 @@ the Author's behalf is recorded too, but marked reviewer-sourced rather than att
 they set up the split and the consent list themselves, and are called by the orchestrating
 agent rather than the Author or Reviewer.
 
-The Reviewer's questions come from three places: the baseline set carried in its role
-prompt, the diff it just read, and the repository's own `.reviewer/` folder, served by
-`get_reviewer_instructions`. That folder is the only repository content the Reviewer reads
+The Reviewer's questions come from three places: the standing set seeded on the run, the
+diff it just read, and the repository's own `.reviewer/` folder, served by
+`get_reviewer_instructions`. Only the last two are its to record; re-asking the standing set
+is the one way the split costs a round trip instead of saving one. That folder is the only repository content the Reviewer reads
 besides the diff. It has no filesystem tools, because reaching the transcript is exactly
 what the split forbids, so house rules arrive through a bounded tool like everything else.
 It is granted to the Reviewer alone: house rules are questions, and the Author's job is to

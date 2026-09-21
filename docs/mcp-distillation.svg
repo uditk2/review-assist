@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1450" viewBox="0 0 1240 1450" role="img" aria-labelledby="title desc">
-<title id="title">How Review Assist distills intent</title>
-<desc id="desc">A component-level detail of local intent distillation, read as six numbered steps. The coding agent spawns two role-locked subagents. The Author holds this session's transcript and supplies what the diff cannot show: the ask in the user's own words, what was tried and abandoned, and what was and was not run. The Intent Reviewer never sees the session; it reads the diff cold, and its questions come from three places: the baseline set in its role prompt, the diff itself, and the repository's own .reviewer/ house rules, served by get_reviewer_instructions. Every question and answer passes through the Review Assist MCP Server, which registers a different tool surface per role: the Author has transcript and diff tools but cannot submit or set consent, the Reviewer has diff, house-rule, interview, submission and consent tools but no transcript tools, and get_role_definitions, import_session and manage_consent belong to neither role because the coding agent calls them itself. The interview is server-attested through q_ids. submit_document gates the write behind repository consent, interview attestation and five local checks, and writes .intent/&lt;branch&gt;.json. The Reviewer's closing report carries what the document could not settle back to the session that can still fix the code. The server makes no model calls and the transcript never leaves the machine.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1290" viewBox="0 0 1700 1290" role="img" aria-labelledby="title desc">
+<title id="title">MCP distillation detail</title>
+<desc id="desc">A component-level view of the local two-agent distillation, all of it on the developer's machine. The orchestrating coding agent spawns two role-locked subagents and holds the three setup tools that belong to neither role: get_role_definitions, import_session and manage_consent. REVIEW_ASSIST_ROLE decides which tools the server registers, so the other role's tools are absent rather than merely disallowed. The Author holds this session's transcript and is registered eight tools: get_generation_guide, list_transcripts, get_spine, read_transcript, compute_diff, read_diff, get_questions and answer_questions. The Intent Reviewer reads the diff cold with no transcript tools and no file-reading tools, and is registered eight of its own: get_generation_guide, compute_diff, read_diff, get_reviewer_instructions, record_interview_round, get_answers, submit_document and set_consent. compute_diff opens the run and returns the run_id, the numbered hunk index, the SHAs, the consent state and whether a .reviewer folder exists; it returns no diff text, which read_diff pages. The two role sessions are separate processes, and the run file at ~/.review-assist/runs/&lt;run_id&gt;.json is the only thing they share: the reviewer records questions and gets a q_id for each, the author answers by q_id, and the reviewer reads those answers back in the author's own words. The repository's .reviewer folder carries its own house rules, served to the reviewer by get_reviewer_instructions after the diff and before round one; it adds questions but cannot relax a check. submit_document is the reviewer's call alone and gates the write behind repository consent, head drift, anchor resolution, interview attestation and the validator's five checks, then writes .intent/&lt;branch&gt;.json. The run leaves two outputs: the Intent Document for the human who will review the pull request, and the reviewer's closing message for the session that can still fix the code.</desc>
 <defs>
       <style>
         .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
@@ -35,153 +35,231 @@
       <marker id="blue-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
         <path d="M0 1.2 L8.5 5 L0 8.8" fill="none" stroke="#0a6ae0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
       </marker>
+      <linearGradient id="pageGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#e9f1fa"/><stop offset="1" stop-color="#fbfdff"/>
+      </linearGradient>
+      <linearGradient id="boundGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#f4f9ff"/><stop offset="1" stop-color="#e7f0fa"/>
+      </linearGradient>
+      <linearGradient id="cardGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#d9e8f9"/><stop offset="1" stop-color="#eef5fd"/>
+      </linearGradient>
+      <linearGradient id="bandGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#1a548f"/><stop offset="1" stop-color="#2b7cc4"/>
+      </linearGradient>
+      <linearGradient id="greenGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#d8f3e0"/><stop offset="1" stop-color="#f2fcf5"/>
+      </linearGradient>
+      <marker id="b-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 1.2 L8.5 5 L0 8.8" fill="none" stroke="#4f8bc4" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+      <style>
+        .b-title { font-size: 34px; font-weight: 700; fill: #123a66; }
+        .b-sub { font-size: 16px; fill: #5a7795; }
+        .b-boundary { fill: url(#boundGrad); stroke: #a6c9e8; stroke-width: 1.3; }
+        .b-card { fill: url(#cardGrad); stroke: #7bacdd; stroke-width: 1.3; }
+        .b-node { fill: #ffffff; stroke: #b6d2ec; stroke-width: 1.1; }
+        .b-inner { fill: #f6fafe; stroke: #c7dcf1; stroke-width: 1; }
+        .b-feature { fill: #ffffff; stroke: #1a548f; stroke-width: 1.8; }
+        .b-green { fill: url(#greenGrad); stroke: #4c9f6a; stroke-width: 1.4; }
+        .b-head { font-size: 19px; font-weight: 650; fill: #123a66; }
+        .b-node-title { font-size: 16px; font-weight: 650; fill: #123a66; }
+        .b-strong { font-size: 13.5px; font-weight: 650; fill: #123a66; }
+        .b-body { font-size: 13px; fill: #3d5a78; }
+        .b-small { font-size: 12px; fill: #5a7795; }
+        .b-mono { font-size: 12px; fill: #1a4b7d; }
+        .b-mono-title { font-size: 16px; font-weight: 600; fill: #123a66; }
+        .b-band-text { font-size: 16.5px; font-weight: 650; fill: #ffffff; }
+        .b-band-sub { font-size: 12px; fill: #cfe4f7; }
+        .b-green-title { font-size: 19px; font-weight: 650; fill: #14532d; }
+        .b-green-body { font-size: 12px; fill: #2f6b48; }
+        .b-green-mono { font-size: 13px; fill: #216b3f; }
+        .b-divider { stroke: #dbe9f6; stroke-width: 1; }
+        .b-pill { fill: #ffffff; stroke: #b6d2ec; stroke-width: 1; }
+        .b-pill-text { font-size: 12px; fill: #1a4b7d; }
+        .b-arrow { fill: none; stroke: #4f8bc4; stroke-width: 1.8; marker-end: url(#b-arrow); }
+        .b-bidi { fill: none; stroke: #4f8bc4; stroke-width: 1.8; marker-start: url(#b-arrow); marker-end: url(#b-arrow); }
+        .b-label { font-size: 11.5px; fill: #2d6aa8; }
+      </style>
     </defs>
-<rect width="1240" height="1450" fill="#fbfaf9"/>
-<text x="40" y="52" class="sans title">How Review Assist distills intent</text>
-<text x="40" y="80" class="sans subtitle">All of it runs on the developer's machine. The server makes no model calls, and the session transcript never leaves it.</text>
-<rect x="60" y="108" width="1120" height="448" rx="12" class="boundary"/>
-<text x="88" y="140" class="sans boundary-title">Your coding agent</text>
-<text x="1152" y="140" class="sans small" text-anchor="end">runs both roles as subagents, in separate contexts</text>
-<line x1="88" y1="155" x2="1152" y2="155" class="divider"/>
-<rect x="400" y="176" width="440" height="66" rx="8" class="node"/>
-<text x="426" y="204" class="sans node-title">The session that wrote the code</text>
-<text x="426" y="226" class="sans small">code · decisions · the local transcript</text>
-<path d="M560 242 L332 300" class="arrow"/>
-<path d="M680 242 L908 300" class="arrow"/>
-<circle cx="519" cy="276" r="11" class="badge"/>
-<text x="519" y="280.5" class="sans badge-text" text-anchor="middle">1</text>
-<text x="541" y="281" class="sans small">spawns two role-locked subagents</text>
-<path d="M1020 300 L1020 270 L800 270 L800 248" class="arrow"/>
-<circle cx="806" cy="258" r="11" class="badge"/>
-<text x="806" y="262.5" class="sans badge-text" text-anchor="middle">6</text>
-<text x="828" y="263" class="sans small">closing report to the session</text>
-<rect x="88" y="300" width="470" height="230" rx="8" class="node"/>
-<circle cx="125" cy="330" r="11" class="badge"/>
-<text x="125" y="334.5" class="sans badge-text" text-anchor="middle">2</text>
-<text x="148" y="336" class="sans node-title">Author</text>
-<text x="532" y="336" class="sans tiny strong" text-anchor="end">SUBAGENT</text>
-<text x="114" y="364" class="sans body">Holds this session's transcript. Cannot submit.</text>
-<rect x="114" y="382" width="418" height="104" rx="8" class="soft-node"/>
-<text x="132" y="406" class="sans small">What only it can supply</text>
-<text x="132" y="431" class="sans tiny">· the ask, in the user's own words</text>
-<text x="132" y="453" class="sans tiny">· what was tried and abandoned</text>
-<text x="132" y="475" class="sans tiny">· what was run, and what was not</text>
-<text x="114" y="508" class="sans small">Answers by q_id, so the server can attest the words are its own</text>
-<rect x="682" y="300" width="470" height="230" rx="8" class="node"/>
-<circle cx="719" cy="330" r="11" class="badge"/>
-<text x="719" y="334.5" class="sans badge-text" text-anchor="middle">3</text>
-<text x="742" y="336" class="sans node-title">Intent Reviewer</text>
-<text x="1126" y="336" class="sans tiny strong" text-anchor="end">SUBAGENT</text>
-<text x="708" y="364" class="sans body">Never sees the session. Reads the diff cold.</text>
-<rect x="708" y="382" width="418" height="104" rx="8" class="soft-node"/>
-<text x="726" y="406" class="sans small">Its questions come from three places</text>
-<text x="726" y="431" class="sans tiny">· the baseline set carried in its role prompt</text>
-<text x="726" y="453" class="sans tiny">· the diff it has just read</text>
-<text x="726" y="475" class="sans tiny">· this repository's own .reviewer/ house rules</text>
-<text x="708" y="508" class="sans small">Two outputs: the document, and a report back to the session</text>
-<path d="M323 530 L323 612" class="blue-arrow"/>
-<path d="M917 530 L917 612" class="blue-arrow"/>
-<text x="620" y="576" class="sans small" text-anchor="middle">every question and answer passes through the server,</text>
-<text x="620" y="598" class="sans small" text-anchor="middle">so it can attest who actually answered</text>
-<rect x="60" y="616" width="1120" height="590" rx="12" class="accent-node"/>
-<text x="88" y="648" class="sans boundary-title">Review Assist MCP Server</text>
-<text x="1152" y="648" class="sans small" text-anchor="end">stdio · role-scoped registration · no model calls</text>
-<line x1="88" y1="663" x2="1152" y2="663" class="divider"/>
-<rect x="88" y="680" width="470" height="238" rx="8" class="node"/>
-<text x="114" y="710" class="sans node-title">Author tools</text>
-<text x="532" y="710" class="sans small" text-anchor="end">no submit, no consent</text>
-<text x="114" y="734" class="sans small">read the session, read the diff, answer questions</text>
-<rect x="114" y="755" width="203" height="28" rx="14" class="pill"/>
-<text x="215.5" y="774" class="mono pill-text" text-anchor="middle">get_generation_guide</text>
-<rect x="329" y="755" width="203" height="28" rx="14" class="pill"/>
-<text x="430.5" y="774" class="mono pill-text" text-anchor="middle">list_transcripts</text>
-<rect x="114" y="793" width="203" height="28" rx="14" class="pill"/>
-<text x="215.5" y="812" class="mono pill-text" text-anchor="middle">get_spine</text>
-<rect x="329" y="793" width="203" height="28" rx="14" class="pill"/>
-<text x="430.5" y="812" class="mono pill-text" text-anchor="middle">read_transcript</text>
-<rect x="114" y="831" width="203" height="28" rx="14" class="pill"/>
-<text x="215.5" y="850" class="mono pill-text" text-anchor="middle">compute_diff</text>
-<rect x="329" y="831" width="203" height="28" rx="14" class="pill"/>
-<text x="430.5" y="850" class="mono pill-text" text-anchor="middle">read_diff</text>
-<rect x="114" y="869" width="203" height="28" rx="14" class="pill"/>
-<text x="215.5" y="888" class="mono pill-text" text-anchor="middle">get_questions</text>
-<rect x="329" y="869" width="203" height="28" rx="14" class="pill"/>
-<text x="430.5" y="888" class="mono pill-text" text-anchor="middle">answer_questions</text>
-<rect x="682" y="680" width="470" height="238" rx="8" class="node"/>
-<text x="708" y="710" class="sans node-title">Reviewer tools</text>
-<text x="1126" y="710" class="sans small" text-anchor="end">no transcript access</text>
-<text x="708" y="734" class="sans small">read the diff and the house rules, ask, submit</text>
-<rect x="708" y="755" width="203" height="28" rx="14" class="pill"/>
-<text x="809.5" y="774" class="mono pill-text" text-anchor="middle">get_generation_guide</text>
-<rect x="923" y="755" width="203" height="28" rx="14" class="pill"/>
-<text x="1024.5" y="774" class="mono pill-text" text-anchor="middle">compute_diff</text>
-<rect x="708" y="793" width="203" height="28" rx="14" class="pill"/>
-<text x="809.5" y="812" class="mono pill-text" text-anchor="middle">read_diff</text>
-<rect x="923" y="793" width="203" height="28" rx="14" class="pill"/>
-<text x="1024.5" y="812" class="mono pill-text" text-anchor="middle">get_reviewer_instructions</text>
-<rect x="708" y="831" width="203" height="28" rx="14" class="pill"/>
-<text x="809.5" y="850" class="mono pill-text" text-anchor="middle">record_interview_round</text>
-<rect x="923" y="831" width="203" height="28" rx="14" class="pill"/>
-<text x="1024.5" y="850" class="mono pill-text" text-anchor="middle">get_answers</text>
-<rect x="708" y="869" width="203" height="28" rx="14" class="pill"/>
-<text x="809.5" y="888" class="mono pill-text" text-anchor="middle">submit_document</text>
-<rect x="923" y="869" width="203" height="28" rx="14" class="pill"/>
-<text x="1024.5" y="888" class="mono pill-text" text-anchor="middle">set_consent</text>
-<rect x="88" y="936" width="1064" height="62" rx="8" class="soft-node"/>
-<text x="114" y="964" class="sans small">Called by the coding agent</text>
-<text x="114" y="982" class="sans small">itself, not by either role</text>
-<rect x="280" y="953" width="205" height="28" rx="14" class="pill"/>
-<text x="382.5" y="972" class="mono pill-text" text-anchor="middle">get_role_definitions</text>
-<rect x="497" y="953" width="165" height="28" rx="14" class="pill"/>
-<text x="579.5" y="972" class="mono pill-text" text-anchor="middle">import_session</text>
-<rect x="674" y="953" width="180" height="28" rx="14" class="pill"/>
-<text x="764" y="972" class="mono pill-text" text-anchor="middle">manage_consent</text>
-<text x="1126" y="972" class="sans tiny" text-anchor="end">they set up the split and the consent list</text>
-<rect x="88" y="1016" width="1064" height="62" rx="8" class="soft-node"/>
-<circle cx="120" cy="1047" r="11" class="badge"/>
-<text x="120" y="1051.5" class="sans badge-text" text-anchor="middle">4</text>
-<text x="140" y="1052" class="mono body strong">the interview</text>
-<rect x="270" y="1033" width="206" height="28" rx="14" class="pill-accent"/>
-<text x="373" y="1052" class="mono pill-text" text-anchor="middle">record_interview_round</text>
-<path d="M476 1047 L508 1047" class="blue-arrow"/>
-<rect x="508" y="1033" width="142" height="28" rx="14" class="pill-accent"/>
-<text x="579" y="1052" class="mono pill-text" text-anchor="middle">get_questions</text>
-<path d="M650 1047 L682 1047" class="blue-arrow"/>
-<rect x="682" y="1033" width="156" height="28" rx="14" class="pill-accent"/>
-<text x="760" y="1052" class="mono pill-text" text-anchor="middle">answer_questions</text>
-<path d="M838 1047 L870 1047" class="blue-arrow"/>
-<rect x="870" y="1033" width="120" height="28" rx="14" class="pill-accent"/>
-<text x="930" y="1052" class="mono pill-text" text-anchor="middle">get_answers</text>
-<text x="1126" y="1052" class="sans tiny" text-anchor="end">q_id each way</text>
-<rect x="88" y="1096" width="1064" height="84" rx="8" class="soft-node"/>
-<circle cx="120" cy="1138" r="11" class="badge"/>
-<text x="120" y="1142.5" class="sans badge-text" text-anchor="middle">5</text>
-<text x="140" y="1143" class="mono body strong">submit_document</text>
-<rect x="290" y="1124" width="118" height="28" rx="14" class="pill"/>
-<text x="349" y="1143" class="mono pill-text" text-anchor="middle">repo consent</text>
-<path d="M412 1138 L440 1138" class="blue-arrow"/>
-<rect x="448" y="1108" width="184" height="28" rx="14" class="pill-accent"/>
-<text x="540" y="1127" class="mono pill-text" text-anchor="middle">interview attestation</text>
-<rect x="448" y="1144" width="184" height="28" rx="14" class="pill-accent"/>
-<text x="540" y="1163" class="mono pill-text" text-anchor="middle">5 local checks</text>
-<text x="656" y="1132" class="sans body">allow → write</text>
-<text x="656" y="1158" class="sans small">never → no write</text>
-<text x="1126" y="1132" class="sans tiny" text-anchor="end">schema · coverage · staleness</text>
-<text x="1126" y="1155" class="sans tiny" text-anchor="end">cross-references · redaction</text>
-<path d="M360 1252 L360 1212" class="arrow"/>
-<text x="374" y="1237" class="sans small">read by get_reviewer_instructions</text>
-<path d="M880 1212 L880 1248" class="blue-arrow"/>
-<text x="894" y="1237" class="sans small">written by submit_document</text>
-<rect x="150" y="1252" width="420" height="94" rx="8" class="node"/>
-<text x="176" y="1284" class="mono node-title">.reviewer/</text>
-<text x="176" y="1310" class="sans small">this repository's house rules: what it</text>
-<text x="176" y="1332" class="sans small">always wants the reviewer to ask</text>
-<rect x="670" y="1252" width="420" height="94" rx="8" class="node"/>
-<text x="696" y="1284" class="mono node-title">.intent/&lt;branch&gt;.json</text>
-<text x="696" y="1310" class="sans small">the Intent Document, committed with</text>
-<text x="696" y="1332" class="sans small">the code and read by the human reviewer</text>
-<line x1="40" y1="1382" x2="1200" y2="1382" class="divider"/>
-<text x="40" y="1407" class="sans small">The split is structural: REVIEW_ASSIST_ROLE decides which tools the server registers, so the reviewer cannot reach the transcript at all.</text>
-<text x="1200" y="1407" class="mono small" text-anchor="end">github.com/uditk2/review-assist</text>
-<text x="40" y="1429" class="sans small">The closing report carries what the document could not settle: unanswered questions, anything left unverified, defects the cold read exposed.</text>
+<rect width="1700" height="1290" fill="url(#pageGrad)"/>
+<text x="850" y="58" class="sans b-title" text-anchor="middle">MCP distillation detail</text>
+<text x="850" y="90" class="sans b-sub" text-anchor="middle">Review Assist: component-level view of the local two-agent distillation</text>
+<rect x="36" y="112" width="1628" height="1064" rx="16" class="b-boundary"/>
+<text x="68" y="152" class="sans b-head">Developer machine</text>
+<text x="1632" y="152" class="sans b-small" text-anchor="end">one server process per role · stdio · no model calls</text>
+<line x1="68" y1="168" x2="1632" y2="168" class="b-divider"/>
+<rect x="64" y="190" width="456" height="118" rx="8" class="b-node"/>
+<text x="88" y="222" class="sans b-node-title">Setup tools</text>
+<text x="496" y="222" class="sans b-small" text-anchor="end">orchestrator only</text>
+<text x="88" y="252" class="mono b-mono">get_role_definitions</text>
+<text x="310" y="252" class="mono b-mono">manage_consent</text>
+<text x="88" y="274" class="mono b-mono">import_session</text>
+<text x="88" y="296" class="sans b-small">Neither role may call these.</text>
+<rect x="560" y="190" width="580" height="118" rx="12" class="b-card"/>
+<rect x="586" y="206" width="26" height="22" rx="6" fill="none" stroke="#1a548f" stroke-width="1.8"/>
+<circle cx="593.5" cy="217" r="2.4" fill="#1a548f"/><circle cx="604.5" cy="217" r="2.4" fill="#1a548f"/>
+<path d="M599 206 V199" fill="none" stroke="#1a548f" stroke-width="1.8"/><circle cx="599" cy="196" r="2.2" fill="#1a548f"/>
+<text x="626" y="224" class="sans b-head">Orchestrating coding agent</text>
+<text x="586" y="254" class="sans b-body">Spawns both role-locked subagents, relays the q_ids, and drives the run.</text>
+<text x="586" y="278" class="sans b-body">It never reads the run, so the reviewer's closing message is its only report.</text>
+<text x="586" y="300" class="sans b-small">Both roles are subagents of this agent. Neither is a process it talks to over a network.</text>
+<rect x="1180" y="190" width="456" height="118" rx="8" class="b-node"/>
+<text x="1204" y="222" class="sans b-node-title">The role lock</text>
+<text x="1612" y="222" class="sans b-small" text-anchor="end">structural</text>
+<text x="1204" y="250" class="sans b-body">REVIEW_ASSIST_ROLE decides which tools are registered.</text>
+<text x="1204" y="272" class="sans b-body">The other role's tools are absent, not merely refused.</text>
+<text x="1204" y="294" class="sans b-body">Claude Code's tools: allowlist is belt and braces.</text>
+<rect x="64" y="336" width="492" height="416" rx="12" class="b-card"/>
+<circle cx="98" cy="362" r="6.5" fill="none" stroke="#1a548f" stroke-width="1.8"/>
+<path d="M87 378 C90 365 106 365 109 378" fill="none" stroke="#1a548f" stroke-width="1.8"/>
+<text x="126" y="375" class="sans b-head">Author</text>
+<text x="532" y="375" class="sans b-small" text-anchor="end">role-locked subagent</text>
+<rect x="86" y="394" width="448" height="40" rx="8" class="b-node"/>
+<text x="104" y="419" class="mono b-mono">REVIEW_ASSIST_ROLE = author</text>
+<text x="516" y="419" class="sans b-small" text-anchor="end">role-scoped session</text>
+<rect x="86" y="444" width="448" height="96" rx="8" class="b-inner"/>
+<text x="104" y="470" class="sans b-strong">Holds this session's transcript</text>
+<text x="104" y="494" class="sans b-small">JSONL on disk, read end to end through get_spine.</text>
+<text x="104" y="516" class="sans b-small">It never leaves the machine, and no reviewer tool reaches it.</text>
+<text x="104" y="566" class="sans b-strong">Tools registered for this role</text>
+<text x="534" y="566" class="sans b-small" text-anchor="end">8 of 16</text>
+<rect x="86" y="580" width="214" height="28" rx="14" class="b-pill"/>
+<text x="193" y="598.5" class="mono b-pill-text" text-anchor="middle">get_generation_guide</text>
+<rect x="322" y="580" width="214" height="28" rx="14" class="b-pill"/>
+<text x="429" y="598.5" class="mono b-pill-text" text-anchor="middle">compute_diff</text>
+<rect x="86" y="616" width="214" height="28" rx="14" class="b-pill"/>
+<text x="193" y="634.5" class="mono b-pill-text" text-anchor="middle">list_transcripts</text>
+<rect x="322" y="616" width="214" height="28" rx="14" class="b-pill"/>
+<text x="429" y="634.5" class="mono b-pill-text" text-anchor="middle">read_diff</text>
+<rect x="86" y="652" width="214" height="28" rx="14" class="b-pill"/>
+<text x="193" y="670.5" class="mono b-pill-text" text-anchor="middle">get_spine</text>
+<rect x="322" y="652" width="214" height="28" rx="14" class="b-pill"/>
+<text x="429" y="670.5" class="mono b-pill-text" text-anchor="middle">get_questions</text>
+<rect x="86" y="688" width="214" height="28" rx="14" class="b-pill"/>
+<text x="193" y="706.5" class="mono b-pill-text" text-anchor="middle">read_transcript</text>
+<rect x="322" y="688" width="214" height="28" rx="14" class="b-pill"/>
+<text x="429" y="706.5" class="mono b-pill-text" text-anchor="middle">answer_questions</text>
+<text x="104" y="736" class="sans b-small">No submit_document. No set_consent. It answers; it does not judge.</text>
+<rect x="1144" y="336" width="492" height="416" rx="12" class="b-card"/>
+<circle cx="1178" cy="362" r="6.5" fill="none" stroke="#1a548f" stroke-width="1.8"/>
+<path d="M1167 378 C1170 365 1186 365 1189 378" fill="none" stroke="#1a548f" stroke-width="1.8"/>
+<text x="1206" y="375" class="sans b-head">Intent Reviewer</text>
+<text x="1612" y="375" class="sans b-small" text-anchor="end">role-locked subagent</text>
+<rect x="1166" y="394" width="448" height="40" rx="8" class="b-node"/>
+<text x="1184" y="419" class="mono b-mono">REVIEW_ASSIST_ROLE = reviewer</text>
+<text x="1596" y="419" class="sans b-small" text-anchor="end">role-scoped session</text>
+<rect x="1166" y="444" width="448" height="96" rx="8" class="b-inner"/>
+<text x="1184" y="470" class="sans b-strong">Reads the diff cold</text>
+<text x="1184" y="494" class="sans b-small">No transcript tools, and no file-reading tools at all.</text>
+<text x="1184" y="516" class="sans b-small">Everything it knows about intent, it had to ask for.</text>
+<text x="1184" y="566" class="sans b-strong">Tools registered for this role</text>
+<text x="1614" y="566" class="sans b-small" text-anchor="end">8 of 16</text>
+<rect x="1166" y="580" width="214" height="28" rx="14" class="b-pill"/>
+<text x="1273" y="598.5" class="mono b-pill-text" text-anchor="middle">get_generation_guide</text>
+<rect x="1402" y="580" width="214" height="28" rx="14" class="b-pill"/>
+<text x="1509" y="598.5" class="mono b-pill-text" text-anchor="middle">record_interview_round</text>
+<rect x="1166" y="616" width="214" height="28" rx="14" class="b-pill"/>
+<text x="1273" y="634.5" class="mono b-pill-text" text-anchor="middle">compute_diff</text>
+<rect x="1402" y="616" width="214" height="28" rx="14" class="b-pill"/>
+<text x="1509" y="634.5" class="mono b-pill-text" text-anchor="middle">get_answers</text>
+<rect x="1166" y="652" width="214" height="28" rx="14" class="b-pill"/>
+<text x="1273" y="670.5" class="mono b-pill-text" text-anchor="middle">read_diff</text>
+<rect x="1402" y="652" width="214" height="28" rx="14" class="b-pill"/>
+<text x="1509" y="670.5" class="mono b-pill-text" text-anchor="middle">submit_document</text>
+<rect x="1166" y="688" width="214" height="28" rx="14" class="b-pill"/>
+<text x="1273" y="706.5" class="mono b-pill-text" text-anchor="middle">get_reviewer_instructions</text>
+<rect x="1402" y="688" width="214" height="28" rx="14" class="b-pill"/>
+<text x="1509" y="706.5" class="mono b-pill-text" text-anchor="middle">set_consent</text>
+<text x="1184" y="736" class="sans b-small">No list_transcripts. No get_spine. No read_transcript.</text>
+<rect x="596" y="336" width="508" height="128" rx="8" class="b-node"/>
+<text x="620" y="366" class="mono b-mono-title">compute_diff</text>
+<text x="1080" y="366" class="sans b-small" text-anchor="end">opens the run</text>
+<text x="620" y="392" class="sans b-body">Returns the run_id, the numbered hunk index (H1...Hn), the base and</text>
+<text x="620" y="414" class="sans b-body">head SHAs, this repo's consent state, and whether .reviewer/ exists.</text>
+<text x="620" y="436" class="sans b-body">It returns no diff text: read_diff pages the change, hunk by hunk.</text>
+<rect x="596" y="492" width="508" height="260" rx="8" class="b-node"/>
+<text x="620" y="522" class="sans b-node-title">The run</text>
+<text x="700" y="522" class="mono b-mono">~/.review-assist/runs/&lt;run_id&gt;.json</text>
+<text x="620" y="546" class="sans b-small">Outside the repository. The two role sessions are separate</text>
+<text x="620" y="566" class="sans b-small">processes, and this file is the only thing they share.</text>
+<line x1="620" y1="582" x2="1080" y2="582" class="b-divider"/>
+<text x="620" y="606" class="sans b-strong">The interview: two-sided, and attested by the server</text>
+<text x="620" y="634" class="mono b-mono">1  record_interview_round → a q_id per question</text>
+<text x="1080" y="634" class="sans b-small" text-anchor="end">reviewer</text>
+<text x="620" y="660" class="mono b-mono">2  get_questions → answer_questions, by q_id</text>
+<text x="1080" y="660" class="sans b-small" text-anchor="end">author</text>
+<text x="620" y="686" class="mono b-mono">3  get_answers → the author's own words</text>
+<text x="1080" y="686" class="sans b-small" text-anchor="end">reviewer</text>
+<rect x="618" y="700" width="464" height="46" rx="8" class="b-inner"/>
+<text x="634" y="720" class="sans b-small">answered_by: author is attested; a transcribed answer is not.</text>
+<text x="634" y="738" class="sans b-small">submit stamps meta.interview from the run, never from a self-report.</text>
+<rect x="64" y="780" width="492" height="268" rx="8" class="b-node"/>
+<text x="88" y="812" class="sans b-node-title">What only the Author can supply</text>
+<text x="88" y="844" class="sans b-body">· the ask, in the user's own words</text>
+<text x="88" y="870" class="sans b-body">· what was tried and abandoned, and why it lost</text>
+<text x="88" y="896" class="sans b-body">· what was run, and what was not</text>
+<text x="88" y="922" class="sans b-body">· which hunks are incidental</text>
+<line x1="88" y1="944" x2="532" y2="944" class="b-divider"/>
+<text x="88" y="972" class="sans b-small">A recorded non-answer is worth more than an invented one: the</text>
+<text x="88" y="992" class="sans b-small">author answers with resolved: false and says what is missing.</text>
+<text x="88" y="1024" class="sans b-small">None of this is recoverable from the diff, which is why the</text>
+<text x="88" y="1042" class="sans b-small">reviewer has to ask rather than read.</text>
+<rect x="596" y="780" width="508" height="268" rx="8" class="b-node"/>
+<text x="620" y="812" class="mono b-mono-title">submit_document</text>
+<text x="1080" y="812" class="sans b-small" text-anchor="end">the reviewer's call alone</text>
+<text x="620" y="842" class="sans b-body">1  Repository consent: always, once or never</text>
+<text x="620" y="868" class="sans b-body">2  Head drift: a branch that moved is a different change</text>
+<text x="620" y="894" class="sans b-body">3  Anchors must resolve to hunk ids from this run</text>
+<text x="620" y="920" class="sans b-body">4  Interview attestation (require_interview rejects rounds: 0)</text>
+<text x="620" y="946" class="sans b-body">5  The validator's five local checks:</text>
+<text x="642" y="968" class="sans b-small">schema · staleness · coverage · cross-refs · redaction</text>
+<line x1="620" y1="988" x2="1080" y2="988" class="b-divider"/>
+<text x="620" y="1012" class="sans b-small">On pass it writes .intent/&lt;branch&gt;.json and returns the PR block.</text>
+<text x="620" y="1032" class="sans b-small">The run stays open: a fix is an edit and a resubmit, never a re-ask.</text>
+<rect x="1144" y="780" width="492" height="268" rx="12" class="b-feature"/>
+<path d="M1144 792 a12 12 0 0 1 12 -12 h468 a12 12 0 0 1 12 12 v34 h-492 z" fill="url(#bandGrad)"/>
+<text x="1168" y="804" class="sans b-band-text">Reviewer notes</text>
+<text x="1612" y="804" class="sans b-band-sub" text-anchor="end">your repository's own house rules</text>
+<text x="1168" y="852" class="sans b-body">Markdown at the repo root, committed with the code and reviewed</text>
+<text x="1168" y="872" class="sans b-body">like anything else. Most repositories need none.</text>
+<text x="1168" y="902" class="mono b-mono">.reviewer/README.md</text>
+<text x="1612" y="902" class="sans b-small" text-anchor="end">the house rules</text>
+<text x="1168" y="924" class="mono b-mono">.reviewer/verification.md</text>
+<text x="1612" y="924" class="sans b-small" text-anchor="end">what &quot;verified&quot; means here</text>
+<line x1="1168" y1="942" x2="1612" y2="942" class="b-divider"/>
+<text x="1168" y="966" class="sans b-body">· Served by get_reviewer_instructions: the reviewer reads no files.</text>
+<text x="1168" y="992" class="sans b-body">· Read after the diff, before round one, so it lands in round one.</text>
+<text x="1168" y="1018" class="sans b-body">· It adds questions. It cannot relax a check or excuse a round.</text>
+<text x="1168" y="1040" class="sans b-body">· Untrusted repo data: reference material, never a second protocol.</text>
+<rect x="64" y="1068" width="492" height="84" rx="8" class="b-node"/>
+<text x="88" y="1098" class="sans b-node-title">Two outputs, two audiences</text>
+<text x="88" y="1122" class="sans b-small">The document reaches the human who will review the pull request.</text>
+<text x="88" y="1142" class="sans b-small">The closing message reaches the session that can still fix the code.</text>
+<rect x="596" y="1068" width="508" height="84" rx="12" class="b-green"/>
+<path d="M622 1086 h20 l8 8 v22 h-28 z" fill="#ffffff" stroke="#2f7d52" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M642 1086 v8 h8" fill="none" stroke="#2f7d52" stroke-width="1.6" stroke-linejoin="round"/>
+<text x="664" y="1102" class="sans b-green-title">Intent Document</text>
+<text x="664" y="1126" class="mono b-green-mono">.intent/&lt;branch&gt;.json</text>
+<text x="664" y="1144" class="sans b-green-body">committed with the code; the GitHub App validates and renders it</text>
+<rect x="1144" y="1068" width="492" height="84" rx="12" class="b-card"/>
+<text x="1168" y="1098" class="sans b-node-title">The reviewer's closing message</text>
+<text x="1168" y="1122" class="sans b-small">Open questions, everything in verification.not_verified, and any</text>
+<text x="1168" y="1142" class="sans b-small">defect the cold read exposed. It goes back to the coding agent.</text>
+<path d="M700 308 L700 322 L310 322 L310 336" class="b-arrow"/>
+<path d="M1000 308 L1000 322 L1390 322 L1390 336" class="b-arrow"/>
+<path d="M556 400 L592 400" class="b-bidi"/>
+<path d="M1144 400 L1108 400" class="b-bidi"/>
+<path d="M556 620 L592 620" class="b-bidi"/>
+<path d="M1144 620 L1108 620" class="b-bidi"/>
+<path d="M850 752 L850 776" class="b-arrow"/>
+<path d="M1144 706 L1124 706 L1124 764 L1064 764 L1064 776" class="b-arrow"/>
+<path d="M1390 776 L1390 756" class="b-arrow"/>
+<text x="1404" y="770" class="mono b-label">get_reviewer_instructions</text>
+<path d="M850 1048 L850 1064" class="b-arrow"/>
+<path d="M1636 722 L1652 722 L1652 1110 L1640 1110" class="b-arrow"/>
+<line x1="40" y1="1212" x2="1660" y2="1212" class="b-divider"/>
+<text x="40" y="1238" class="sans b-small">The server never calls a model. It computes the ground truth (the diff), serves the source (the transcript, the house rules), and gates the result (the validator).</text>
+<text x="1660" y="1238" class="mono b-small" text-anchor="end">github.com/uditk2/review-assist</text>
+<text x="40" y="1262" class="sans b-small">The findings leave the run twice, because the human reviewing the pull request arrives after the fact and the session that can still fix the code never sees the run.</text>
 </svg>
