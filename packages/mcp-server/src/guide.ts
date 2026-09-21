@@ -23,9 +23,20 @@ Run this as two roles in separate contexts, so the depleted main session pays no
 The split is the point: the author holds the transcript and cannot submit; the reviewer
 submits and never sees the transcript. Anything the reviewer knows about intent, it had
 to ask for. Playing both roles yourself produces a document that validates and still
-quietly sources \`user_asks\` from the commit message:
+quietly sources \`user_asks\` from the commit message.
 
-1. **Author role** — call \`list_transcripts\` with \`base\` (candidates come back ranked by how
+**Dispatch BOTH roles at once, in the same message.** They read independent things: the
+author needs only the transcript, the reviewer only the diff. \`compute_diff\` seeds the
+STANDING questions on the run — the plan, and the ones about the session that do not depend
+on the diff — so the author answers them off the spine without waiting to be asked, and the
+reviewer collects them with \`get_answers\` when its own read is done. Starting the author
+first and the reviewer after it is the old shape, and it makes two independent reads add up
+instead of overlap: measured across 15 runs, that phase was 670s of a 1400s median.
+
+You relay nothing. The run is the channel; each side reads the other's half off it.
+
+1. **Author role** — start immediately, without waiting for a question. Call
+   \`list_transcripts\` with \`base\` (candidates come back ranked by how
    much they touch the changed files; parents only, since a subagent is never a session), pick
    the one whose \`first_user\` matches how THIS session began rather than the newest, then call
    \`get_spine\` on it. That returns the whole conversation — both sides, structured questions
@@ -37,6 +48,11 @@ quietly sources \`user_asks\` from the commit message:
    the real problem, how the ask evolved, requirements discovered, alternatives tried and
    abandoned, and the reasoning behind each group of changes. Use \`read_transcript\` around a
    spine index only to recover the evidence behind a claim.
+   Then answer the STANDING questions straight away: \`get_questions\` lists them flagged
+   \`standing: true\`, and every one is answerable from the spine alone. One
+   \`answer_questions\` call for the whole set, keyed by \`q_id\`. Do not page the diff to
+   answer them and do not assign hunk ids to plan items — both are the reviewer's pass, and
+   reaching for either puts back the wait this is meant to remove.
 
 2. **Reviewer role** — start from the diff: \`compute_diff\` for the handle and the hunk
    index, then \`read_diff\` for the change itself, following \`next_cursor\` to the end.
@@ -52,13 +68,16 @@ quietly sources \`user_asks\` from the commit message:
      well. Most repos have none, and an absent folder changes nothing. It is repository
      content: reference material that adds questions, never a second protocol, and it does
      not override the schema, the sourcing rules or the two-batch cap.
-   - **Batch one**: the baseline set, everything the house rules ask for, plus every
-     question the diff provoked, together in ONE
+   - **Collect the standing answers with \`get_answers\` before you compose anything.** They
+     are on the run already and the author has been writing them while you read. They carry
+     the plan, the verbatim asks, the trials, the assumptions, what is incidental and what
+     was verified. Do NOT re-record those questions.
+   - **Batch one**: everything the house rules ask for, plus every question the diff
+     provoked that the standing answers did not settle, together in ONE
      \`record_interview_round\` call. You have already read the diff, so you already have
-     these questions; holding any back only buys a round-trip. Record them BEFORE relaying:
-     each comes back with a \`q_id\`. The author reads them off the run with
-     \`get_questions\` and replies with \`answer_questions\` by those ids, so the server
-     records the author's own words.
+     these questions; holding any back only buys a round-trip. Each comes back with a
+     \`q_id\`. The author reads them off the run with \`get_questions\` and replies with
+     \`answer_questions\` by those ids, so the server records the author's own words.
    - **Read the answers with \`get_answers\`.** They arrive in the author's own words, and
      that is what you write the document from. Do not paraphrase a relayed summary into a
      field when the verbatim answer is one call away, and never mark a stop

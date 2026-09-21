@@ -79,9 +79,12 @@ const REGISTRY: Record<RoleEnv, EnvEntry> = {
     filename: (r) => `intent-${r}.md`,
     how_to_run:
       "Call this tool again with `install: true` and the definitions are written to " +
-      "~/.claude/agents/. Then dispatch them with the Task tool — author first, then reviewer, " +
-      "relaying questions and answers between them. Each starts in its own context, and the " +
-      "`tools:` allowlist keeps the roles apart.",
+      "~/.claude/agents/. Then dispatch them with the Task tool IN THE SAME MESSAGE, so they run " +
+      "concurrently: the author reads the transcript while the reviewer reads the diff, and neither " +
+      "needs anything from the other to start. compute_diff seeds the standing questions, so the " +
+      "author has work to do before the reviewer has asked anything. You do not relay questions or " +
+      "answers; both sides read them off the run. Each starts in its own context, and the `tools:` " +
+      "allowlist keeps the roles apart.",
   },
   codex: {
     templates: { author: codexAuthorTpl, reviewer: codexReviewerTpl },
@@ -89,16 +92,20 @@ const REGISTRY: Record<RoleEnv, EnvEntry> = {
     filename: (r) => `intent-${r}.toml`,
     how_to_run:
       "Call this tool again with `install: true` and the definitions are written to " +
-      "~/.codex/agents/. Then ask Codex to delegate the author and reviewer parts to subagents; " +
-      "`/agent` switches between the running threads. Each definition pins REVIEW_ASSIST_ROLE, so " +
-      "the server itself withholds the other role's tools.",
+      "~/.codex/agents/. Then ask Codex to delegate the author and reviewer parts to subagents, and " +
+      "start BOTH before waiting on either: their reads are independent, and compute_diff seeds the " +
+      "standing questions so the author is not waiting to be asked. `/agent` switches between the " +
+      "running threads. Each definition pins REVIEW_ASSIST_ROLE, so the server itself withholds the " +
+      "other role's tools.",
   },
   generic: {
     templates: { author: genericAuthorTpl, reviewer: genericReviewerTpl },
     filename: (r) => `intent-${r}.md`,
     how_to_run:
-      "Start two separate agent sessions against this server, one per role, and relay questions " +
-      "and answers between them. Launch each with REVIEW_ASSIST_ROLE set (author | reviewer) so " +
+      "Start two separate agent sessions against this server, one per role, and start them at the " +
+      "same time: the author reads the transcript while the reviewer reads the diff, and compute_diff " +
+      "seeds the standing questions so neither blocks on the other. Do not relay questions or answers; " +
+      "both sides read them off the run. Launch each with REVIEW_ASSIST_ROLE set (author | reviewer) so " +
       "the server withholds the other role's tools; what matters is that the reviewer never sees " +
       "the transcript.",
   },

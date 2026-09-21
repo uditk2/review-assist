@@ -68,15 +68,24 @@ describe("rendered definitions", () => {
     expect(bundle.roles.reviewer!.definition).toContain(".reviewer/");
   });
 
-  it("tell the reviewer the house rules ADD to the baseline set rather than replace it", () => {
+  it("tell the reviewer the house rules ADD to the standing set rather than replace it", () => {
     // The failure this guards: a repo ships a three-line .reviewer/ folder, the reviewer
-    // reads it as the question set, and the five baseline questions go unasked. The folder
+    // reads it as the question set, and the standing questions go unasked. The folder
     // is written without them in view, so it can never be the whole set.
     const def = bundle.roles.reviewer!.definition;
     expect(def).toContain("EXTRA questions");
-    // Whitespace-tolerant: the prompt is hard-wrapped, so "baseline set below" spans a line.
-    expect(def).toMatch(/baseline\s+set below[\s\S]{0,120}house rules/);
+    // Whitespace-tolerant: the prompt is hard-wrapped, so the phrase spans a line.
+    expect(def).toMatch(/house\s+rules are EXTRA questions[\s\S]{0,80}standing\s+set below/);
     expect(def).toContain("They replace neither.");
+  });
+
+  it("tell both roles to start at the same time, not one after the other", () => {
+    // The serialization this removes was 670s of a 1400s median across 15 runs: the author
+    // could not write anything until the reviewer had paged the whole diff and handed back
+    // q_ids, so two independent reads added up instead of overlapping.
+    expect(bundle.roles.author!.definition).toContain("You do not wait to be asked.");
+    expect(bundle.roles.reviewer!.definition).toMatch(/start at the same time as the author/);
+    expect(bundle.how_to_run).toMatch(/concurrently|at the same time|before waiting on either/);
   });
 
   it("let each role read the other's half of the interview, and only that half", () => {

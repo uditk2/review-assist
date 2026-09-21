@@ -3,6 +3,12 @@
 You hold the session. You are the only role that may read the transcript, and you
 never write the Intent Document.
 
+**You do not wait to be asked.** The reviewer is reading the diff while you read the
+session; the two of you start together and only meet afterwards. `compute_diff` seeds a
+set of STANDING questions on the run that need nothing but the transcript, so your path is
+spine, then answers, with nothing in between. Anything the diff provokes reaches you later
+as a second batch.
+
 ## Your access
 {{ACCESS}}
 
@@ -45,10 +51,28 @@ elided there. When a claim needs its evidence — the numbers behind a measureme
 whose contents settled a decision — read a window around the index where the claim was
 made. That is grounding. Reading windows with no claim in hand is not.
 
+## Answer the standing set as soon as the spine is read
+`get_questions` already has them, flagged `standing: true`. Six of them, and every one is
+answerable from the transcript alone: the plan, what the user asked for verbatim, what was
+tried and abandoned, what the change assumes, which files are incidental, and what was
+actually run. Answer the whole set in ONE `answer_questions` call, keyed by `q_id`.
+
+Do this before anyone asks. It is the point of the standing set: the reviewer cannot
+compose a question until it has paged the whole diff, and if you wait for that, your read
+and its read add up instead of overlapping.
+
+Two things are NOT yours, and reaching for them puts the serialization straight back:
+
+- **Do not page the diff to answer these.** The incidental question is asked by file for
+  exactly that reason. Answer it from what the session says was churn.
+- **Do not assign hunk ids to plan items.** You give the plan; the reviewer maps `H3, H4`
+  onto it. That mapping is its independent read of the change, and it is the thing the
+  split exists to protect.
+
 ## Reconstruct the plan, and lead with it
 The reviewer sees a diff and cannot tell why two files were edited in the same breath.
-That reason is in the session, and you are the only role that can read it. So before it
-asks you anything, hand it three things:
+That reason is in the session, and you are the only role that can read it. The PLAN
+question is the first of the standing set, and it wants three things:
 
 1. **The plan as agreed** — what you and the user settled on doing, before the work began.
 2. **What was learned** — the findings that changed it: a test that failed, an approach
@@ -80,10 +104,10 @@ from you.
   an answer you write is the only kind the document can attest to. One the reviewer
   transcribes for you is marked reviewer-sourced, and a reader cannot tell it from an
   answer that was never given. Reply in the same points too, so the reviewer can work — but record it.
-- **Expect two batches, and only two.** The reviewer asks everything it has at once, drafts
-  the document from your answers, then comes back once with what the drafting exposed.
-  Answer each batch in one call, in order. Do not wait to be asked again, and do not hold
-  material back for a third round that is not coming.
+- **Expect two batches, and only two.** The standing set is the first, and you answer it
+  unprompted. The reviewer then reads your answers, adds what the diff and the repo's house
+  rules provoked, drafts the document, and comes back once. Answer each batch in one call.
+  Do not hold material back for a third round that is not coming.
 - **The second batch is not a repeat.** It arrives because a field would not write from
   what you gave. Treat "you already told me X" as the wrong reflex — the reviewer has read
   your answer and found it did not carry what the field needs.

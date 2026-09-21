@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { intentDocSchema } from "@review-assist/schema";
 import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,6 +40,13 @@ const HEAD_2 = "a024854f8ff71d0a3c1b9e77d2f4a8c6e0b15d93";
 /** The record itself, for the common case where the open-time signals do not matter. */
 const open = (key: { repo: string; baseSha: string; headSha: string; branch?: string }) =>
   runs.openRun(key).run;
+
+/**
+ * Every run now opens with the standing questions already on it, so a test about what the
+ * reviewer recorded has to say so. Filtering here rather than in `runRounds` is deliberate:
+ * the author must SEE the seeded set, which is the whole point of seeding it.
+ */
+const asked = (runId: string) => runs.runRounds(runs.getRun(runId)!).filter((r) => !r.seeded);
 
 describe("computeRunId", () => {
   it("is stable for the same change, so two isolated roles derive the same handle", () => {
@@ -83,9 +91,10 @@ describe("openRun", () => {
 
   it("survives a process boundary — state is on disk, not in a Map", async () => {
     const opened = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
-    runs.recordRounds(opened.run_id, [{ question: "What did the user ask for?", answer: "…" }]);
+    runs.recordRounds(opened.run_id, [{ question: "Did the ads manager ship?", answer: "…" }]);
     const reloaded = runs.getRun(opened.run_id);
-    expect(Object.keys(reloaded!.rounds)).toHaveLength(1);
+    expect(asked(opened.run_id)).toHaveLength(1);
+    expect(Object.keys(reloaded!.rounds)).toHaveLength(runs.STANDING_QUESTIONS.length + 1);
   });
 
   it("moves an existing run to the new head instead of minting a second one", () => {
@@ -201,7 +210,7 @@ describe("recordRounds", () => {
     const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(run.run_id, [{ question: "Q", answer: "first" }]);
     runs.recordRounds(run.run_id, [{ question: "Q", answer: "second" }]);
-    const rounds = runs.runRounds(runs.getRun(run.run_id)!);
+    const rounds = asked(run.run_id);
     expect(rounds).toHaveLength(1);
     expect(rounds[0].answer).toBe("second");
   });
@@ -225,6 +234,7 @@ describe("recordRounds", () => {
       unresolved: 1,
       author_attested: 0,
       unanswered: 0,
+      standing_unanswered: runs.STANDING_QUESTIONS.length,
     });
   });
 
@@ -260,7 +270,7 @@ describe("recordAnswers", () => {
   const ask = (question: string) => {
     const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(run.run_id, [{ question }]);
-    return { run_id: run.run_id, q_id: runs.runRounds(runs.getRun(run.run_id)!)[0].q_id };
+    return { run_id: run.run_id, q_id: asked(run.run_id)[0].q_id };
   };
 
   it("attests an answer the author wrote itself", () => {
@@ -269,7 +279,7 @@ describe("recordAnswers", () => {
     const summary = runs.summarizeRun(runs.getRun(run_id)!);
     expect(summary.author_attested).toBe(1);
     expect(summary.unanswered).toBe(0);
-    expect(runs.runRounds(runs.getRun(run_id)!)[0].answered_by).toBe("author");
+    expect(asked(run_id)[0].answered_by).toBe("author");
   });
 
   it("does not attest an answer the reviewer transcribed", () => {
@@ -278,15 +288,15 @@ describe("recordAnswers", () => {
     const summary = runs.summarizeRun(runs.getRun(run.run_id)!);
     expect(summary.rounds).toBe(1);
     expect(summary.author_attested).toBe(0);
-    expect(runs.runRounds(runs.getRun(run.run_id)!)[0].answered_by).toBe("reviewer");
+    expect(asked(run.run_id)[0].answered_by).toBe("reviewer");
   });
 
   it("lets the author's answer win over the reviewer's transcription of it", () => {
     const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(run.run_id, [{ question: "Q", answer: "roughly what I was told" }]);
-    const { q_id } = runs.runRounds(runs.getRun(run.run_id)!)[0];
+    const { q_id } = asked(run.run_id)[0];
     runs.recordAnswers(run.run_id, [{ q_id, answer: "what I actually said" }]);
-    const [round] = runs.runRounds(runs.getRun(run.run_id)!);
+    const [round] = asked(run.run_id);
     expect(round.answer).toBe("what I actually said");
     expect(round.answered_by).toBe("author");
   });
@@ -297,7 +307,7 @@ describe("recordAnswers", () => {
     const { run_id, q_id } = ask("Q");
     runs.recordAnswers(run_id, [{ q_id, answer: "the author's words" }]);
     runs.recordRounds(run_id, [{ question: "Q" }]);
-    const [round] = runs.runRounds(runs.getRun(run_id)!);
+    const [round] = asked(run_id);
     expect(round.answer).toBe("the author's words");
     expect(round.answered_by).toBe("author");
     expect(runs.summarizeRun(runs.getRun(run_id)!).author_attested).toBe(1);
@@ -341,19 +351,19 @@ describe("the run as the channel between the roles", () => {
     ]);
 
     // What get_questions serves the author: the wording and the ids, nothing hand-carried.
-    const asked = runs.runRounds(runs.getRun(run.run_id)!);
-    expect(asked.map((r) => r.question)).toEqual(["Why two queries?", "What was tried and abandoned?"]);
-    expect(asked.every((r) => /^[0-9a-f]{16}$/.test(r.q_id))).toBe(true);
-    expect(asked.every((r) => r.answer === "")).toBe(true);
+    const batch = asked(run.run_id);
+    expect(batch.map((r) => r.question)).toEqual(["Why two queries?", "What was tried and abandoned?"]);
+    expect(batch.every((r) => /^[0-9a-f]{16}$/.test(r.q_id))).toBe(true);
+    expect(batch.every((r) => r.answer === "")).toBe(true);
 
     // Author's half, keyed by the ids it just read.
     runs.recordAnswers(run.run_id, [
-      { q_id: asked[0].q_id, answer: "a combined query drops the whole row" },
-      { q_id: asked[1].q_id, answer: "the transcript does not cover this", resolved: false },
+      { q_id: batch[0].q_id, answer: "a combined query drops the whole row" },
+      { q_id: batch[1].q_id, answer: "the transcript does not cover this", resolved: false },
     ]);
 
     // What get_answers serves the reviewer: the author's own words, attributed.
-    const answered = runs.runRounds(runs.getRun(run.run_id)!);
+    const answered = asked(run.run_id);
     expect(answered.map((r) => r.answer)).toEqual([
       "a combined query drops the whole row",
       "the transcript does not cover this",
@@ -365,19 +375,191 @@ describe("the run as the channel between the roles", () => {
       unresolved: 1,
       author_attested: 2,
       unanswered: 0,
+      standing_unanswered: runs.STANDING_QUESTIONS.length,
     });
   });
 
   it("tells the author what it still owes, and the reviewer what is still missing", () => {
     const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "main" });
     runs.recordRounds(run.run_id, [{ question: "Q1" }, { question: "Q2" }]);
-    const [q1] = runs.runRounds(runs.getRun(run.run_id)!);
+    const [q1] = asked(run.run_id);
     runs.recordAnswers(run.run_id, [{ q_id: q1.q_id, answer: "answered" }]);
 
     // get_questions({only_unanswered: true}) / get_answers both filter on this.
-    const rounds = runs.runRounds(runs.getRun(run.run_id)!);
+    const rounds = asked(run.run_id);
     expect(rounds.filter((r) => r.answer.length === 0).map((r) => r.question)).toEqual(["Q2"]);
+    // `unanswered` counts the live interview; the seeded set is reported separately, so a
+    // reviewer waiting on the author can tell "you owe me a follow-up" from "you have not
+    // run at all".
     expect(runs.summarizeRun(runs.getRun(run.run_id)!).unanswered).toBe(1);
+    expect(runs.summarizeRun(runs.getRun(run.run_id)!).standing_unanswered).toBe(
+      runs.STANDING_QUESTIONS.length
+    );
+  });
+});
+
+/**
+ * The stamp writes the server's own attestation into a schema block declared
+ * `additionalProperties: false`. That held only by coincidence while the summary and the
+ * block had the same five fields, and the coincidence ended: `standing_unanswered` was
+ * added to the summary, the stamp spread it whole, and since it runs before validation
+ * EVERY submit failed on "must NOT have additional properties" — with two full interviews
+ * already recorded and nothing in the suite to catch it. These pin the two halves against
+ * each other rather than against a hand-copied list.
+ */
+describe("attestedInterview", () => {
+  const interviewSchema = () => {
+    const meta = (intentDocSchema as any).properties.meta;
+    return meta.properties.interview;
+  };
+
+  it("writes exactly the fields meta.interview declares", () => {
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "main" });
+    runs.recordRounds(run.run_id, [{ question: "Q1" }]);
+
+    const stamped = runs.attestedInterview(runs.summarizeRun(runs.getRun(run.run_id)!));
+    expect(Object.keys(stamped).sort()).toEqual(Object.keys(interviewSchema().properties).sort());
+  });
+
+  it("drops the counters the summary keeps for the roles", () => {
+    // The premise of the test above: the block refuses anything it does not name, so a
+    // summary field that is not in the schema cannot be allowed to reach the document.
+    expect(interviewSchema().additionalProperties).toBe(false);
+
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "main" });
+    const summary = runs.summarizeRun(runs.getRun(run.run_id)!);
+    expect(summary).toHaveProperty("standing_unanswered");
+    expect(runs.attestedInterview(summary)).not.toHaveProperty("standing_unanswered");
+  });
+});
+
+/**
+ * The two-batch cap used to live only in the role prose, and three runs broke it the same
+ * way: the reviewer finished its two batches, kept reading, found real defects, and opened
+ * a third round. By then the author had handed back — correctly, its own definition caps it
+ * at two — so nothing could answer, and the reviewer polled for 61, 67 and 103 minutes.
+ * The cap is now counted on the run, so the refusal can happen before a batch is spent.
+ */
+describe("the interview batch cap", () => {
+  it("counts a batch only when a question is new, so a retry is free", () => {
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "main" });
+    runs.recordRounds(run.run_id, [{ question: "Q1" }, { question: "Q2" }]);
+    expect(runs.getRun(run.run_id)!.batches).toBe(1);
+
+    // The guide promises re-recording is free and cannot inflate the count.
+    runs.recordRounds(run.run_id, [{ question: "Q1" }, { question: "Q2" }]);
+    expect(runs.getRun(run.run_id)!.batches).toBe(1);
+  });
+
+  it("allows two batches and refuses a third that carries new questions", () => {
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "main" });
+    runs.recordRounds(run.run_id, [{ question: "Q1" }]);
+    runs.recordRounds(run.run_id, [{ question: "Q2" }]);
+
+    const third = runs.batchCheck(runs.getRun(run.run_id)!, ["Q3"]);
+    expect(third.batches_used).toBe(runs.MAX_BATCHES);
+    expect(third.fresh).toEqual(["Q3"]);
+    expect(third.allowed).toBe(false);
+  });
+
+  it("still lets the reviewer retry an existing question after the cap", () => {
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "main" });
+    runs.recordRounds(run.run_id, [{ question: "Q1" }]);
+    runs.recordRounds(run.run_id, [{ question: "Q2" }]);
+
+    const retry = runs.batchCheck(runs.getRun(run.run_id)!, ["Q1"]);
+    expect(retry.fresh).toEqual([]);
+    expect(retry.allowed).toBe(true);
+  });
+
+  it("does not let the seeded standing set spend a batch", () => {
+    // The standing questions are seeded at open, not asked by the reviewer. If they
+    // counted, the reviewer would arrive with its budget already gone.
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD, branch: "main" });
+    expect(runs.getRun(run.run_id)!.batches ?? 0).toBe(0);
+    expect(runs.batchCheck(runs.getRun(run.run_id)!, ["anything"]).allowed).toBe(true);
+  });
+});
+
+/**
+ * The standing set is what makes the two roles concurrent. Before it, the author's only
+ * write took q_ids that did not exist until the reviewer had paged the whole diff, so the
+ * two independent reads ran one after the other: 670s of a 1400s median across 15 runs.
+ * These pin the properties that make seeding safe to do at open.
+ */
+describe("standing questions", () => {
+  it("are on the run at open, so the author can answer before anything is asked of it", () => {
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const seeded = runs.runRounds(runs.getRun(run.run_id)!).filter((r) => r.seeded);
+    expect(seeded).toHaveLength(runs.STANDING_QUESTIONS.length);
+    expect(seeded.map((r) => r.question)).toEqual([...runs.STANDING_QUESTIONS]);
+    expect(seeded.every((r) => r.answer === "" && r.resolved === false)).toBe(true);
+  });
+
+  it("give both roles the same ids without either telling the other", () => {
+    // The whole handoff. Two processes that cannot talk derive identical q_ids because the
+    // id is a hash of the question text and the text is a constant.
+    const reviewer = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const author = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    expect(author.run_id).toBe(reviewer.run_id);
+    expect(Object.keys(author.rounds).sort()).toEqual(Object.keys(reviewer.rounds).sort());
+  });
+
+  it("do not count as an interview until someone answers them", () => {
+    // Otherwise every document would report an interview the server seeded itself, and
+    // `rounds: 0` would stop being the signal that no author ever ran.
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const fresh = runs.summarizeRun(runs.getRun(run.run_id)!);
+    expect(fresh.rounds).toBe(0);
+    expect(fresh.questions_asked).toBe(0);
+    expect(fresh.standing_unanswered).toBe(runs.STANDING_QUESTIONS.length);
+
+    const [first] = runs.runRounds(runs.getRun(run.run_id)!).filter((r) => r.seeded);
+    runs.recordAnswers(run.run_id, [{ q_id: first.q_id, answer: '"add an ads manager"' }]);
+    const after = runs.summarizeRun(runs.getRun(run.run_id)!);
+    expect(after.rounds).toBe(1);
+    expect(after.author_attested).toBe(1);
+    expect(after.standing_unanswered).toBe(runs.STANDING_QUESTIONS.length - 1);
+  });
+
+  it("survive a re-open, and a re-open never duplicates or blanks one", () => {
+    // openRun is called by BOTH roles and again on every head move. Seeding has to be
+    // idempotent or the author's attestation dies on the commit that adds the document.
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const [first] = runs.runRounds(runs.getRun(run.run_id)!).filter((r) => r.seeded);
+    runs.recordAnswers(run.run_id, [{ q_id: first.q_id, answer: "the author's words" }]);
+
+    const moved = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD_2 }).run;
+    expect(Object.keys(moved.rounds)).toHaveLength(runs.STANDING_QUESTIONS.length);
+    expect(moved.rounds[first.q_id].answer).toBe("the author's words");
+    expect(moved.rounds[first.q_id].answered_by).toBe("author");
+  });
+
+  it("are backfilled onto a run opened before they existed", () => {
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    const stripped = runs.getRun(run.run_id)!;
+    stripped.rounds = {};
+    writeFileSync(join(runs.runsDir(), `${run.run_id}.json`), JSON.stringify(stripped));
+
+    const reopened = runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD }).run;
+    expect(Object.keys(reopened.rounds)).toHaveLength(runs.STANDING_QUESTIONS.length);
+  });
+
+  it("stay standing when the reviewer re-records one, so an unanswered re-ask is not a round", () => {
+    const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
+    runs.recordRounds(run.run_id, [{ question: runs.STANDING_QUESTIONS[0] }]);
+    const re = runs.runRounds(runs.getRun(run.run_id)!).filter((r) => r.seeded);
+    expect(re).toHaveLength(runs.STANDING_QUESTIONS.length);
+    expect(runs.summarizeRun(runs.getRun(run.run_id)!).rounds).toBe(0);
+  });
+
+  it("ask about incidental changes by file, so the author never has to page the diff", () => {
+    // The one question that would put the serialization back. The author answers from the
+    // session; mapping the answer onto hunk ids is the reviewer's own read.
+    const incidental = runs.STANDING_QUESTIONS.find((q) => /incidental/i.test(q))!;
+    expect(incidental).toMatch(/by file/i);
+    expect(incidental).not.toMatch(/hunk/i);
+    expect(runs.STANDING_QUESTIONS.some((q) => /hunk/i.test(q))).toBe(false);
   });
 });
 
@@ -399,7 +581,7 @@ describe("markSubmitted", () => {
   const ask = (question: string) => {
     const run = open({ repo: REPO_A, baseSha: BASE, headSha: HEAD });
     runs.recordRounds(run.run_id, [{ question }]);
-    return { run_id: run.run_id, q_id: runs.runRounds(runs.getRun(run.run_id)!)[0].q_id };
+    return { run_id: run.run_id, q_id: asked(run.run_id)[0].q_id };
   };
 
   it("keeps the run, and its interview, after the document is written", () => {

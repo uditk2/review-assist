@@ -58,6 +58,9 @@ import {
   recordAnswers,
   runRounds,
   summarizeRun,
+  attestedInterview,
+  batchCheck,
+  MAX_BATCHES,
   markSubmitted,
   listOpenRuns,
   type InterviewRound,
@@ -157,7 +160,20 @@ registerTool(
       // SHA would give the author and the reviewer different ids for the same work.
       const branch = await currentBranch(repoDir, "HEAD");
       const { run, head_changed, previous_head } = openRun({ repo: repoDir, baseSha, headSha, branch });
-      const recorded_rounds = Object.keys(run.rounds).length;
+      const interview = summarizeRun(run);
+      const recorded_rounds = interview.rounds;
+      // Seeded at open and identical for both roles, because the q_id is a hash of the
+      // question text. This is what lets the author start answering while the reviewer is
+      // still paging the diff, instead of waiting for a batch that cannot exist yet.
+      const seeded = runRounds(run).filter((r) => r.seeded);
+      // Ids and counts only. The text is one `get_questions` (author) or `get_answers`
+      // (reviewer) away, and this envelope must not grow with anything it does not have
+      // to carry.
+      const standing = {
+        count: seeded.length,
+        answered: seeded.filter((r) => r.answer.length > 0).length,
+        q_ids: seeded.map((r) => r.q_id),
+      };
       const consent = getConsent(repoDir);
       const houseRules = summarizeReviewerInstructions(repoDir);
       const hunks = indexHunks(diff);
@@ -193,7 +209,14 @@ registerTool(
                 "the ids from THIS response.",
             }
           : {}),
-        interview: { recorded_rounds },
+        interview: { recorded_rounds, standing_unanswered: interview.standing_unanswered },
+        standing_questions: standing,
+        // Both roles get this. It is the sentence that stops them queueing behind each
+        // other, so it does not live only in the role prose.
+        run_both_roles_now:
+          "The author and the reviewer start at the same time, not one after the other. The " +
+          "standing questions above are on the run already, so the author answers them off the " +
+          "spine while the reviewer pages the diff. Neither waits for the other.",
         stats: {
           files: files.length,
           hunks: hunks.length,
@@ -230,10 +253,21 @@ registerTool(
       const houseRulesNote = houseRules.present
         ? ` This repo ships ${houseRules.files} reviewer instruction file(s) in ${REVIEWER_DIR}/. Call get_reviewer_instructions BEFORE you record round one: they name what this repository always wants asked, in addition to your baseline set and the questions the diff provoked, and a question you skip there cannot be recovered in round two.`
         : "";
+      // The standing set means something different to each side, so say the role's half of
+      // it rather than a sentence both have to filter.
+      const standingNote =
+        standing.count === 0
+          ? ""
+          : ACTIVE_ROLE === "author"
+            ? ` Do NOT wait to be asked: ${standing.count} standing question(s) are already on this run, ${standing.count - standing.answered} of them unanswered. Read the spine, then answer them with answer_questions. The reviewer is reading the diff at the same time and will collect your answers when it gets there.`
+            : ACTIVE_ROLE === "reviewer"
+              ? ` ${standing.count} standing question(s) are already on this run and the author is answering them in parallel with your diff read; ${standing.answered} are in. Do NOT re-record them. Read them with get_answers, and let your batch one be what the diff provoked plus the house rules.`
+              : ` ${standing.count} standing question(s) are seeded on this run. Dispatch both roles NOW, in parallel: the author answers these off the transcript while the reviewer pages the diff.`;
       envelope.next =
         (consent === "unknown"
           ? "This repo is not opted in yet. Resolve consent NOW, before writing the document: present the choice to the user and call set_consent({ repo, decision }). Submitting first only wastes the document."
           : "Pass `run_id` to read_diff, record_interview_round and submit_document. Do not pass `repo` to those tools — the run already knows it.") +
+        standingNote +
         houseRulesNote;
 
       return textResult(JSON.stringify(envelope));
@@ -502,8 +536,11 @@ registerTool(
     "and the author answers by that id with `answer_questions`, so the server hears the author's own words " +
     "rather than your account of them. Include the q_ids when you relay. `answer` is optional here and is " +
     "only for transcribing an answer you already hold — it is marked reviewer-sourced, and does not count as " +
-    "attested. Send the baseline set and every diff-provoked question together in ONE call via `rounds`; " +
-    "follow up at most once. Rounds are keyed by question, so re-recording one replaces it rather than " +
+    "attested. The standing set (the plan, and the questions about the session that do not depend on the " +
+    "diff) is ALREADY on the run, seeded at compute_diff, and the author answers it in parallel with your " +
+    "read — read those with get_answers and do NOT re-record them. What belongs in your ONE `rounds` call " +
+    "is what the diff provoked plus what the house rules ask; follow up at most once. " +
+    "Rounds are keyed by question, so re-recording one replaces it rather than " +
     "duplicating: retrying is free, cannot inflate the count, and never erases an answer already recorded.",
   {
     run_id: z
@@ -536,6 +573,45 @@ registerTool(
     if (batch.length === 0) {
       return textResult("record_interview_round: supply `rounds: [{question}]`.", true);
     }
+    const existing = getRun(run_id);
+    if (!existing) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+
+    // The two-batch cap, enforced rather than requested. The author's own role definition
+    // caps it at two batches, so by the time a third is composed the author has usually
+    // handed back and no one is left to answer. Refusing here costs the reviewer one call;
+    // not refusing cost 61, 67 and 103 minutes of polling in three observed runs.
+    const { fresh, batches_used, allowed } = batchCheck(existing, batch.map((b) => b.question));
+    if (!allowed) {
+      return textResult(
+        JSON.stringify(
+          {
+            ok: false,
+            refused: "batch_cap",
+            run_id,
+            batches_used,
+            max_batches: MAX_BATCHES,
+            new_questions_rejected: fresh.length,
+            message:
+              `This run has already spent its ${MAX_BATCHES} interview batches, so these ${fresh.length} ` +
+              "question(s) were NOT recorded and nothing on the run changed. The author is a subagent " +
+              "capped at two batches by its own role definition: it has almost certainly handed back, and " +
+              "a question recorded now has no one to answer it.",
+            what_to_do:
+              "These belong in the document and in your closing report, not in another round. Put what is " +
+              "unresolved in `verification.not_verified`, raise any defect the cold read exposed in the " +
+              "report you hand back to whoever dispatched you, and submit. A document with honest gaps is " +
+              "worth more than one that waited for an answer that was never coming.",
+            still_allowed:
+              "Re-recording a question this run already holds is a retry and is always accepted; only " +
+              "questions the run has never seen are refused here.",
+          },
+          null,
+          2
+        ),
+        true
+      );
+    }
+
     const run = recordRounds(run_id, batch);
     if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
     const summary = summarizeRun(run);
@@ -563,9 +639,10 @@ registerTool(
 
 registerTool(
   "answer_questions",
-  "Author role: answer the reviewer's questions, by `q_id`. This is how your answers reach the document as " +
-    "YOUR words: the reviewer records the questions, relays them to you with their ids, and you write the " +
-    "answers here. An answer the reviewer transcribes on your behalf still works, but is marked " +
+  "Author role: answer the questions on the run, by `q_id`. This is how your answers reach the document as " +
+    "YOUR words. START WITH THE STANDING SET: those questions are seeded on the run by compute_diff and are " +
+    "answerable from the spine alone, so do NOT wait for the reviewer to ask you anything — it is reading " +
+    "the diff while you read the session, and the two only meet afterwards. An answer the reviewer transcribes on your behalf still works, but is marked " +
     "reviewer-sourced and does not count as attested — so a document whose interview never happened is " +
     "visible as such rather than indistinguishable from one that did. Answer the whole batch in one call. " +
     'If the transcript does not cover something, say exactly that and set `resolved: false`; a recorded ' +
@@ -577,7 +654,7 @@ registerTool(
     answers: z
       .array(
         z.object({
-          q_id: z.string().describe("The question's id, as relayed by the reviewer."),
+          q_id: z.string().describe("The question's id, from get_questions or from compute_diff's standing_questions."),
           answer: z.string().describe("Your answer, from the transcript. Quote verbatim where the answer turns on what was said."),
           resolved: z
             .boolean()
@@ -602,8 +679,9 @@ registerTool(
             ? {
                 unknown_q_ids: unknown,
                 hint:
-                  "These ids are not on this run. Ids come from the reviewer's record_interview_round for " +
-                  "THIS run — re-read them from what was relayed rather than guessing. Nothing was stored for them.",
+                  "These ids are not on this run. Ids come from get_questions on THIS run (which lists the " +
+                  "standing set as well as anything the reviewer added) — re-read them rather than guessing. " +
+                  "Nothing was stored for them.",
               }
             : {}),
         },
@@ -616,8 +694,10 @@ registerTool(
 
 registerTool(
   "get_questions",
-  "Author role: read the reviewer's questions straight off the run, with their `q_id`s. This is how you " +
-    "learn what you are being asked — you do NOT need them relayed to you as text. Call it with the " +
+  "Author role: read the questions on the run, with their `q_id`s. This is how you " +
+    "learn what you are being asked — you do NOT need them relayed to you as text, and there is something " +
+    "here to answer BEFORE the reviewer has asked anything: the standing set is seeded at compute_diff, so " +
+    "call this as soon as you have read the spine rather than waiting for a batch. Call it with the " +
     "`run_id` (derive it yourself from compute_diff, or take the one you were given, they are the same " +
     "value), answer with `answer_questions` using the ids it returns, then call it again with " +
     "`only_unanswered: true` to confirm nothing was missed. Paged: follow `next_cursor` until there is none.",
@@ -640,6 +720,9 @@ registerTool(
       (r) => ({
         q_id: r.q_id,
         question: r.question,
+        // Standing questions are answerable from the spine alone. Flagged so the author
+        // can start on them without first working out which need the diff.
+        standing: r.seeded === true,
         answered: r.answer.length > 0,
         answered_by: r.answered_by ?? null,
         resolved: r.resolved,
@@ -697,22 +780,77 @@ registerTool(
       max_bytes ?? maxResultBytes()
     );
     const summary = summarizeRun(run);
+    const answeredNow = all.filter((r) => r.answer.length > 0).length;
+    const { polls, stalled_ms } = notePoll(run_id, answeredNow);
+    const stalled = summary.unanswered > 0 && (polls >= STALL_POLLS || stalled_ms >= STALL_MS);
+
+    let next: string;
+    if (page.next_cursor) {
+      next = `More answers. Call get_answers again with cursor: "${page.next_cursor}".`;
+    } else if (summary.unanswered === 0) {
+      next = "That is every round, and all of them are answered.";
+    } else if (stalled) {
+      next =
+        `STOP POLLING. No new answer has been recorded in ${Math.round(stalled_ms / 1000)}s across ` +
+        `${polls} consecutive get_answers calls, and ${summary.unanswered} question(s) are still ` +
+        "unanswered. The author role is a subagent: it does not idle waiting for work, so if it has " +
+        "finished its batches it has already returned and nothing will arrive however long you wait. " +
+        "Calling this tool again will not change that. Either say in your reply to whoever dispatched " +
+        "you that the author must be re-dispatched for this run_id, or treat these as findings: put " +
+        "them in `verification.not_verified`, raise them in your closing report, and submit.";
+    } else {
+      next =
+        `That is every round. ${summary.unanswered} still have no answer. ` +
+        (polls > 1 ? `Waited ${Math.round(stalled_ms / 1000)}s so far. ` : "") +
+        "If the author is mid-batch this is normal; it writes a whole batch in one call.";
+    }
+
     return textResult(
       JSON.stringify({
         run_id,
         repo: run.repo,
         branch: run.branch,
         ...summary,
+        ...(summary.unanswered > 0 ? { consecutive_polls_without_progress: polls } : {}),
+        ...(stalled ? { author_probably_returned: true } : {}),
         ...page,
-        next: page.next_cursor
-          ? `More answers. Call get_answers again with cursor: "${page.next_cursor}".`
-          : summary.unanswered > 0
-            ? `That is every round. ${summary.unanswered} still have no answer — the author has not replied to those yet.`
-            : "That is every round, and all of them are answered.",
+        next,
       })
     );
   }
 );
+
+/**
+ * Consecutive `get_answers` polls that have seen no new answer, per run.
+ *
+ * In memory on purpose: this is a property of one waiting reviewer's conversation with
+ * this server process, not of the run, and persisting it would mean a disk write per
+ * poll — of which there have been 2122, 1998 and 1668 in three observed runs.
+ *
+ * The reviewer polls because the response tells it what it wants to hear: "the author has
+ * not replied to those yet" reads as "keep waiting". It is true and it is useless, because
+ * the author is a subagent that does not idle — if it has finished it has already returned,
+ * and no amount of waiting changes that. This is what lets the server say so.
+ */
+const answerPolls = new Map<string, { answered: number; polls: number; since: number }>();
+
+/** Polls with no progress before the response stops encouraging the wait. */
+const STALL_POLLS = 8;
+/** Or this long with no progress, whichever lands first. */
+const STALL_MS = 60_000;
+
+function notePoll(runId: string, answered: number): { polls: number; stalled_ms: number } {
+  const now = Date.now();
+  const prior = answerPolls.get(runId);
+  // Any new answer resets the watch: the author is alive and writing, and waiting for it
+  // is exactly the right thing to do.
+  if (!prior || prior.answered !== answered) {
+    answerPolls.set(runId, { answered, polls: 1, since: now });
+    return { polls: 1, stalled_ms: 0 };
+  }
+  prior.polls += 1;
+  return { polls: prior.polls, stalled_ms: now - prior.since };
+}
 
 /**
  * Page a list of rounds under a byte budget.
@@ -981,7 +1119,8 @@ registerTool(
     if (doc && typeof doc === "object") {
       const d = doc as Record<string, unknown>;
       d.meta = d.meta && typeof d.meta === "object" ? d.meta : {};
-      (d.meta as Record<string, unknown>).interview = interview;
+      // Narrowed, not spread: the summary carries counters the schema does not declare.
+      (d.meta as Record<string, unknown>).interview = attestedInterview(interview);
     }
 
     let diff = "";

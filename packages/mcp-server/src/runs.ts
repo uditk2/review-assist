@@ -45,6 +45,7 @@
  * its own memory, and one reviewer resumed eleven hours later across a restart.
  */
 
+import type { Meta } from "@review-assist/schema";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -92,6 +93,13 @@ export interface InterviewRound {
    * of a conversation the server never witnessed.
    */
   answered_by?: "author" | "reviewer";
+  /**
+   * Put on the run by `openRun` rather than by the reviewer. The standing questions do
+   * not depend on the diff, so seeding them is what lets the author answer before the
+   * reviewer has read anything. An unanswered seeded question is not part of the
+   * interview and `summarizeRun` does not count it.
+   */
+  seeded?: boolean;
   at: string;
 }
 
@@ -114,7 +122,21 @@ export interface RunRecord {
   updated_at?: string;
   /** Keyed by question hash, so re-recording a question replaces it. */
   rounds: Record<string, InterviewRound>;
+  /**
+   * How many batches of NEW questions the reviewer has recorded. Not the same as the
+   * number of `record_interview_round` calls: re-recording a question the run already
+   * holds is a free retry and does not spend a batch.
+   *
+   * Counted because the two-batch cap is the one protocol rule the server only asked
+   * for. Three observed runs opened a third round after the author had already handed
+   * back, which nothing can answer, and each burned an hour of the reviewer polling for
+   * a reply that had nowhere to come from.
+   */
+  batches?: number;
 }
+
+/** The interview is capped at this many batches of new questions. */
+export const MAX_BATCHES = 2;
 
 export interface RunKey {
   repo: string;
@@ -142,6 +164,8 @@ export interface InterviewSummary {
   unresolved: number;
   /** Answers the author role wrote itself. The only figure the server can vouch for. */
   author_attested: number;
+  /** Seeded questions the author has not answered yet. What it still owes. */
+  standing_unanswered: number;
   /** Questions recorded with no answer from either side yet. */
   unanswered: number;
 }
@@ -228,6 +252,56 @@ function writeRun(run: RunRecord): void {
  * survives a commit; an anchor is about a diff, and does not. The caller is the only place
  * that can act on the second, so it is told rather than guessed at here.
  */
+/**
+ * The questions that are known before anyone reads anything.
+ *
+ * They are the reason the two roles used to run one after the other. The author's only
+ * write is `answer_questions`, which takes q_ids, and q_ids only existed once the
+ * reviewer had paged the whole diff and composed a batch. So the author sat idle through
+ * the reviewer's read, then the reviewer sat idle through the author's, and the two
+ * independent reads added up instead of overlapping. Measured across 15 runs, that phase
+ * is 670s of a 1400s median.
+ *
+ * None of these depend on the diff: four are about the session, and the plan is about
+ * what was agreed before any code moved. So `openRun` puts them on the run at open, both
+ * roles derive the same q_ids from the same constant text (`questionKey` is a content
+ * hash), and the author can answer the moment it has read the spine.
+ *
+ * What is NOT here is anything needing the hunk index. "Which hunks are incidental" is
+ * asked by file, because the author would otherwise have to page the diff to answer it,
+ * which is the reviewer's pass and puts the serialization straight back. Assigning hunk
+ * ids to plan items stays the reviewer's job, as it always was.
+ *
+ * The wording is canonical here rather than in `agents/_roles/questions.md`, because the
+ * id is a hash of the text: prose that drifts from this by a word produces a question the
+ * author cannot answer by id. The role file describes what each one guards.
+ */
+export const STANDING_QUESTIONS: readonly string[] = [
+  "PLAN: what did you and the user agree to do before the work began, what did you learn while doing it that changed that, and what was the plan as it ended? Trace each difference to the learning or the user turn that caused it, and quote the words. If the session had no plan worth the name, say so rather than inventing one.",
+  "What did the user actually ask for, in their own words? Verbatim quotes only, from the session that made this diff. Not the commit message, branch name, PR title, or the prompt that launched this distillation. No quote means an empty answer, not a paraphrase.",
+  "What was tried and abandoned? For each: what the candidate was, and why it died. If the transcript shows none, say that explicitly, because silence reads as 'nothing was tried'.",
+  "What does this change assume about the world that the diff cannot show? For each assumption: what breaks if it is wrong, and how someone would check it.",
+  "Which changes here are genuinely incidental rather than behaviour changes? Name them by file. Also name any file that looks like churn but is not, because that is the one a reviewer will skip.",
+  "What was actually run, and what was not? Give the commands. Be specific about what was never exercised: that half is the one authors go quiet about.",
+];
+
+/**
+ * Put any missing standing question on the run. Additive and idempotent: a question
+ * already there keeps its answer, so backfilling an in-flight run cannot erase an
+ * attestation, and a re-open cannot duplicate one.
+ */
+function seedStandingQuestions(run: RunRecord): boolean {
+  const at = new Date().toISOString();
+  let added = false;
+  for (const question of STANDING_QUESTIONS) {
+    const q_id = questionKey(question);
+    if (run.rounds[q_id]) continue;
+    run.rounds[q_id] = { q_id, question, answer: "", resolved: false, seeded: true, at };
+    added = true;
+  }
+  return added;
+}
+
 export function openRun(key: RunKey): OpenRunResult {
   sweepStaleRuns();
   const runId = computeRunId(key);
@@ -244,6 +318,8 @@ export function openRun(key: RunKey): OpenRunResult {
     // id was opened under this same branch, so this cannot overwrite one branch's name with
     // another's. It still guards the record against being blanked by a caller that omits it.
     if (key.branch) existing.branch = key.branch;
+    // Backfill, so a run opened before the standing set existed gets it too.
+    seedStandingQuestions(existing);
     writeRun(existing);
     return { run: existing, head_changed, previous_head: head_changed ? previous_head : undefined };
   }
@@ -258,6 +334,7 @@ export function openRun(key: RunKey): OpenRunResult {
     created_at: new Date().toISOString(),
     rounds: {},
   };
+  seedStandingQuestions(run);
   writeRun(run);
   return { run, head_changed: false };
 }
@@ -284,6 +361,11 @@ export function recordRounds(
   const run = readRun(runId);
   if (!run) return undefined;
   const at = new Date().toISOString();
+  // A batch is spent only by questions this run has never held. A reviewer re-recording
+  // one it already asked is retrying, which the guide promises costs nothing.
+  if (rounds.some((r) => !run.rounds[questionKey(r.question)])) {
+    run.batches = (run.batches ?? 0) + 1;
+  }
   for (const r of rounds) {
     const q_id = questionKey(r.question);
     const prior = run.rounds[q_id];
@@ -294,6 +376,9 @@ export function recordRounds(
       answer,
       resolved: r.resolved ?? prior?.resolved ?? answer.length > 0,
       answered_by: r.answer ? "reviewer" : prior?.answered_by,
+      // A standing question the reviewer re-posts is still standing. Dropping the flag
+      // here would let an unanswered one count as an interview round it never was.
+      ...(prior?.seeded ? { seeded: true } : {}),
       at,
     };
   }
@@ -333,15 +418,67 @@ export function recordAnswers(
   return { run, unknown: Array.from(new Set(unknown)) };
 }
 
-/** What the server stamps into `meta.interview`. Counts questions, not calls. */
+/**
+ * What the server stamps into `meta.interview`. Counts questions, not calls.
+ *
+ * A seeded question nobody answered is not a round. It was put on the run by the server
+ * at open, so counting it would report an interview to every reader of the document
+ * whether or not one happened — and `rounds: 0` on a single-pass generation with no
+ * author is precisely the signal this figure exists to give. A seeded question the author
+ * answered IS a round: the answer is the interview, not the asking.
+ */
 export function summarizeRun(run: RunRecord): InterviewSummary {
-  const rounds = Object.values(run.rounds);
+  const all = Object.values(run.rounds);
+  const rounds = all.filter((r) => !r.seeded || r.answer.length > 0);
   return {
     rounds: rounds.length,
     questions_asked: rounds.length,
     unresolved: rounds.filter((r) => !r.resolved).length,
     author_attested: rounds.filter((r) => r.answered_by === "author").length,
     unanswered: rounds.filter((r) => r.answer.length === 0).length,
+    standing_unanswered: all.filter((r) => r.seeded && r.answer.length === 0).length,
+  };
+}
+
+/**
+ * Would this call spend a batch, and has the run any batch left to spend?
+ *
+ * Asked BEFORE recording, so a refusal costs the reviewer nothing and leaves the run
+ * exactly as it was. `fresh` is the questions the run has never held: if it is empty the
+ * call is a retry and is always allowed, whatever the count.
+ */
+export function batchCheck(
+  run: RunRecord,
+  questions: string[]
+): { fresh: string[]; batches_used: number; allowed: boolean } {
+  const fresh = questions.filter((q) => !run.rounds[questionKey(q)]);
+  const used = run.batches ?? 0;
+  return { fresh, batches_used: used, allowed: fresh.length === 0 || used < MAX_BATCHES };
+}
+
+/** Exactly what `meta.interview` accepts. Type-only, so the bundle is unchanged. */
+export type AttestedInterview = NonNullable<Meta["interview"]>;
+
+/**
+ * The summary narrowed to the fields the document may carry.
+ *
+ * `InterviewSummary` is the server's own bookkeeping and is free to grow; `meta.interview`
+ * is a schema block with `additionalProperties: false`. Those two facts are compatible
+ * only while something separates them, and nothing did: adding `standing_unanswered` to
+ * the summary stamped a sixth key into every document, and because the stamp happens
+ * before validation, every submit failed at once — the server's own attestation making
+ * its own schema unsatisfiable. Naming the fields here keeps the document's contract at
+ * the point of the write, so the next field added to the summary stays internal. The
+ * return type is the schema's, so adding one without widening the schema is a type error
+ * rather than a runtime failure discovered by a reviewer mid-distillation.
+ */
+export function attestedInterview(summary: InterviewSummary): AttestedInterview {
+  return {
+    rounds: summary.rounds,
+    questions_asked: summary.questions_asked,
+    unresolved: summary.unresolved,
+    author_attested: summary.author_attested,
+    unanswered: summary.unanswered,
   };
 }
 
