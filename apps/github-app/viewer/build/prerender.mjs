@@ -28,7 +28,7 @@ const RENDER_ORIGIN = "https://prerender.invalid";
 
 // Everything the served site needs, and nothing else: DESIGN.md, src/ and the configs used
 // to ship as public assets only because they sat in the served directory.
-const ASSETS = ["favicon.svg", "fonts", "schema", "styles.css", "robots.txt", "llms.txt", "social-preview.png"];
+const ASSETS = ["favicon.svg", "fonts", "schema", "styles.css", "robots.txt", "llms.txt", "social-preview.png", "blog"];
 
 const template = await readFile(join(VIEWER, "index.html"), "utf8");
 
@@ -86,7 +86,7 @@ function isoDate(d) {
 }
 
 /** The template with this route's metadata and prerendered #app. */
-function page({ path, title, description, html, type = "website", jsonLd = null, noindex = false }) {
+function page({ path, title, description, html, type = "website", image = null, jsonLd = null, noindex = false }) {
   const dom = new JSDOM(template);
   const { document } = dom.window;
   const url = ORIGIN + path;
@@ -103,6 +103,10 @@ function page({ path, title, description, html, type = "website", jsonLd = null,
   set('meta[property="og:title"]', "content", title);
   set('meta[property="og:description"]', "content", description);
   set('meta[property="og:url"]', "content", url);
+  if (image) {
+    set('meta[property="og:image"]', "content", image);
+    set('meta[name="twitter:image"]', "content", image);
+  }
   set('meta[name="twitter:title"]', "content", title);
   set('meta[name="twitter:description"]', "content", description);
 
@@ -148,13 +152,39 @@ await write("/", page({
 }));
 
 const releases = home.releases;
+const articles = JSON.parse(new JSDOM(template, {
+  url: RENDER_ORIGIN + "/blog/",
+  runScripts: "dangerously",
+}).window.eval("JSON.stringify(ARTICLES.map(a => ({ slug: a.slug, title: a.title, summary: a.summary, date: a.date, hero: a.hero })))"));
 const index = await render("/blog/");
 await write("/blog/", page({
   path: "/blog/",
-  title: "Release notes · Review Assist",
-  description: "What changed in each Review Assist release, what broke, and why it was done that way.",
+  title: "Blog · Review Assist",
+  description: "Practical writing about AI code review, reviewing AI-generated code, and the architecture behind Review Assist.",
   html: index.html,
 }));
+
+for (const a of articles) {
+  const path = `/blog/${a.slug}/`;
+  const { html } = await render(path);
+  const description = plain(a.summary);
+  await write(path, page({
+    path, title: `${plain(a.title)} · Review Assist`, description, html, type: "article",
+    image: ORIGIN + a.hero,
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      headline: plain(a.title),
+      description,
+      image: ORIGIN + a.hero,
+      datePublished: isoDate(a.date),
+      dateModified: isoDate(a.date),
+      url: ORIGIN + path,
+      author: { "@type": "Organization", name: "Review Assist", url: ORIGIN + "/" },
+      publisher: { "@type": "Organization", name: "Review Assist", url: ORIGIN + "/" },
+    },
+  }));
+}
 
 for (const r of releases) {
   const path = `/blog/${r.v}/`;
@@ -189,7 +219,8 @@ await write("/installed/", page({
 // that is always new teaches crawlers to ignore it.
 const urls = [
   { loc: "/", priority: "1.0" },
-  { loc: "/blog/", lastmod: isoDate(releases[0].date), priority: "0.6" },
+  { loc: "/blog/", lastmod: isoDate(articles[0].date), priority: "0.7" },
+  ...articles.map((a) => ({ loc: `/blog/${a.slug}/`, lastmod: isoDate(a.date), priority: "0.7" })),
   ...releases.map((r) => ({ loc: `/blog/${r.v}/`, lastmod: isoDate(r.date), priority: "0.5" })),
 ];
 await writeFile(join(DIST, "sitemap.xml"), [
@@ -200,4 +231,4 @@ await writeFile(join(DIST, "sitemap.xml"), [
   "",
 ].join("\n"));
 
-console.log(`prerendered ${3 + releases.length} pages into ${DIST}`);
+console.log(`prerendered ${3 + articles.length + releases.length} pages into ${DIST}`);
