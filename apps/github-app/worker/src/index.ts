@@ -35,6 +35,9 @@ interface Env {
   GITHUB_APP_PRIVATE_KEY: string;
   GITHUB_WEBHOOK_SECRET: string;
   APP_NAME?: string;
+  // Funnel events to Google Analytics (see analytics.ts). Off unless the secret is set.
+  GA_MEASUREMENT_ID?: string;
+  GA_API_SECRET?: string;
 }
 
 const GH_API = "https://api.github.com";

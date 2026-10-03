@@ -10,6 +10,7 @@
  */
 
 import { installationToken } from "./githubApp.js";
+import { installationEvent, reportEvent, type AnalyticsEnv, type InstallationPayload } from "./analytics.js";
 
 const GH_API = "https://api.github.com";
 const UA = "review-assist-viewer";
@@ -17,7 +18,7 @@ const MARKER = "<!-- review-assist -->";
 const BODY_START = "<!-- review-assist:intent -->";
 const BODY_END = "<!-- /review-assist:intent -->";
 
-export interface WebhookEnv {
+export interface WebhookEnv extends AnalyticsEnv {
   GITHUB_APP_ID: string;
   GITHUB_APP_PRIVATE_KEY: string;
   GITHUB_WEBHOOK_SECRET: string;
@@ -35,6 +36,18 @@ export async function handleWebhook(request: Request, origin: string, env: Webho
   }
   const event = request.headers.get("x-github-event");
   if (event === "ping") return json({ ok: true, pong: true });
+  // Install and repository-access changes: counted for the funnel, nothing else to do.
+  if (event === "installation" || event === "installation_repositories") {
+    let p: InstallationPayload;
+    try {
+      p = JSON.parse(body) as InstallationPayload;
+    } catch {
+      return json({ error: "bad json" }, 400);
+    }
+    const counted = installationEvent(event, p);
+    if (counted && p.installation?.id) ctx.waitUntil(reportEvent(env, p.installation.id, counted.name, counted.params));
+    return json({ counted: counted?.name ?? null }, 202);
+  }
   if (event !== "pull_request") return json({ ignored: event });
 
   let payload: PrEvent;
@@ -102,6 +115,15 @@ async function process(payload: PrEvent, installationId: number, origin: string,
   // 4. Populate the PR description from the committed doc. If the body is empty we
   //    set it; otherwise we manage a marked block and leave the author's prose intact.
   if (doc) await upsertPrBody(gh, token, owner, repo, pr.number, intentSection(doc, viewerLink));
+
+  // 5. Activation, as far as the App can see it: a review posted, a pull request with no
+  //    document (App installed, MCP server not in use), or one whose document would not
+  //    parse, which is a broken run rather than a missing one. Last, so an event means the
+  //    posts above went through. Counts and the PR action only, no names.
+  const outcome = doc ? "review_posted" : docMissing ? "review_no_document" : "review_invalid_document";
+  await reportEvent(env, installationId, outcome, doc
+    ? { trigger: payload.action, changes_total: cov.total, changes_explained: cov.explained }
+    : { trigger: payload.action });
 }
 
 // ---- signature -------------------------------------------------------------
