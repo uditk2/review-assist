@@ -23,6 +23,10 @@ workers_dev = true
 # /api/*. Private-repo content flows browser <-> GitHub through /api/document and is
 # never cached.
 #
+# dist, not the viewer source: `npm run build -w @review-assist/viewer` prerenders the
+# landing page, the release notes (/blog/<version>/) and /installed/ into it, so crawlers
+# get content instead of "Loading…". Build before `wrangler deploy` or `wrangler dev`.
+#
 # run_worker_first, because otherwise the asset layer answers before any Worker code
 # runs and the www redirect silently cannot fire for paths that match an asset — "/"
 # above all, which is the case that matters. Measured: without it, www/ returned 200
@@ -30,14 +34,19 @@ workers_dev = true
 # is a Worker invocation on every asset request, which at this traffic is noise.
 [assets]
 run_worker_first = true
-directory = "../viewer"
+directory = "../viewer/dist"
 binding = "ASSETS"
 
 # Required secrets (set via `wrangler secret put <NAME>`), never committed:
 #   GITHUB_CLIENT_ID      — OAuth client id of your GitHub App
 #   GITHUB_CLIENT_SECRET  — OAuth client secret
 #   SESSION_SECRET        — random 32+ byte string; derives the AES-GCM session key
+# Optional:
+#   GA_API_SECRET         — Measurement Protocol secret for the GA4 web stream below.
+#                           Unset, the Worker reports nothing (see src/analytics.ts).
 #
 # No KV, no D1, no R2, no Durable Objects: the Worker is stateless by construction.
 [vars]
 APP_NAME = "Intent Document Viewer"
+# Public, like the gtag id in the viewer's <head>; GA_API_SECRET is what switches it on.
+GA_MEASUREMENT_ID = "G-JMHGW95G13"

@@ -22,6 +22,6 @@ const textLoader: Plugin = {
 export default defineConfig({
   plugins: [textLoader],
   test: {
-    include: ["packages/**/test/**/*.test.ts"],
+    include: ["packages/**/test/**/*.test.ts", "apps/github-app/worker/test/**/*.test.ts"],
   },
 });

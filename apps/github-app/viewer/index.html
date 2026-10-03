@@ -6,7 +6,7 @@
 <title>Review Assist: free AI code review MCP server for GitHub</title>
 <meta name="description" content="Review AI-written code as fast as agents write it. Review Assist is a free, open-source MCP server that turns a coding agent's session into an Intent Document, then a GitHub App renders it as a guided, verifiable pull-request review. No code stored.">
 <link rel="canonical" href="https://reviewassist.dev/">
-<link rel="icon" type="image/svg+xml" href="./favicon.svg">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Review Assist">
 <meta property="og:title" content="Review Assist: free AI code review MCP server for GitHub">
@@ -16,9 +16,9 @@
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
 <!-- Mirrors the FAQ section rendered in renderLanding() below — keep the two in sync.
-     reviewassist.dev is a single-page app; every hash route serves this same document, and
-     the default (no-hash) view is the landing page, so the FAQPage schema describes what's
-     actually shown at the canonical URL. -->
+     This file is the template for every prerendered page (build/prerender.mjs), which sets
+     each page's title, description and canonical, and keeps this FAQPage block on "/" only:
+     the release notes get their own BlogPosting data instead. -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -79,20 +79,61 @@
 <meta name="twitter:title" content="Review Assist: free AI code review MCP server for GitHub">
 <meta name="twitter:description" content="Turn a coding agent's session into a guided, verifiable pull-request review. Free, open source, no code stored.">
 <meta name="twitter:image" content="https://reviewassist.dev/social-preview.png">
-<!-- Microsoft Clarity. Worker metrics count invocations, which lump GitHub's webhook
-     POSTs and every asset fetch in with real visitors; this separates people from
-     machines.
-     Gated on the hostname, because this repo is public and this file is the served
-     asset: without the gate, anyone self-hosting the viewer would silently report
-     their sessions — including the private repo content this page renders — into the
-     project ID below. Clarity has no allowed-domains setting, so refusing to send is
-     the only place that can be controlled. The tag id is not a secret (it ships in the
-     HTML of every page load); the gate is about whose data reaches it.
-     Masking is set to Strict in the Clarity dashboard. It must stay that way — the
-     default, Balanced, masks only numbers and email addresses, which would leave repo
-     names, PR titles, and diff text in the replays. -->
+<!-- Route facts the rest of <head> depends on, so this runs first.
+     The build prerenders the landing page into #app (build/prerender.mjs), so crawlers and
+     no-JS clients get real content. A PR link lands on that same "/" document, and the
+     viewer only replaces #app once the document has loaded, so without the data-route flag
+     the marketing page would show under every guided-review link until then. Set before
+     <body> parses, so the prerendered nodes are hidden from the first paint, not after it.
+     GitHub's Setup URL appends installation_id, which names an installation; it is dropped
+     from the address before analytics can read it, since nothing on the page uses it.
+
+     SITE_ANALYTICS is the one decision about analytics, and both tags below obey it:
+     - Never on a PR route. A guided review's address names the repository and pull
+       request, and both tools record addresses unmasked, so the only way to keep private
+       repo names out is not to load them there. Site pages carry no repository data.
+     - Only on reviewassist.dev. This repo is public and this file is the served asset, so
+       without the gate anyone self-hosting the viewer would report their sessions into
+       these projects. Neither tool has an allowed-domains setting; refusing to send is the
+       only point of control. The ids are not secrets; the gate is about whose data goes.
+     A PR address can also arrive without a page load: pasting a review link into a tab
+     already on the site only changes the hash. The listener below is registered before
+     either tag loads, on the capture phase, so it runs first: it switches both tags off,
+     stops them hearing the event, and reloads, and the reload lands with SITE_ANALYTICS
+     false. parseHash in the page script uses the same anchored pattern, on purpose. -->
+<script>
+(function () {
+  var PR_ROUTE = /^#[^/]+\/[^/]+\/pull\/\d+/;
+  var onPr = PR_ROUTE.test(location.hash);
+  try {
+    var theme = localStorage.getItem("theme");
+    if (theme === "light" || theme === "dark") document.documentElement.setAttribute("data-theme", theme);
+  } catch (e) { /* storage blocked: follow the OS setting, as before */ }
+  if (onPr) document.documentElement.setAttribute("data-route", "pr");
+  if (/^\/installed\/?$/.test(location.pathname) && location.search.indexOf("installation_id") >= 0) {
+    var q = new URLSearchParams(location.search); q.delete("installation_id");
+    history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash);
+  }
+  window.GA_ID = "G-JMHGW95G13";
+  window.SITE_ANALYTICS = location.hostname === "reviewassist.dev" && !onPr;
+  if (!window.SITE_ANALYTICS) return;
+  function leaveForPr(e) {
+    if (!PR_ROUTE.test(location.hash)) return;
+    window["ga-disable-" + window.GA_ID] = true;
+    if (typeof window.clarity === "function") window.clarity("stop");
+    e.stopImmediatePropagation();
+    location.reload();
+  }
+  addEventListener("popstate", leaveForPr, true);
+  addEventListener("hashchange", leaveForPr, true);
+})();
+</script>
+<!-- Microsoft Clarity: session replays and the funnel events from track(). Worker metrics
+     count invocations, which lump GitHub's webhook POSTs and every asset fetch in with real
+     visitors; this separates people from machines. Masking stays Strict in the Clarity
+     dashboard as a second line, in case a PR view ever renders without the gate seeing it. -->
 <script type="text/javascript">
-    if (location.hostname === "reviewassist.dev") {
+    if (window.SITE_ANALYTICS) {
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
             t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
@@ -100,8 +141,25 @@
         })(window, document, "clarity", "script", "y2w90h1hhq");
     }
 </script>
-<link rel="stylesheet" href="./styles.css" />
+<!-- Google Analytics: the same funnel events, in the property the Worker also reports the
+     server-side steps to (install, repositories, review posted; see worker/src/analytics.ts),
+     so the whole funnel can be read in one place. Google's snippet, loaded by script rather
+     than a static <script src> so the gate above can keep it off. -->
+<script>
+  if (window.SITE_ANALYTICS) {
+    var gt = document.createElement("script");
+    gt.async = true;
+    gt.src = "https://www.googletagmanager.com/gtag/js?id=" + window.GA_ID;
+    document.head.appendChild(gt);
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function(){ dataLayer.push(arguments); };
+    gtag("js", new Date());
+    gtag("config", window.GA_ID);
+  }
+</script>
+<link rel="stylesheet" href="/styles.css" />
 <style>
+html[data-route="pr"] [data-prerendered]{display:none}
 .rev-line{position:relative}
 .rev-line.is-sel{box-shadow:inset 3px 0 0 var(--accent-600);background:var(--accent-50)}
 .rev-range{font-size:.78rem;color:var(--ink-500);margin-bottom:.25rem}
@@ -234,25 +292,77 @@ const titleCase = s => String(s||"").replace(/_/g," ");
 
 let STATE = { data:null, files:[], coverage:null, ordered:[], view:"overview", stopIndex:0, acks:{}, me:null, comments:[], composer:null, composerSeed:"", posted:{}, reviewSubmitted:null, selAnchor:null };
 
-/** "#/blog" and "#/blog/<version>" — the release notes, served by the same SPA. */
-function parseBlogHash() {
-  const m = /^#\/blog(?:\/([A-Za-z0-9._-]+))?\/?$/.exec(location.hash);
+/** "/blog/" and "/blog/<version>/": the release notes. Real paths, not hash routes, because
+ *  a fragment never reaches a crawler; the build prerenders one page per release. */
+function parseBlogRoute() {
+  const m = /^\/blog(?:\/([A-Za-z0-9._-]+))?\/?$/.exec(location.pathname);
   return m ? { slug: m[1] || null } : null;
 }
+const blogHref = v => v ? `/blog/${v}/` : "/blog/";
 
+/** Where GitHub sends someone after installing the App (the App's Setup URL). */
+const isInstalledRoute = () => /^\/installed\/?$/.test(location.pathname);
+
+/** Anchored exactly like PR_ROUTE in <head>: that test decides whether analytics loads and
+ *  when a hash change forces a reload, so the two must never disagree about a PR route. */
 function parseHash() {
-  const m = /#([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(location.hash);
+  const m = /^#([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(location.hash);
   return m ? { owner:m[1], repo:m[2], pull:m[3] } : null;
 }
+
+/** The pages that need no data, or null on a PR route. One function, so boot and the theme
+ *  toggle's re-render cannot disagree about what is on screen. */
+function sitePage(){
+  if (parseHash()) return null;
+  const blog = parseBlogRoute();
+  if (blog) return blog.slug ? renderPost(blog.slug) : renderBlogIndex();
+  if (isInstalledRoute()) return renderInstalled();
+  return renderLanding();
+}
+
+/** Funnel events, sent to Clarity and GA. Both load only when SITE_ANALYTICS says so (see
+ *  <head>): reviewassist.dev, never a PR route. So this is a no-op on PR pages, on
+ *  self-hosted copies and in the prerender build. Clarity carries properties as session
+ *  tags; GA takes them as event parameters. */
+function track(event, tags){
+  if (!window.SITE_ANALYTICS) return;
+  if (typeof window.clarity === "function") {
+    for (const [k, v] of Object.entries(tags || {})) window.clarity("set", k, String(v));
+    window.clarity("event", event);
+  }
+  if (typeof window.gtag === "function") window.gtag("event", event, tags || {});
+}
+
+let PAGE_TRACKED = false;
 
 async function boot() {
   const app = document.getElementById("app");
   stopDemo();
-  const blog = parseBlogHash();
-  if (blog) { window.scrollTo(0, 0); return app.replaceChildren(blog.slug ? renderPost(blog.slug) : renderBlogIndex()); }
-  const ref = parseHash();
-  if (!ref) { window.scrollTo(0, 0); return app.replaceChildren(renderLanding()); }
+  // Release notes used to live at "#/blog/<v>", and those links are out in the world.
+  const legacy = /^#\/blog(?:\/([A-Za-z0-9._-]+))?\/?$/.exec(location.hash);
+  if (legacy) return location.replace(blogHref(legacy[1]));
 
+  const page = sitePage();
+  if (page) {
+    app.replaceChildren(page);
+    // "/#permissions" from another page has to land on the section, not the top.
+    let target = null;
+    try { target = location.hash.length > 1 && document.getElementById(decodeURIComponent(location.hash.slice(1))); }
+    catch { /* a malformed fragment is just not a section id */ }
+    target ? target.scrollIntoView() : window.scrollTo(0, 0);
+    // Once per page. boot also runs on every hash change (back, forward, a plain #anchor),
+    // and counting each of those would inflate the first step of the funnel.
+    if (!PAGE_TRACKED) {
+      PAGE_TRACKED = true;
+      if (parseBlogRoute()) track("release_notes_view");
+      else if (isInstalledRoute()) track("app_install_return", { setup_action: installSetupAction() || "none" });
+      else track("landing_view");
+    }
+    return;
+  }
+
+  const ref = parseHash();
+  app.replaceChildren(centered(el("p",{class:"text-ink-500"},"Loading…")));
   try { STATE.me = (await (await fetch("/api/me")).json()).login; } catch {}
   const res = await fetch(`/api/document?owner=${encodeURIComponent(ref.owner)}&repo=${encodeURIComponent(ref.repo)}&pull=${ref.pull}`);
   if (res.status === 401) return renderLogin(ref);
@@ -277,6 +387,24 @@ function centered(...kids){ return el("div",{class:"mx-auto flex min-h-screen ma
 const REPO_URL = "https://github.com/uditk2/review-assist";
 const APP_INSTALL = "https://github.com/apps/review-assist-guided-review";
 const MCPB_DOWNLOAD = REPO_URL + "/releases/latest/download/review-assist-mcp.mcpb";
+
+/** Every "Install the GitHub App" button. The placement tag is what tells the hero's CTA
+ *  apart from the install step's when reading the funnel. GitHub's own install pages are
+ *  out of reach, so this click is the last step the site can see before the Setup URL. */
+function installAppLink(placement, label = "Install the GitHub App →"){
+  return el("a",{class:"btn-primary", href:APP_INSTALL,
+    onclick:()=>track("install_app_click", { install_cta: placement })}, label);
+}
+
+/** An in-page link that scrolls instead of changing the hash: a hash change re-runs boot,
+ *  which would rebuild the page and restart the demo. Without JS it is a plain anchor. */
+function jumpLink(id, cls, ...kids){
+  return el("a",{class:cls, href:"#"+id, onclick:(e)=>{
+    e.preventDefault();
+    document.getElementById(id)?.scrollIntoView({behavior:"smooth"});
+  }}, ...kids);
+}
+
 function copyIcon(){
   return `<svg width="14" height="14" viewBox="0 0 16 16" class="fill-none stroke-ink-500" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <rect x="5.5" y="5.5" width="8" height="8" rx="1.2"></rect>
@@ -290,13 +418,14 @@ function chevronIcon(){
   </svg>`;
 }
 
-function codeBlock(text){
+function codeBlock(text, onCopy){
   const body = el("div",{class:"diff-body"});
   for (const line of String(text).split("\n")) body.append(el("code",{class:"diff-line is-ctx"}, line));
   const copyBtn = el("button",{
     class:"flex items-center gap-1.5 font-mono text-micro text-ink-500 hover:text-accent-600",
     title:"Copy to clipboard",
     onclick: async (e) => {
+      onCopy?.();
       try { await navigator.clipboard.writeText(text); } catch {}
       const label = e.currentTarget.querySelector(".copy-label");
       if (!label) return;
@@ -312,16 +441,17 @@ function codeBlock(text){
  *  stacking every command and caveat into one block regardless of which agent a reader uses.
  *  Self-contained: repaints its own DOM on click, the same pattern as the hero demo. */
 function installTabs(){
+  const copied = agent => () => track("mcp_command_copy", { agent });
   const tabs = [
     { key:"claude-code", label:"Claude Code", render: () => el("div",{},
-        codeBlock("claude mcp add -s user review-assist -- npx -y review-assist-mcp"),
+        codeBlock("claude mcp add -s user review-assist -- npx -y review-assist-mcp", copied("claude-code")),
         el("p",{class:"mt-2 text-sm text-ink-500", html:richHtml(
           "Editor launched from the Dock? `npx` is not on a GUI app’s PATH — [use the form in the README](" + REPO_URL + "#claude-code).")})) },
     { key:"codex", label:"Codex", render: () => el("div",{},
-        codeBlock("codex mcp add review-assist -- npx -y review-assist-mcp")) },
+        codeBlock("codex mcp add review-assist -- npx -y review-assist-mcp", copied("codex"))) },
     { key:"claude-desktop", label:"Claude Desktop", render: () => el("div",{},
         el("p",{class:"text-sm text-ink-600"}, "No terminal needed: download the bundle and open it — Claude Desktop installs the server automatically."),
-        el("a",{class:"btn-primary mt-3", href:MCPB_DOWNLOAD}, "Download the .mcpb →")) },
+        el("a",{class:"btn-primary mt-3", href:MCPB_DOWNLOAD, onclick:()=>track("mcpb_download")}, "Download the .mcpb →")) },
   ];
   let active = tabs[0].key;
   const bar = el("div",{class:"mb-3 flex gap-1 border-b border-ink-200"});
@@ -435,11 +565,13 @@ function siteLogo(size){
   return light + dark;
 }
 
+// Order follows the question a visitor is answering at each point: what is this (hero and
+// the live demo), what exactly do I get (labelled parts), how do I start (three steps), and
+// what am I letting in (permissions), with the permissions directly under the App's button.
 function renderLanding(){
   return el("div",{class:"page min-h-screen"},
-    // hero-wash carries the header too (it's the same element the wash sits behind), then
-    // continues through "How it works" so the gradient reads as one field, not a patchwork —
-    // it fades itself out well before the plain sections below.
+    // hero-wash carries the header too (it's the same element the wash sits behind) and
+    // fades itself out well before the plain sections below.
     el("div",{class:"hero-wash"},
     siteHeader("home"),
     el("main",{class:"pt-16"},
@@ -456,17 +588,21 @@ function renderLanding(){
               "Free, open-source AI code review"),
             el("h1",{class:"mb-6 text-[2.25rem] leading-tight lg:text-[2.75rem]"},
               "Review AI-written code ", el("span",{class:"text-accent-600"}, "as fast as agents write it.")),
+            // What the reviewer gets comes first; how it is produced (an MCP server, the
+            // session) is one clause later, for the reader who has decided to care.
             el("p",{class:"text-[1.05rem] text-ink-700", html: richHtml(
-              "**AI agents** now write more code than any team can read by hand. The context that makes review fast (what was asked, what was tried, what was actually verified) disappears the moment the pull request opens.")}),
+              "Review Assist puts a **guided review** on the pull requests your coding agent writes: what was asked, the assumptions to check first, what was tested and what wasn’t, and a walkthrough of the diff that says why each change is there.")}),
             el("p",{class:"mt-3 text-[1.05rem] text-ink-700", html: richHtml(
-              "Review Assist preserves it: a **free, open-source MCP server** that turns the session into a guided, verifiable review on every pull request. **Nothing gets lost. Nothing gets skipped.**")}),
+              "It is written from the agent’s own session, before that context is lost, and checked against the diff: a change nothing explains gets flagged, not skipped. **Free and open source.**")}),
             el("div",{class:"mt-6 flex flex-wrap items-center gap-3"},
-              el("a",{class:"btn-primary", href:APP_INSTALL}, "Install the GitHub App →"),
-              el("a",{class:"btn-ghost", href:"#get-started", onclick:(e)=>{
-                e.preventDefault();
-                document.getElementById("get-started")?.scrollIntoView({behavior:"smooth"});
-              }}, "Register the MCP server"),
+              installAppLink("hero"),
+              jumpLink("get-started","btn-ghost","Register the MCP server"),
               el("a",{class:"btn-ghost", href:REPO_URL}, "View source")),
+            // The install decision is made at the button, so the answer to "what am I
+            // letting in" sits under it rather than four sections down.
+            el("p",{class:"mt-3 text-sm text-ink-500"},
+              "Read-only access to code. Writes a check, one comment and a block in the PR description. No database. ",
+              jumpLink("permissions","whitespace-nowrap","What it can access →")),
 
             // Alongside the guided review rather than under it. The demo tops out around
             // 455px and the copy above this runs to about 500, so these can't clear the
@@ -481,7 +617,7 @@ function renderLanding(){
                 el("span",{class:"inline-flex h-9 w-9 items-center justify-center rounded-lg border border-accent-100 bg-accent-50", html: proofIcon(icon)}),
                 el("p",{class:"mt-2 font-medium text-ink-900"}, t),
                 el("p",{class:"mt-1 text-sm text-ink-600"}, b))))),
-          el("div",{class:"lg:sticky lg:top-24"},
+          el("div",{class:"lg:sticky lg:top-24", id:"demo"},
             el("h2",{class:"eyebrow mb-2"}, "The guided review"),
             renderDemo(),
             el("p",{class:"mt-2 text-sm text-ink-500"},
@@ -495,53 +631,14 @@ function renderLanding(){
     // Everything from here down sits on the plain canvas — the wash above is scoped to the
     // header + hero only, so it doesn't bleed into content that should read as plain page.
     el("div",{class:"mx-auto max-w-[92rem] px-6 pb-16 pt-8"},
-
-      el("section",{class:"mb-16"},
-        el("h2",{class:"section-h mb-5"}, "How Review Assist works"),
-        el("ol",{class:"grid grid-cols-1 gap-x-10 gap-y-8 xl:grid-cols-3"},
-          ...[
-            ["01","Capture","Your agent distils the session as it commits. The transcript never leaves your machine."],
-            ["02","Validate","Every push, the App checks the document against the diff and names anything unexplained."],
-            ["03","Review","Assumptions first, then a walkthrough anchored to the hunks. Comments and the verdict post as you."],
-          ].map(([n, title, body]) => el("li",{},
-            el("span",{class:"mb-3 flex h-9 w-9 items-center justify-center rounded-lg border border-accent-100 bg-accent-50 font-mono text-sm font-semibold text-accent-700"}, n),
-            el("p",{class:"font-medium text-ink-900"}, title),
-            el("p",{class:"mt-1.5 text-ink-600"}, body))))),
-
-      // "Two installs" described them and "Get started" then installed them — two stacks
-      // of prose saying the same thing. One section, each part ending in its own action.
-      // Each step: prose left at its measure, the code/action banking right — same split
-      // as the hero above.
-      el("section",{class:"mb-16", id:"get-started"},
-        el("h2",{class:"section-h mb-4"}, "Install"),
-        el("p",{class:"mb-5 max-w-prose text-ink-600"}, "Two one-time installs — the server on the developer’s side, the App on the repository’s."),
-
-        el("div",{class:"card grid grid-cols-1 gap-5 p-5 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] xl:items-start xl:gap-10"},
-          el("div",{},
-            el("div",{class:"flex items-center gap-3"},
-              el("span",{class:"flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-accent-100 bg-accent-50 font-mono text-sm font-semibold text-accent-700"},"01"),
-              el("p",{class:"font-medium text-ink-900"}, "The MCP server"),
-              el("span",{class:"text-sm text-ink-500"}, "beside your agent")),
-            el("p",{class:"mt-0.5 text-ink-600", html:richHtml(
-              "Never calls a model. It supplies ground truth, enforces the role split — one subagent holds the transcript and cannot submit, one reads the diff cold — and runs five deterministic checks before a word is written.")})),
-          el("div",{}, installTabs())),
-
-        el("div",{class:"card mt-5 grid grid-cols-1 items-center gap-5 p-5 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]"},
-          el("div",{},
-            el("div",{class:"flex items-center gap-3"},
-              el("span",{class:"flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-accent-100 bg-accent-50 font-mono text-sm font-semibold text-accent-700"},"02"),
-              el("p",{class:"font-medium text-ink-900"}, "The GitHub App"),
-              el("span",{class:"text-sm text-ink-500"}, "on your repositories")),
-            el("p",{class:"mt-0.5 text-ink-600", html:richHtml(
-              "A GitHub App, **not** an Action — no workflow file, no runner minutes. It posts a non-blocking check with the coverage result, a summary comment linking to the guided review, and fills in the PR description from the document. No database: it reads from GitHub per request and discards.")})),
-          el("div",{}, el("a",{class:"btn-primary", href:APP_INSTALL}, "Install the GitHub App →"))),
-
-        el("p",{class:"mt-5 text-sm"}, el("a",{class:"text-ink-500", href:REPO_URL+"/blob/main/docs/ARCHITECTURE.md"}, "Architecture & internals →"))),
+      renderReviewerGets(),
+      renderInstallSteps(),
+      renderPermissions(),
 
       el("section",{class:"mb-16"},
         el("h2",{class:"section-h"}, "Release notes"),
         el("div",{}, ...RELEASES.slice(0,3).map(releaseRow)),
-        el("p",{class:"mt-4 text-sm"}, el("a",{href:"#/blog"}, "All releases →"))),
+        el("p",{class:"mt-4 text-sm"}, el("a",{href:blogHref()}, "All releases →"))),
 
       // Text kept byte-for-byte with the FAQPage JSON-LD in <head> — the two describe the
       // same content on the same canonical URL, so they should never drift.
@@ -567,6 +664,185 @@ function renderLanding(){
               el("span",{class:"shrink-0 transition-transform group-open:rotate-180", html: chevronIcon()})),
             el("p",{class:"mt-3 text-sm text-ink-600", html:richHtml(a)}))))),
 
+      siteFooter()));
+}
+
+/** The parts of a guided review, each named and shown with an excerpt from the example
+ *  document the demo renders. Definition rows, not feature tiles: every excerpt has the
+ *  anatomy of the real panel it comes from, so no two rows look alike (see DESIGN.md).
+ *  Claims stop at what the product does: coverage is "every hunk tied to a reason", not a
+ *  judgement of whether the code is right. */
+function renderReviewerGets(){
+  const S = SAMPLE;
+  const part = (title, body, excerpt) => el("div",{class:"grid grid-cols-1 gap-4 border-t border-ink-200 py-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-10"},
+    el("div",{}, el("h3",{class:"font-medium text-ink-900"}, title), el("p",{class:"mt-1 text-ink-600"}, body)),
+    el("div",{class:"min-w-0"}, excerpt));
+  const conf = CONF[S.assumption.confidence];
+
+  return el("section",{class:"mb-16", id:"what-you-get"},
+    el("h2",{class:"section-h mb-2"}, "What a reviewer gets"),
+    el("p",{class:"mb-4 max-w-prose text-ink-600"}, "Six parts, the same on every pull request. The excerpts come from the example pull request in the panel above."),
+
+    part("Overview",
+      "What was asked, what is out of scope, the approach taken and why, and the alternatives that were tried and dropped.",
+      el("div",{},
+        el("blockquote",{class:"border-l-2 border-ink-300 pl-4 text-ink-800"}, S.problem),
+        el("div",{class:"mt-4 border-l-2 border-ink-200 pl-3 text-sm"},
+          el("p",{class:"text-ink-500"}, "Considered and rejected"),
+          el("p",{class:"text-ink-800"}, el("span",{class:"font-medium"},"Tried. "), S.trial.what),
+          el("p",{class:"text-ink-600"}, "Abandoned: " + S.trial.why_abandoned)))),
+
+    part("Assumptions to check first",
+      "What the change takes for granted, how sure the agent is, what breaks if it is wrong, and how to check. Accepting or flagging one starts a comment on the pull request.",
+      el("div",{class:"card"},
+        el("div",{class:"flex items-start justify-between gap-3"},
+          el("div",{}, el("span",{class:"id-chip mr-2"}, S.assumption.id), el("span",{class:"font-medium"}, S.assumption.assumption)),
+          el("span",{class:conf.cls}, conf.label)),
+        el("dl",{class:"mt-2 space-y-1 text-sm text-ink-600"},
+          row("If wrong", S.assumption.impact_if_wrong),
+          row("How to verify", S.assumption.how_to_verify)))),
+
+    part("Reviewer notes and open questions",
+      "The spots that need a careful look, and the questions the agent that reviewed the diff could not settle with the one that wrote it.",
+      el("div",{class:"space-y-3"},
+        el("div",{class:"note text-sm"},
+          el("p",{class:"mb-0.5 font-mono text-micro text-warn-fg"}, "reviewer note"),
+          el("p",{class:"text-ink-800"}, S.note)),
+        el("p",{class:"text-sm text-ink-800"}, el("span",{class:"id-chip mr-2"}, S.question.id), S.question.question))),
+
+    part("Guided walkthrough",
+      "The diff in the order it makes sense rather than file order. Each stop says what changed and why, next to the hunks it covers.",
+      el("p",{class:"text-ink-600"}, "This one is the panel at the top of the page. ",
+        jumpLink("demo","whitespace-nowrap","Pick a stop ↑"))),
+
+    part("Every change accounted for",
+      "Each changed hunk has to be tied to a stop that explains it. Whatever is left over is listed under Uncovered changes, and the GitHub check reports the count on every push.",
+      el("dl",{class:"space-y-2 text-sm"},
+        el("div",{class:"flex flex-wrap items-baseline gap-2"},
+          el("dt",{class:"w-40 shrink-0 text-ink-500"}, "This pull request"),
+          el("dd",{}, el("span",{class:"tag tag-ok"}, "4 of 4 changes explained"))),
+        el("div",{class:"flex flex-wrap items-baseline gap-2"},
+          el("dt",{class:"w-40 shrink-0 text-ink-500"}, "With a hunk unexplained"),
+          el("dd",{}, el("span",{class:"tag tag-warn"}, "1 change uncovered"))))),
+
+    part("Verification",
+      "What the agent actually ran, and, listed on its own, what nobody verified.",
+      el("div",{class:"grid grid-cols-1 gap-4 text-sm xl:grid-cols-2"},
+        el("ul",{class:"space-y-1.5"}, ...S.performed.map(p => el("li",{class:"flex items-baseline gap-2"},
+          el("span",{class:"tag"}, p.kind), el("span",{class:"text-ink-800"}, p.description), el("span",{class:"text-ink-400"}, p.result)))),
+        el("div",{},
+          el("p",{class:"mb-1 text-ink-500"}, "Not verified"),
+          el("ul",{class:"space-y-1.5"}, ...S.not_verified.map(n => el("li",{class:"flex gap-2 text-ink-700"},
+            el("span",{class:"select-none text-warn-fg"},"–"), el("span",{}, n))))))));
+}
+
+// The last step, shared by the landing page and the post-install page.
+const OPEN_A_PR = "Ask your agent to write the Intent Document for the branch, and commit it with the change. When the pull request opens, the App posts a check, a summary comment and the link to the guided review, which reviewers open by signing in with GitHub. A pull request without a document gets a neutral check that says so.";
+
+/** Three steps, because that is what it takes: the App alone puts "No Intent Document" on
+ *  every pull request, so "install the App and you're done" would be the wrong promise. */
+function renderInstallSteps(){
+  const step = (n, title, aside, body, action) => el("div",{class:"card mt-5 grid grid-cols-1 gap-5 p-5 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] xl:items-start xl:gap-10"},
+    el("div",{},
+      el("div",{class:"flex items-center gap-3"},
+        el("span",{class:"flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-accent-100 bg-accent-50 font-mono text-sm font-semibold text-accent-700"}, n),
+        el("h3",{class:"font-medium text-ink-900"}, title),
+        el("span",{class:"text-sm text-ink-500"}, aside)),
+      el("p",{class:"mt-0.5 text-ink-600", html:richHtml(body)})),
+    action);
+
+  return el("section",{class:"mb-16", id:"get-started"},
+    el("h2",{class:"section-h mb-4"}, "Install"),
+    el("p",{class:"max-w-prose text-ink-600"}, "Three steps. The first two happen once."),
+
+    step("01", "Register the MCP server", "beside your agent",
+      "Never calls a model. It supplies ground truth, enforces the role split — one subagent holds the transcript and cannot submit, one reads the diff cold — and runs five deterministic checks before a word is written.",
+      installTabs()),
+
+    // A summary of GitHub's permission screen stands in for a screenshot of it: a capture
+    // would show whichever account took it, and would go stale the day GitHub restyles.
+    step("02", "Install the GitHub App", "and choose repositories",
+      "GitHub asks which repositories it can see, all or only the ones you pick, and you can change that later. In an organization, an owner may need to approve it. A GitHub App, **not** an Action: no workflow file, no runner minutes.",
+      el("div",{},
+        installAppLink("install_step"),
+        el("p",{class:"mt-3 text-sm text-ink-600"},
+          "GitHub will ask for read access to code and metadata, and read and write access to checks and pull requests. ",
+          jumpLink("permissions","whitespace-nowrap","What each one is for →")))),
+
+    step("03", "Open a pull request", "from an agent session", OPEN_A_PR, null),
+
+    el("p",{class:"mt-5 text-sm"}, el("a",{class:"text-ink-500", href:REPO_URL+"/blob/main/docs/ARCHITECTURE.md"}, "Architecture & internals →")));
+}
+
+/** Every claim here is checked against the code or GitHub's own record of the App, because
+ *  this is the section a cautious installer reads to the letter:
+ *  - permissions and events: GET /apps/review-assist-guided-review (checks:write,
+ *    contents:read, metadata:read, pull_requests:write; events: pull_request)
+ *  - what it writes and that the check never fails: worker/src/webhook.ts
+ *  - the reviewer's token and cookie: worker/src/index.ts, worker/src/session.ts
+ *  If the App's permissions change, this list changes in the same commit. */
+function renderPermissions(){
+  const access = [
+    ["Code", "Read only", "Reads the pull request’s Intent Document and its diff. GitHub’s read permission covers the repository; the App fetches only those two. It cannot push commits or change files."],
+    ["Pull requests", "Read and write", "Reads the title and description. Posts one summary comment, edited in place on each push, and keeps a marked block in the PR description current. Text outside that block is left alone."],
+    ["Checks", "Read and write", "Posts a Review Assist check with the coverage count. It is never set to failing."],
+    ["Metadata", "Read only", "Repository names and basic details. GitHub requires it of every App."],
+    ["Webhook events", "Pull requests", "Subscribed to pull request events, and acts when one is opened, reopened or pushed to. GitHub also tells every App when it is installed, removed or given different repositories; those are only counted (see Usage counts)."],
+    ["Not requested", "No access", "Issues, Actions and workflows, secrets, administration, organization members, and write access to code."],
+  ];
+  const sub = (title, ...body) => el("div",{}, el("h3",{class:"mb-2 font-medium text-ink-900"}, title), ...body);
+  const para = text => el("p",{class:"mt-2 text-sm text-ink-600", html:richHtml(text)});
+
+  return el("section",{class:"mb-16", id:"permissions"},
+    el("h2",{class:"section-h mb-2"}, "Permissions and data"),
+    el("p",{class:"mb-5 max-w-prose text-ink-600"}, "What the GitHub App can reach, what it writes, what is kept, and how to remove it."),
+
+    el("dl",{class:"mb-10"}, ...access.map(([what, level, why]) =>
+      el("div",{class:"grid grid-cols-1 gap-1 border-t border-ink-200 py-3 sm:grid-cols-[10rem_9rem_minmax(0,1fr)] sm:gap-4"},
+        el("dt",{class:"font-medium text-ink-900"}, what),
+        el("dd",{}, el("span",{class:"tag"}, level)),
+        el("dd",{class:"text-ink-600"}, why)))),
+
+    el("div",{class:"grid grid-cols-1 gap-8 lg:grid-cols-3"},
+      sub("When a reviewer signs in",
+        para("Sign in with GitHub gives the viewer a token that acts as you, limited to the permissions above and to repositories where the App is installed and you have access. Comments and your review verdict post under your name."),
+        para("The token is kept in an encrypted, HttpOnly cookie in your browser for up to 8 hours. There is no server-side session.")),
+      sub("What is kept",
+        para("**Session transcript:** read on your machine by the MCP server, which makes no network calls of its own. What leaves is the Intent Document you commit, which is checked for common secret patterns (keys, tokens, private keys, credentialed URLs) before it is written."),
+        para("**Repository content:** the App has no database. It reads the document and diff from GitHub per request, holds them in memory for that request, and sends them to your browser marked `private, no-store`. Your code does pass through the hosted service in transit; self-host the App if that matters."),
+        para("**Usage counts:** the App reports these events to Google Analytics: installed, removed, repositories added or removed, a review posted, a pull request with no document or one that would not parse. Each carries counts and GitHub’s own settings (all or selected repositories, the pull request action), never a repository, account or file name, and no content. An installation appears under a keyed hash, not its id.")),
+      sub("How to remove it",
+        para("**The App:** on GitHub, [Installed GitHub Apps](https://github.com/settings/installations), then Configure. Change which repositories it can see, or uninstall it. For an organization, the same page is under the organization’s settings. Comments and checks it already posted stay on the pull requests."),
+        para("**A reviewer’s sign-in:** revoke it under [Authorized GitHub Apps](https://github.com/settings/apps/authorizations)."),
+        para("**The MCP server:** `claude mcp remove -s user review-assist` (or `codex mcp remove review-assist`), then `rm -rf ~/.review-assist` to clear local consent and run state, and delete the role files it installed: `~/.claude/agents/intent-*.md` or `~/.codex/agents/intent-*.toml`."))));
+}
+
+/** GitHub's Setup URL lands here after an install, with ?installation_id=…&setup_action=….
+ *  The id is not read: anyone can type one, and nothing here needs it. The page's job is the
+ *  step the App cannot do on its own, because it has nothing to show until a pull request
+ *  carries an Intent Document, and only the MCP server's side writes one. */
+function installSetupAction(){ return new URLSearchParams(location.search).get("setup_action"); }
+
+function renderInstalled(){
+  const action = installSetupAction();
+  const [heading, lead] =
+    action === "request" ? ["Install requested", "An organization owner has to approve the App before it can see any repositories. In the meantime, set up the half that runs beside your agent."]
+    : action === "update" ? ["Repository access updated", "The App can now see the repositories you picked. If your agent is not set up yet, that is the step left."]
+    : ["The GitHub App is installed", "One step left. The App only has something to show once a pull request carries an Intent Document, and your agent writes that through the MCP server."];
+
+  return el("div",{class:"page min-h-screen"},
+    siteHeader(null),
+    el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
+      el("section",{class:"grid-field is-short mb-10"},
+        el("h1",{class:"mb-3 text-[2rem] leading-tight"}, heading),
+        el("p",{class:"text-[1.05rem] text-ink-700"}, lead)),
+      el("section",{class:"mb-10"},
+        el("h2",{class:"section-h mb-4"}, "Register the MCP server"),
+        installTabs()),
+      el("section",{class:"mb-12"},
+        el("h2",{class:"section-h mb-3"}, "Then open a pull request"),
+        el("p",{class:"text-ink-700"}, OPEN_A_PR),
+        el("p",{class:"mt-4 text-sm"}, el("a",{class:"text-ink-500", href:"/#permissions"}, "What the App can access →"))),
       siteFooter()));
 }
 
@@ -636,8 +912,32 @@ diff --git a/internal/auth/middleware.go b/internal/auth/middleware.go
 `,
 };
 
+// The rest of that same example document, for the labelled excerpts under the hero. Copied
+// as written, like DEMO, so the page claims nothing the format does not actually carry.
+const SAMPLE = {
+  problem: "Checkout requests intermittently fail with 429s because every request re-validates the session against the auth service; validation must be cached without letting revoked sessions linger.",
+  trial: { what: "In-process LRU cache in the auth middleware",
+           why_abandoned: "Violates the 60s revocation requirement under horizontal scaling" },
+  assumption: { id: "A2", confidence: "unverified",
+    assumption: "The auth service's /validate response is safe to cache keyed on session token alone (no per-device claims).",
+    impact_if_wrong: "Cache key must include device fingerprint; T2 changes, cache hit rate drops.",
+    how_to_verify: "Check auth-service response schema for device-scoped fields." },
+  note: DEMO.stops.find(s => s.attention).attention,
+  question: { id: "Q1", question: "Should cache entries be invalidated on password change events, or is TTL expiry sufficient?" },
+  performed: [
+    { kind: "test", description: "Unit tests for cache TTL expiry and logout delete", result: "pass" },
+    { kind: "test", description: "Middleware integration test with Redis testcontainer", result: "pass" },
+    { kind: "typecheck", description: "go vet + staticcheck", result: "pass" },
+  ],
+  not_verified: [
+    "Behavior when Redis is unreachable (code falls back to direct validation; no test exercises the fallback)",
+    "Load behavior — the original 429 symptom was not reproduced under load after the fix",
+  ],
+};
+
 const DWELL = 6000;
-let DEMO_STATE = { i: 0, timer: null, auto: true, files: null };
+let DEMO_STATE = { i: 0, timer: null, auto: true, files: null,
+                   panel: null, visible: true, hover: false, maxH: 0, width: 0 };
 
 function reducedMotion(){
   return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -665,9 +965,53 @@ function startDemo(){
   }, DWELL);
 }
 
+/** The demo runs only while it is on screen and unhovered. Each input sets its own flag and
+ *  calls this, so a stale mouseleave (fired because the panel scrolled out from under a
+ *  parked pointer) cannot restart a demo that visibility has already put to sleep. */
+function syncDemo(){
+  if (!(DEMO_STATE.auto && DEMO_STATE.visible && !DEMO_STATE.hover)) return stopDemo();
+  if (DEMO_STATE.timer) return; // already running: leave the dwell where the reader found it
+  paintDemo();                  // paintDemo owns the progress bar, so restart the two together
+  startDemo();
+}
+
+/** Only ever scrolls the rail's own horizontal overflow. scrollIntoView walked up to the
+ *  document and yanked the whole page back to the demo every dwell, which is what a reader
+ *  further down the page saw as the page scrolling by itself. */
+function keepActiveStopInRail(rail){
+  const active = rail.querySelector(".is-active");
+  if (!active || rail.scrollWidth <= rail.clientWidth) return; // column layout: nothing to scroll
+  const a = active.getBoundingClientRect(), r = rail.getBoundingClientRect();
+  rail.scrollLeft += (a.left - r.left) - (r.width - a.width) / 2;
+}
+
+function watchDemoVisibility(panel){
+  if (!window.IntersectionObserver) return;
+  const io = new IntersectionObserver(entries => {
+    // A route change leaves this observer bound to a detached panel. Its stop must not reach
+    // through the shared state and cancel the live one.
+    if (DEMO_STATE.panel !== panel || !panel.isConnected) return io.disconnect();
+    DEMO_STATE.visible = entries[entries.length - 1].isIntersecting;
+    syncDemo();
+  }, { threshold: 0 }); // any sliver counts: a panel taller than the viewport never hits a ratio
+  io.observe(panel);
+}
+
+/** Stops differ in height once the rail stacks above the pane, so every advance would reflow
+ *  the whole page under a reader below the hero. Hold the panel at the tallest stop seen at
+ *  this width; reading the natural height back before the frame paints keeps it flicker-free. */
+function lockDemoHeight(panel){
+  if (!panel) return;
+  if (DEMO_STATE.width !== panel.clientWidth) { DEMO_STATE.width = panel.clientWidth; DEMO_STATE.maxH = 0; }
+  panel.style.minHeight = "";
+  DEMO_STATE.maxH = Math.max(DEMO_STATE.maxH, panel.offsetHeight);
+  panel.style.minHeight = DEMO_STATE.maxH + "px";
+}
+
 function renderDemo(){
   DEMO_STATE.files = parseUnifiedDiff(DEMO.diff);
   DEMO_STATE.i = 0; DEMO_STATE.auto = true;
+  DEMO_STATE.visible = true; DEMO_STATE.hover = false; DEMO_STATE.maxH = 0; DEMO_STATE.width = 0;
 
   const panel = el("div",{class:"demo demo-tilt"},
     el("div",{class:"demo-bar"},
@@ -679,11 +1023,16 @@ function renderDemo(){
     el("div",{class:"demo-track"}, el("div",{class:"demo-progress", id:"demo-progress"})),
     el("div",{class:"demo-grid", id:"demo-body"}));
 
-  // Pausing on hover keeps a reader from losing the stop they are mid-way through.
-  panel.addEventListener("mouseenter", stopDemo);
-  panel.addEventListener("mouseleave", () => { if (DEMO_STATE.auto) startDemo(); });
+  DEMO_STATE.panel = panel;
 
-  setTimeout(() => { paintDemo(); startDemo(); }, 0);
+  // Pausing on hover keeps a reader from losing the stop they are mid-way through.
+  panel.addEventListener("mouseenter", () => { DEMO_STATE.hover = true;  syncDemo(); });
+  panel.addEventListener("mouseleave", () => { DEMO_STATE.hover = false; syncDemo(); });
+
+  // Hover has no touch equivalent, and a panel nobody can see has no reader to keep: pause
+  // whenever the demo scrolls off screen, so the rest of the page sits still. Observing is
+  // deferred with the first paint, because isConnected only answers once the panel is in.
+  setTimeout(() => { syncDemo(); watchDemoVisibility(panel); }, 0);
   return panel;
 }
 
@@ -713,7 +1062,8 @@ function paintDemo(){
       ...hunksForStop(s, DEMO_STATE.files).map(hp => hp.missing ? null : renderHunk(hp.path, hp.hunk))));
 
   body.replaceChildren(rail, pane);
-  rail.querySelector(".is-active")?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  lockDemoHeight(body.closest(".demo"));
+  keepActiveStopInRail(rail);
 
   // Restart the dwell bar from zero, in the direction of travel.
   const bar = document.getElementById("demo-progress");
@@ -734,35 +1084,42 @@ function siteHeader(active){
   const navLink = (href, label, key) => el("a",{class:"site-nav"+(active===key?" is-active":""), href}, label);
   return el("header",{class:"border-b border-ink-200"+(active==="home" ? " hero-wash" : "")},
     el("div",{class:"mx-auto flex max-w-[92rem] items-center gap-2 px-6 py-3"},
-      el("a",{class:"flex items-center gap-2 font-semibold text-ink-900 hover:no-underline", href:"#"},
+      el("a",{class:"flex items-center gap-2 font-semibold text-ink-900 hover:no-underline", href:"/"},
         el("span",{class:"inline-flex shrink-0", html: siteLogo(32)}),
         "Review Assist"),
       el("span",{class:"flex-1"}),
-      navLink("#","Overview","home"),
-      navLink("#/blog","Releases","blog"),
+      navLink("/","Overview","home"),
+      navLink(blogHref(),"Releases","blog"),
       el("a",{class:"site-nav", href:REPO_URL}, "GitHub"),
       themeToggle()));
 }
 function siteFooter(){
   return el("footer",{class:"border-t border-ink-200 pt-6 text-sm text-ink-500"},
-    el("p",{class:"mb-1"}, "Sign in with GitHub once; nothing is stored — documents and diffs are read live from GitHub in your browser."),
+    // "Read live from GitHub in your browser" was the old wording, and it is not what happens:
+    // the Worker fetches them with the reviewer's token and passes them through.
+    el("p",{class:"mb-1"}, "Sign in with GitHub to review. Nothing is stored: documents and diffs are fetched from GitHub per request and passed straight to your browser."),
     el("p",{}, "Open source, Apache-2.0 · ", el("a",{href:REPO_URL}, "github.com/uditk2/review-assist")));
 }
 
 /** Minimal inline markup for authored prose: `code`, **bold**, and [text](href). */
 function richHtml(text){
   const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  // Code spans are set aside before emphasis runs, and put back last. Otherwise an asterisk
+  // inside one (a glob like `intent-*.md`) paired with one in the next span and italicised
+  // everything between them, eating both asterisks.
+  const code = [];
   return esc(text)
-    .replace(/`([^`]+)`/g, "<code class=\"code-inline\">$1</code>")
+    .replace(/`([^`]+)`/g, (m, c) => `\u0000${code.push(c) - 1}\u0000`)
     .replace(/\*\*([^*]+)\*\*/g, "<strong class=\"font-medium text-ink-900\">$1</strong>")
     .replace(/\*([^*]+)\*/g, "<em>$1</em>")
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,
-      (m, text, href) => /^(https?:|#|\/)/i.test(href) ? `<a href="${href}">${text}</a>` : text);
+      (m, text, href) => /^(https?:|#|\/)/i.test(href) ? `<a href="${href}">${text}</a>` : text)
+    .replace(/\u0000(\d+)\u0000/g, (m, i) => `<code class="code-inline">${code[i]}</code>`);
 }
 
 // ---------- release notes ----------
 function releaseRow(r){
-  return el("a",{class:"block border-t border-ink-200 py-3 hover:no-underline", href:"#/blog/"+r.v},
+  return el("a",{class:"block border-t border-ink-200 py-3 hover:no-underline", href:blogHref(r.v)},
     el("div",{class:"flex items-baseline gap-2.5"},
       el("span",{class:"id-chip"}, "v"+r.v),
       el("span",{class:"font-medium text-ink-900"}, r.title),
@@ -785,7 +1142,7 @@ function renderPost(slug){
   if (i < 0) return el("div",{class:"min-h-screen"}, siteHeader("blog"),
     el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
       el("h1",{class:"mb-3"},"No such release"),
-      el("p",{class:"text-ink-600"}, el("a",{href:"#/blog"},"Back to the release notes →"))));
+      el("p",{class:"text-ink-600"}, el("a",{href:blogHref()},"Back to the release notes →"))));
 
   const r = RELEASES[i];
   const body = el("div",{});
@@ -804,7 +1161,7 @@ function renderPost(slug){
   return el("div",{class:"page min-h-screen"},
     siteHeader("blog"),
     el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
-      el("p",{class:"mb-4 text-sm"}, el("a",{class:"text-ink-500", href:"#/blog"}, "← Release notes")),
+      el("p",{class:"mb-4 text-sm"}, el("a",{class:"text-ink-500", href:blogHref()}, "← Release notes")),
       el("article",{},
         el("div",{class:"grid-field"},
           el("div",{class:"mb-2 flex items-baseline gap-2.5"},
@@ -817,13 +1174,108 @@ function renderPost(slug){
           "Commits for this release: ",
           el("a",{href: REPO_URL + (older ? "/compare/v"+older.v+"...v"+r.v : "/commits/v"+r.v)}, older ? "v"+older.v+"…v"+r.v : "history to v"+r.v))),
       el("nav",{class:"mt-10 flex justify-between gap-4 border-t border-ink-200 pt-5 text-sm"},
-        older ? el("a",{href:"#/blog/"+older.v}, "← v"+older.v) : el("span",{}),
-        newer ? el("a",{href:"#/blog/"+newer.v}, "v"+newer.v+" →") : el("span",{})),
+        older ? el("a",{href:blogHref(older.v)}, "← v"+older.v) : el("span",{}),
+        newer ? el("a",{href:blogHref(newer.v)}, "v"+newer.v+" →") : el("span",{})),
       el("div",{class:"mt-10"}, siteFooter())));
 }
 
 // Newest first. Each entry: what broke, what was done, why. Kept short on purpose.
 const RELEASES = [
+  {
+    v: "1.0.5",
+    date: "21 Sep 2026",
+    title: "Start both roles at once, and stop the interview deadlocking",
+    summary: "The distillation spent most of its time with one role waiting on the other. Both roles now start together, the two-batch cap is enforced, and a waiting reviewer is told when to stop.",
+    body: [
+      "`compute_diff` now seeds the standing questions on the run when it opens, so the author starts answering from the session while the reviewer is still paging the diff. Across 15 recorded runs that phase was 670 seconds of a 1,400-second median, and it was serial only because the author had nothing to answer until the reviewer handed back question ids.",
+      { h: "A cap that only lived in prose" },
+      "The interview is capped at two batches of questions, but only the role prompts said so. Three recorded runs broke it the same way: the reviewer opened a third batch after the author had correctly handed back, nothing was left to answer it, and the reviewer polled `get_answers` for 61 to 103 minutes. On one run that was 89% of the wall clock.",
+      "`record_interview_round` now refuses a third batch that carries new questions, and points the findings where the protocol already sends them: `verification.not_verified` and the reviewer’s closing report. Re-recording a question the run already holds is still a free retry.",
+      { h: "Telling a waiting reviewer the truth" },
+      "`get_answers` ended with “the author has not replied to those yet”, which reads as “keep waiting”. The author is a subagent and does not idle: if it has stopped, it has returned. After 8 polls or 60 seconds with no new answer, the tool now says so and names the two real options, re-dispatching the author or submitting with these as findings.",
+      { h: "Also" },
+      { ul: [
+        "**Every submit failed again.** `summarizeRun` grew a field, `submit_document` spread the whole summary into `meta.interview`, and that block allows exactly five. The stamp is now narrowed to the schema’s own fields, so the next field added is a compile error instead of a failed distillation.",
+        "**The distillation diagram was redrawn.** It had drifted past the house-rules tool, and it drew a private channel between author and reviewer that does not exist: the interview goes through the server precisely so it can attest who answered.",
+      ] },
+    ],
+  },
+  {
+    v: "1.0.4",
+    date: "8 Sep 2026",
+    title: "Finish a release that half-shipped",
+    summary: "1.0.3 reached npm and stopped there, missing from the MCP registry and the releases page with nothing able to finish it. Also: the cache purge that failed every deploy.",
+    body: [
+      "The registry refuses a version it cannot find on npm, and npm does not serve a new version to everyone the moment `npm publish` returns. So 1.0.3 published, was tagged, and failed registration with a 404 on its own package; the GitHub release step after it never ran.",
+      "The workflow now waits until npm actually serves the version, and retries registration three times, because the registry reads npm from its own side and the two can disagree for a few seconds. The recovery path, `release_only`, now includes this step and treats an already-registered version as done, so a rerun finishes a half-shipped release instead of duplicating it.",
+      { h: "The purge that never ran" },
+      "Every deploy since the purge step landed failed at it with a Cloudflare 7003 routing error. The zone id secret had never been set, and an unset secret interpolates to an empty string, so the URL became `zones//purge_cache` and the error named neither.",
+      "The step now checks the id is 32 hex characters before calling Cloudflare. Checking for emptiness was too weak: piping a failed lookup into `gh secret set` stores the literal `null`, which is what happened while fixing this.",
+      { h: "Also" },
+      { ul: [
+        "**The reviewer’s findings get a second destination.** The Intent Document carries them to whoever reviews the pull request, after the fact. The reviewer’s closing message is now the channel back to the session that can still fix the code.",
+        "**The social preview matches the site.** Shared links were previewing the previous design.",
+      ] },
+    ],
+  },
+  {
+    v: "1.0.3",
+    date: "8 Sep 2026",
+    title: "A repository can teach the reviewer its own questions",
+    summary: "A `.reviewer/` folder holds what only your repository knows to ask. Published to npm, but not to the MCP registry or the releases page; 1.0.4 fixed that.",
+    body: [
+      "The reviewer asks the same baseline questions everywhere. What it cannot know cold is what one repository always wants asked: an invariant a past incident bought, a change that must ship with its migration, a directory whose churn is never incidental. That belongs in the repository beside the code, not in a prompt the server ships.",
+      "A `.reviewer/` folder at the repository root now holds it, served by a new `get_reviewer_instructions`. The server reads the folder rather than the agent, because the reviewer has no file access by design: reaching the transcript is exactly what the role split forbids.",
+      "House rules add questions and replace none. A repository writes its rules without the baseline in view, so a short folder read as the whole set would quietly shorten the interview. The folder is bounded (50 files, depth 3, 64 KB each) with anything cut named, and because a fork’s pull request can edit it, it is framed as reference material that cannot override the protocol or the schema.",
+      { h: "Found by its own interview" },
+      "Distilling this change found four defects in it, all fixed before release. The telling one: `present` meant “the folder exists” in one function and “there is something readable in it” in another, so a folder holding no markdown was reported absent and present in the same run.",
+      { h: "Also" },
+      { ul: [
+        "**The site is cached at the edge** for a day and purged on deploy, instead of revalidating on every request. The purge did not actually run until 1.0.4.",
+        "**The landing page was rebuilt** around the live demo, with an install tab per agent, an FAQ, social metadata, `robots.txt`, `sitemap.xml` and `llms.txt`.",
+      ] },
+    ],
+  },
+  {
+    v: "1.0.2",
+    date: "29 Aug 2026",
+    title: "The viewer’s columns stop drifting",
+    summary: "On wide displays the two-column layouts sat centred in a gutter that grew with the window, and at some widths the diff got less room than it had in one column.",
+    body: [
+      "The overview and walkthrough columns were centred inside the content pane, so on a wider display the content drifted away from the navigation rail, which stayed pinned left. They now share the rail’s left edge, and the leftover space banks to the right, the way documentation layouts do.",
+      "Two breakpoints were wrong by arithmetic. The walkthrough split turned on at 1024px, which left the diff 232px, narrower than the single column it replaced; it now waits for 1280px, where the diff gets about 520. And the prose column was sticky from 1024px while the split started at 1280, so in between it would have pinned itself over the diff.",
+      { h: "Also" },
+      { ul: [
+        "**No sideways scroll on narrow screens.** The masthead’s background grid bled past the page edge below 864px, which became 24px of horizontal scroll at exactly 768.",
+        "**The docs match the tools again.** The distillation diagram and the tool tables had drifted after five tools were added and two moved to the orchestrator.",
+      ] },
+    ],
+  },
+  {
+    v: "1.0.1",
+    date: "25 Aug 2026",
+    title: "Shorter documents, and an interview that survives a commit",
+    summary: "Intent Documents are now written in points instead of paragraphs. Underneath: three ways the interview silently lost its answers.",
+    body: [
+      "Documents were drifting into prose: a tour stop’s “why” had grown from 20 words to 96 on average, and the approach rationale from 44 to 220. Every field is now a list of points, one phrase each, and the size of the change sets how many points a field gets rather than how long they run. On the same repository afterwards, a stop’s “why” came to 17 words a point, and the rationale went from one 179-word paragraph to 12 points.",
+      { note: "Breaking for older documents: `problem.evolution` is gone from the schema, and `problem` allows no extra fields, so a document that still carries it fails validation. Delete the field. A constraint that killed a design now goes in `approach.trials`; one that only bounded the work is a requirement, with you named as its source." },
+      { h: "The interview kept disappearing" },
+      "Three defects with one symptom: the author’s next answer landed on a fresh, empty run and came back as unknown questions, with no error anywhere.",
+      { ul: [
+        "**A commit rotated the run.** The run id included the head commit, and committing the Intent Document is itself a commit, so the correction cycle the guide promises destroyed the interview it was meant to keep. The head is now state on the run, not part of its id.",
+        "**Submitting deleted the run.** So “fix the findings and resubmit” found nothing to resubmit to. A submitted run is now kept, and swept after 7 days untouched.",
+        "**Two branches off one commit shared a run.** Taking the head out of the id left nothing to tell them apart. The id is now the repository, the base commit and the branch.",
+      ] },
+      { h: "Also" },
+      { ul: [
+        "**A space in the repository path hid every session.** Claude Code files sessions under a directory name with spaces turned into dashes too; the lookup only replaced slashes, so it found nothing and said nothing. Matching now ignores which characters were replaced.",
+        "**The two roles read the run directly.** Questions and answers used to be copied between them as chat text, 25 to 29 KB a run. `get_questions` and `get_answers` read the other half off the run, so only the run id travels.",
+        "**The Intent Document left the diff it describes.** From a branch’s second commit it arrived as a whole-file addition, sorted first, and shifted every hunk id by one.",
+        "**Point lists render as lists**, and requirements and rejected alternatives are shown open instead of folded, in the viewer and the PR description.",
+        "**The viewer and the schema moved to reviewassist.dev**, with `www` redirecting to it.",
+      ] },
+    ],
+  },
   {
     v: "1.0.0",
     date: "13 Aug 2026",
@@ -1060,7 +1512,14 @@ function themeToggle() {
   const dark = currentTheme() === "dark";
   return el("button",{
     class:"btn-ghost !px-2.5 !py-1", title:"Toggle light / dark",
-    onclick:()=>{ document.documentElement.setAttribute("data-theme", dark ? "light" : "dark"); rerenderCurrent(); }
+    onclick:()=>{
+      const next = dark ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      // The release notes are separate pages now, not views of this one, so a choice that
+      // lived only on <html> reset on every link. Read back in <head>, before first paint.
+      try { localStorage.setItem("theme", next); } catch {}
+      rerenderCurrent();
+    }
   }, dark ? "Light" : "Dark");
 }
 
@@ -1069,10 +1528,8 @@ function themeToggle() {
 function rerenderCurrent() {
   stopDemo();
   const y = window.scrollY;
-  const app = document.getElementById("app");
-  const blog = parseBlogHash();
-  if (blog) app.replaceChildren(blog.slug ? renderPost(blog.slug) : renderBlogIndex());
-  else if (!parseHash()) app.replaceChildren(renderLanding());
+  const page = sitePage();
+  if (page) document.getElementById("app").replaceChildren(page);
   else render();
   window.scrollTo(0, y);
 }
