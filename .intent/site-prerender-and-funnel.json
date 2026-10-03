@@ -1,0 +1,1347 @@
+{
+  "schema_version": "0.1",
+  "meta": {
+    "id": "site-prerender-and-funnel",
+    "repo": "uditk2/review-assist",
+    "commit_range": {
+      "base_sha": "951da828642689092701eec6d8521e9395992de1",
+      "head_sha": "044e9ba2414f56c05d238f999d097ced08c737e0"
+    },
+    "session": {
+      "agent": "Claude Code",
+      "model": "not reported by the author",
+      "session_ids": [
+        "ea9eb065-7cb9-4276-9abd-e6d3c34595b7"
+      ]
+    },
+    "generated_by": {
+      "pipeline": "review-assist two-agent distillation",
+      "version": "1.0.5"
+    },
+    "generated_at": "2026-10-03T11:05:00Z",
+    "interview": {
+      "rounds": 22,
+      "questions_asked": 22,
+      "unresolved": 2,
+      "author_attested": 22,
+      "unanswered": 0
+    }
+  },
+  "problem": {
+    "statement": "reviewassist.dev was blank without JavaScript, silent on what the GitHub App can access, and unmeasured past the landing page",
+    "origin": "stated_upfront",
+    "user_asks": [
+      "What do you think about these issues ? DO you think they are issues at all and if yes, can you fix them. Make sure to evaluate if the issue is correct and only then try and fix it.",
+      "Server-side funnel events on app native and all: can we not do Google Analytics for it? Wouldn't that solve the problem?",
+      "Let's update the release history and the release notes so that it is at par.",
+      "Clarity records page addresses and guided review address contents in the repository with a PR number. It closes the page. I think we should not do that, or we should actually stop using Clarity on the PR pages. It's not needed.",
+      "What this also implies is that since we are stopping the use of Claritin PR pages, we should also remove the disclosure because that's also not required.",
+      "Here is the GA Tag",
+      "Setup URL: after the deploy, set it to https://reviewassist.dev/installed/ with \"Redirect on update\" ticked. Where do we have to do this ?",
+      "Put everything as part of one commit only"
+    ],
+    "out_of_scope": [
+      "Checklist P2 distribution items: not code",
+      "EU cookie consent banner for GA and Clarity: raised twice by the assistant, never decided",
+      "Setting the App's Setup URL: no GitHub API; manual step after deploy",
+      "Screenshot of GitHub's install screen"
+    ]
+  },
+  "assumptions": [
+    {
+      "id": "A1",
+      "assumption": "GitHub delivers installation and installation_repositories webhooks to the App without a subscription",
+      "impact_if_wrong": "app_installed, app_uninstalled and app_repositories_changed never fire",
+      "how_to_verify": "GitHub App settings > Advanced > Recent Deliveries after a test install",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A2",
+      "assumption": "App permissions stay checks:write, contents:read, metadata:read, pull_requests:write; events: pull_request",
+      "impact_if_wrong": "Permissions section and hero access line misstate what the App can reach",
+      "how_to_verify": "gh api /apps/review-assist-guided-review --jq '.permissions,.events'",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A3",
+      "assumption": "Setup URL gets set to https://reviewassist.dev/installed/ after deploy, with 'Redirect on update' on and OAuth-during-install off",
+      "impact_if_wrong": "Nobody reaches /installed/; app_install_return never fires; set before deploy, installs land on a 404",
+      "how_to_verify": "https://github.com/settings/apps/review-assist-guided-review > Post installation",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A4",
+      "assumption": "GA_API_SECRET on the production Worker holds a valid Measurement Protocol secret for G-JMHGW95G13",
+      "impact_if_wrong": "Server events vanish silently: the Measurement Protocol answers 2xx to bad hits",
+      "how_to_verify": "After deploy, push to a PR; watch GA Realtime for review_posted / review_no_document",
+      "depends": [
+        "A1"
+      ],
+      "confidence": "unverified"
+    },
+    {
+      "id": "A5",
+      "assumption": "SESSION_SECRET stays Worker-only and is rotated rarely",
+      "impact_if_wrong": "Rotation re-keys every installation in GA and signs every reviewer out; a leak makes pseudonyms reversible",
+      "how_to_verify": "analytics.ts: installationPseudonym(env.SESSION_SECRET, id); re-keying never discussed with the user",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A6",
+      "assumption": "jsdom renders the same DOM a browser does, and the head flag hides prerendered nodes before first paint",
+      "impact_if_wrong": "PR links flash the landing page; crawlers see content that differs from the live render",
+      "how_to_verify": "Open a real PR link in a browser with network throttled",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A7",
+      "assumption": "ga-disable flag plus clarity('stop') plus reload keeps both tools off after a PR link is pasted into an open site tab",
+      "impact_if_wrong": "Private repo and PR names reach Clarity and GA",
+      "how_to_verify": "Real browser on reviewassist.dev: paste a #owner/repo/pull/N link; check the network tab for clarity.ms and google-analytics.com after reload",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A8",
+      "assumption": "Deploy's edge-cache purge covers the new pages",
+      "impact_if_wrong": "New or changed pages served stale for up to a day (max-age=86400)",
+      "how_to_verify": "deploy-app.yml 'Purge Cloudflare cache': purge_everything true, production only",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A9",
+      "assumption": "viewer/dist is gitignored, and deploy builds the viewer before wrangler deploy",
+      "impact_if_wrong": "Deploy serves a stale or missing dist",
+      "how_to_verify": "git check-ignore apps/github-app/viewer/dist",
+      "confidence": "grounded_in_code"
+    },
+    {
+      "id": "A10",
+      "assumption": "No cookie consent prompt is needed for GA and Clarity on the site",
+      "impact_if_wrong": "EU ePrivacy exposure for every visitor session",
+      "how_to_verify": "Legal review of site analytics cookies",
+      "confidence": "unverified"
+    },
+    {
+      "id": "A11",
+      "assumption": "Release notes 1.0.1 to 1.0.5 match commit messages and GitHub releases",
+      "impact_if_wrong": "Published, indexed claims about past releases are wrong",
+      "how_to_verify": "git log v1.0.4..v1.0.5 and gh release view v1.0.5 (repeat per version); compare each figure",
+      "confidence": "unverified"
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Keep the 'Usage counts' GA disclosure line?",
+      "context": "Assistant offered to remove it; user never answered, before or after the amend",
+      "raised_by": "author_agent"
+    },
+    {
+      "id": "Q2",
+      "question": "Should review_no_document count only a 404?",
+      "context": "webhook.ts: docMissing = !docRes.ok, so a GitHub 403, 5xx or rate limit lands in the 'MCP server not in use' bucket",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q3",
+      "question": "Should a parseable but schema-invalid document count as review_invalid_document?",
+      "context": "Worker only JSON.parses the document; schema-invalid JSON is reported as review_posted",
+      "raised_by": "reviewer_agent"
+    },
+    {
+      "id": "Q4",
+      "question": "Dedicated pseudonym key instead of SESSION_SECRET?",
+      "context": "Rotating SESSION_SECRET now also re-keys every installation in GA; never discussed with the user",
+      "raised_by": "reviewer_agent"
+    }
+  ],
+  "approach": {
+    "requirements": [
+      {
+        "text": "Evaluate each checklist issue; fix only the real ones",
+        "source": "user, opening message"
+      },
+      {
+        "text": "Report server-side funnel steps through Google Analytics",
+        "source": "user, second message"
+      },
+      {
+        "text": "No Clarity on guided-review pages, and no disclosure about it",
+        "source": "user, second message"
+      },
+      {
+        "text": "Release notes at par with shipped versions",
+        "source": "user, second message"
+      },
+      {
+        "text": "Ship as one commit",
+        "source": "user"
+      },
+      {
+        "text": "Analytics only on reviewassist.dev, never on self-hosted copies",
+        "source": "existing Clarity hostname gate"
+      },
+      {
+        "text": "No repository, owner, account or file names sent to analytics",
+        "source": "assistant design, analytics.ts"
+      },
+      {
+        "text": "Worker stays stateless: no stored funnel counts",
+        "source": "product's no-database promise"
+      }
+    ],
+    "trials": [
+      {
+        "what": "Disclose in the permissions copy that Clarity records PR-page URLs",
+        "outcome": "Written in the first pass",
+        "why_abandoned": "User: stop Clarity on PR pages instead and drop the disclosure"
+      },
+      {
+        "what": "Clarity funnel events on review pages (opened, no document, sign-in shown, submitted)",
+        "outcome": "Built and verified in jsdom",
+        "why_abandoned": "Clarity no longer loads on PR pages"
+      },
+      {
+        "what": "No server-side funnel events",
+        "outcome": "First decision: counting meant storing events",
+        "why_abandoned": "User asked for Google Analytics instead"
+      },
+      {
+        "what": "Cloudflare Workers Analytics Engine for server events",
+        "outcome": "Offered as the no-third-party option",
+        "why_abandoned": "No funnel dashboard; SQL only"
+      },
+      {
+        "what": "Site events in Clarity only; GA for server events only",
+        "outcome": "Avoided GA cookies and a consent banner",
+        "why_abandoned": "User supplied the GA tag; site events go to both"
+      },
+      {
+        "what": "Local script over GET /app/installations for install counts",
+        "outcome": "Offered",
+        "why_abandoned": "Not taken up"
+      },
+      {
+        "what": "User's gtag snippet pasted verbatim into <head>",
+        "outcome": "Static tag",
+        "why_abandoned": "Would load on PR pages; now loaded behind SITE_ANALYTICS"
+      },
+      {
+        "what": "Pseudonym keyed by GA_API_SECRET",
+        "outcome": "Shipped in fd873f4",
+        "why_abandoned": "Key travels to Google in every hit; sequential ids make it reversible"
+      },
+      {
+        "what": "Checklist label 'Intent vs Implementation'",
+        "outcome": "Proposed by the checklist",
+        "why_abandoned": "Product checks hunk coverage, not intent against implementation"
+      },
+      {
+        "what": "Checklist label 'Risks/Flags'",
+        "outcome": "Proposed by the checklist",
+        "why_abandoned": "Replaced by the real parts: reviewer notes, open questions, Not verified"
+      },
+      {
+        "what": "Checklist install flow 'Install App, choose repos, ready to use'",
+        "outcome": "Proposed by the checklist",
+        "why_abandoned": "Untrue: without the MCP server every PR gets 'No Intent Document'"
+      },
+      {
+        "what": "Screenshot of GitHub's install screen",
+        "outcome": "Considered",
+        "why_abandoned": "Shows whichever account took it; stale when GitHub restyles"
+      },
+      {
+        "what": "Separate commits for site, release notes and analytics",
+        "outcome": "Offered",
+        "why_abandoned": "User chose one commit"
+      }
+    ],
+    "adopted": {
+      "summary": "Prerender the page's own render functions into viewer/dist at build; real paths for release notes; landing rebuilt around outputs, three install steps and permissions; funnel events to Clarity and GA behind one gate, plus Worker events over GA's Measurement Protocol",
+      "rationale": "- Reuses renderLanding / renderPost: no second template to drift\n- Build fails on a blank or 'Loading…' #app: the failure the step exists for\n- Real paths, because a fragment never reaches a crawler\n- One SITE_ANALYTICS flag, so Clarity and GA cannot disagree\n- Reload on entering a PR route, because Clarity's stop is unreliable\n- Worker reports install and review steps: they happen without a browser\n- Off unless GA_API_SECRET is set: the measurement id is public\n- Counts and a pseudonym only: names never leave analytics.ts\n- Pseudonym keyed by a Worker-only secret, not one Google receives\n- Three install steps: the App alone yields 'No Intent Document'\n- Permissions copy checked against GitHub's App record and worker source"
+    }
+  },
+  "tour": [
+    {
+      "id": "T1",
+      "title": "Prerender site pages into dist at build",
+      "role": "core",
+      "what": "- Adds `build/prerender.mjs`: runs index.html's own script in jsdom per route, writes #app into static copies under `viewer/dist/`\n- Routes: `/`, `/blog/`, `/blog/<version>/`, `/installed/`\n- Sets per-page title, description, canonical, OG and Twitter tags\n- BlogPosting JSON-LD on posts, `<` escaped; FAQPage JSON-LD on `/` only; noindex on `/installed/`\n- Generates `sitemap.xml` from RELEASES, no lastmod on `/`; hand-written sitemap deleted\n- Fails the build on a script error, no h1, under 300 chars, or 'Loading…'\n- Copies an explicit asset allowlist; `.assetsignore` deleted\n- Wrangler serves `../viewer/dist`; `build:pages` joins the viewer build",
+      "why": "- Live body was 'Loading…' without JS (curl-confirmed)\n- Bing, LinkedIn, Slack and LLM crawlers mostly do not run scripts\n- Allowlist replaces .assetsignore: DESIGN.md, src and configs no longer served\n- Build date as lastmod would change on every deploy",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/build/prerender.mjs",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 203
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/package.json",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 16,
+            "new_start": 1,
+            "new_lines": 18
+          }
+        },
+        {
+          "path": "apps/github-app/worker/wrangler.toml",
+          "hunk": {
+            "old_start": 23,
+            "old_lines": 6,
+            "new_start": 23,
+            "new_lines": 10
+          }
+        },
+        {
+          "path": "apps/github-app/worker/wrangler.toml",
+          "hunk": {
+            "old_start": 30,
+            "old_lines": 14,
+            "new_start": 34,
+            "new_lines": 19
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/.assetsignore",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 5,
+            "new_start": 0,
+            "new_lines": 0
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/sitemap.xml",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 16,
+            "new_start": 0,
+            "new_lines": 0
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "whether the 25ms wait and 300-char floor catch a half-rendered page"
+    },
+    {
+      "id": "T2",
+      "title": "Release notes move from #/blog to real paths",
+      "role": "core",
+      "what": "- Replaces `parseBlogHash` with `parseBlogRoute` on `location.pathname`; `blogHref()` builds `/blog/<v>/`\n- Redirects legacy `#/blog/<v>` links with `location.replace`\n- `sitePage()` picks the page for both boot and the theme toggle's re-render\n- Nav, logo, release rows, post nav and llms.txt link to real paths\n- Saves the theme choice to localStorage; head script re-applies it before first paint\n- Favicon and stylesheet hrefs become root-absolute",
+      "why": "- Search engines never index past `#`, so release notes were invisible\n- `#/blog` links are already out in the world\n- Separate pages reset a theme held only on `<html>`; found in the Chrome run",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 234,
+            "old_lines": 25,
+            "new_start": 292,
+            "new_lines": 77
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 6,
+            "old_lines": 7,
+            "new_start": 6,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 100,
+            "old_lines": 8,
+            "new_start": 141,
+            "new_lines": 25
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 495,
+            "old_lines": 53,
+            "new_start": 631,
+            "new_lines": 14
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 734,
+            "old_lines": 35,
+            "new_start": 1084,
+            "new_lines": 42
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 785,
+            "old_lines": 7,
+            "new_start": 1142,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 804,
+            "old_lines": 7,
+            "new_start": 1161,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 817,
+            "old_lines": 13,
+            "new_start": 1174,
+            "new_lines": 108
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 1069,
+            "old_lines": 10,
+            "new_start": 1528,
+            "new_lines": 8
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/llms.txt",
+          "hunk": {
+            "old_start": 10,
+            "old_lines": 7,
+            "new_start": 10,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 79,
+            "old_lines": 20,
+            "new_start": 79,
+            "new_lines": 61
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 1060,
+            "old_lines": 7,
+            "new_start": 1512,
+            "new_lines": 14
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "theme persistence from / to /blog/<v>/ and on reload: no test output shown"
+    },
+    {
+      "id": "T3",
+      "title": "PR links hide the prerendered landing before first paint",
+      "role": "core",
+      "what": "- Head script sets `data-route=\"pr\"` on `<html>` for a PR hash\n- CSS hides every `[data-prerendered]` node under that flag\n- `parseHash` now anchored (`^#owner/repo/pull/N`), same as `PR_ROUTE` in head",
+      "why": "- PR links land on the same `/` document, which now carries the landing page\n- Viewer replaces #app only after load, so the landing would show under every review link until then\n- App posts `${origin}/#owner/repo/pull/N`, which the anchored pattern matches",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 79,
+            "old_lines": 20,
+            "new_start": 79,
+            "new_lines": 61
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 100,
+            "old_lines": 8,
+            "new_start": 141,
+            "new_lines": 25
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 234,
+            "old_lines": 25,
+            "new_start": 292,
+            "new_lines": 77
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "a PR link on a slow connection: any landing content before the review renders?"
+    },
+    {
+      "id": "T4",
+      "title": "Hero and permissions: what the App can access",
+      "role": "core",
+      "what": "- Rewrites hero copy: guided review first, MCP server later\n- Adds an access line under the install button, linking to `#permissions`\n- Adds 'Permissions and data': a row per permission, sign-in token, what is kept, how to remove\n- Webhook row: PR events acted on; installs, removals and repository changes only counted\n- Usage counts: lists every Worker event; counts plus all/selected and PR action; keyed hash, not 'anonymous'\n- `richHtml` sets code spans aside before emphasis, so `intent-*.md` keeps its `*`\n- Footer: documents fetched per request and passed through, not 'read live in your browser'",
+      "why": "- Page never listed permissions, PR writes, or uninstall steps\n- Hero supporting copy led with 'MCP server' and 'session'\n- Copy checked against GitHub's App record and worker source\n- First draft predated the GA work: said 'pull request events only' and 'anonymous'\n- Chrome run showed the uninstall globs losing their `*`\n- Old footer claim was false: the Worker fetches with the reviewer's token",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 435,
+            "old_lines": 11,
+            "new_start": 565,
+            "new_lines": 13
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 456,
+            "old_lines": 17,
+            "new_start": 588,
+            "new_lines": 21
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 570,
+            "old_lines": 6,
+            "new_start": 667,
+            "new_lines": 185
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 734,
+            "old_lines": 35,
+            "new_start": 1084,
+            "new_lines": 42
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 495,
+            "old_lines": 53,
+            "new_start": 631,
+            "new_lines": 14
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 277,
+            "old_lines": 6,
+            "new_start": 387,
+            "new_lines": 24
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Usage counts line against webhook.ts outcome names and analytics.ts params; user never saw it"
+    },
+    {
+      "id": "T5",
+      "title": "What a reviewer gets: six labelled parts",
+      "role": "supporting",
+      "what": "- Adds `renderReviewerGets`: overview, assumptions, notes and open questions, walkthrough, coverage, verification\n- Each part shows an excerpt from the example document (`SAMPLE`), copied as written\n- 'Pick a stop' jumps to the demo panel (`id=\"demo\"`)",
+      "why": "- Checklist's labelled outcomes: right idea, wrong labels\n- Claims stop at what the product checks: every hunk tied to a reason",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 570,
+            "old_lines": 6,
+            "new_start": 667,
+            "new_lines": 185
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 636,
+            "old_lines": 8,
+            "new_start": 912,
+            "new_lines": 32
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 481,
+            "old_lines": 7,
+            "new_start": 617,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 495,
+            "old_lines": 53,
+            "new_start": 631,
+            "new_lines": 14
+          }
+        }
+      ],
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T6",
+      "title": "Three install steps and a post-install page",
+      "role": "core",
+      "what": "- `renderInstallSteps`: register MCP server, install App and pick repos, open a PR\n- New `/installed/` page: heading per `setup_action` (install, request, update), MCP tabs, next step\n- Head script strips `installation_id` from the address before any tag loads",
+      "why": "- App alone puts 'No Intent Document' on every PR\n- `/installed/` is meant as GitHub's Setup URL; not set yet, web UI only\n- installation_id names an installation; nothing on the page uses it",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 570,
+            "old_lines": 6,
+            "new_start": 667,
+            "new_lines": 185
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 79,
+            "old_lines": 20,
+            "new_start": 79,
+            "new_lines": 61
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 234,
+            "old_lines": 25,
+            "new_start": 292,
+            "new_lines": 77
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "nothing reaches /installed/ until the Setup URL is set; update only with 'Redirect on update'"
+    },
+    {
+      "id": "T7",
+      "title": "Site funnel events",
+      "role": "core",
+      "what": "- `track()` sends to Clarity (session tags) and GA (event params); no-op unless SITE_ANALYTICS\n- Events: landing_view, release_notes_view, app_install_return, install_app_click, mcp_command_copy, mcpb_download\n- Page-view events fire once per page load (`PAGE_TRACKED`), not on each hash change\n- `installAppLink` tags the click by placement: hero vs install step\n- `jumpLink` scrolls in-page without changing the hash",
+      "why": "- Clarity had no events; the funnel was unreadable\n- boot re-runs on back, forward and plain #anchors, inflating the first funnel step\n- A hash change re-runs boot, rebuilding the page and restarting the demo",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 234,
+            "old_lines": 25,
+            "new_start": 292,
+            "new_lines": 77
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 277,
+            "old_lines": 6,
+            "new_start": 387,
+            "new_lines": 24
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 290,
+            "old_lines": 13,
+            "new_start": 418,
+            "new_lines": 14
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 312,
+            "old_lines": 16,
+            "new_start": 441,
+            "new_lines": 17
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 456,
+            "old_lines": 17,
+            "new_start": 588,
+            "new_lines": 21
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "install_app_click fires as the page leaves for github.com: does the hit get out?"
+    },
+    {
+      "id": "T8",
+      "title": "One analytics gate: never on PR routes, only on reviewassist.dev",
+      "role": "core",
+      "what": "- Head script sets `SITE_ANALYTICS`: hostname is reviewassist.dev and route is not a PR\n- Clarity and GA both load only under that flag; GA via script, not static `<script src>`\n- On hashchange or popstate into a PR route: sets `ga-disable-<id>`, calls `clarity(\"stop\")`, stops the event, reloads",
+      "why": "- User: stop Clarity on PR pages; both tools record addresses unmasked\n- A PR address names the repository and pull request\n- Pasting a review link into an open site tab changes only the hash\n- Clarity's stop is unreliable, hence the reload\n- Public repo: without the hostname gate, self-hosted copies would report here",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 79,
+            "old_lines": 20,
+            "new_start": 79,
+            "new_lines": 61
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 100,
+            "old_lines": 8,
+            "new_start": 141,
+            "new_lines": 25
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 234,
+            "old_lines": 25,
+            "new_start": 292,
+            "new_lines": 77
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "capture-phase listener must beat boot's hashchange handler; reloaded state never observed"
+    },
+    {
+      "id": "T9",
+      "title": "Worker funnel events over GA's Measurement Protocol",
+      "role": "core",
+      "what": "- New `analytics.ts`: `reportEvent` posts one event\n- Sends nothing unless GA_API_SECRET and SESSION_SECRET are both set\n- `installationEvent` maps install, uninstall and repository changes to counts\n- client_id: HMAC-SHA256 of a labelled installation id, keyed by SESSION_SECRET\n- `handleWebhook` accepts installation and installation_repositories after the signature check, answers 202\n- `process()` ends with review_posted, review_no_document, or review_invalid_document (unparseable JSON)\n- Adds GA_MEASUREMENT_ID var; vitest now runs worker tests",
+      "why": "- Install, uninstall and review steps never touch the site\n- User asked for GA; Analytics Engine has no funnel dashboard\n- Measurement id is public; the secret is what a self-hosted copy lacks\n- GA api_secret is in every hit URL; installation ids are sequential\n- An unparseable document is a broken run, not a missing one\n- Review event sent last, so it means the PR posts went through",
+      "anchors": [
+        {
+          "path": "apps/github-app/worker/src/analytics.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 91
+          }
+        },
+        {
+          "path": "apps/github-app/worker/src/index.ts",
+          "hunk": {
+            "old_start": 35,
+            "old_lines": 6,
+            "new_start": 35,
+            "new_lines": 9
+          }
+        },
+        {
+          "path": "apps/github-app/worker/src/webhook.ts",
+          "hunk": {
+            "old_start": 10,
+            "old_lines": 6,
+            "new_start": 10,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "apps/github-app/worker/src/webhook.ts",
+          "hunk": {
+            "old_start": 17,
+            "old_lines": 7,
+            "new_start": 18,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "apps/github-app/worker/src/webhook.ts",
+          "hunk": {
+            "old_start": 35,
+            "old_lines": 6,
+            "new_start": 36,
+            "new_lines": 18
+          }
+        },
+        {
+          "path": "apps/github-app/worker/src/webhook.ts",
+          "hunk": {
+            "old_start": 102,
+            "old_lines": 6,
+            "new_start": 115,
+            "new_lines": 15
+          }
+        },
+        {
+          "path": "apps/github-app/worker/test/analytics.test.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 80
+          }
+        },
+        {
+          "path": "apps/github-app/worker/wrangler.toml",
+          "hunk": {
+            "old_start": 30,
+            "old_lines": 14,
+            "new_start": 34,
+            "new_lines": 19
+          }
+        },
+        {
+          "path": "vitest.config.ts",
+          "hunk": {
+            "old_start": 22,
+            "old_lines": 6,
+            "new_start": 22,
+            "new_lines": 6
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "docMissing is any non-OK fetch: a GitHub 403 or 5xx counts as review_no_document"
+    },
+    {
+      "id": "T10",
+      "title": "Release notes 1.0.1 to 1.0.5",
+      "role": "core",
+      "what": "- Adds five RELEASES entries: date, title, summary, body\n- Each becomes a prerendered page and a sitemap entry",
+      "why": "- List stopped at 1.0.0 though 1.0.5 had shipped\n- Written from git log between tags and GitHub releases; private repo names left out\n- 1.0.1 marked breaking: `problem.evolution` removed from a strict schema, checked against tagged schemas",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 817,
+            "old_lines": 13,
+            "new_start": 1174,
+            "new_lines": 108
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "figures (670 of 1,400s; 61 to 103 minutes; 89%) never checked against a source"
+    },
+    {
+      "id": "T11",
+      "title": "Demo scroll fixes carried in from uncommitted work",
+      "role": "core",
+      "what": "- `syncDemo`: demo runs only on screen, unhovered and in auto mode\n- IntersectionObserver pauses it off screen; ignores a detached panel after re-render\n- `lockDemoHeight` holds the panel at the tallest stop seen at this width\n- `keepActiveStopInRail` scrolls only the rail, not the page",
+      "why": "- Uncommitted before the session began; included because the user asked for one commit\n- Neither authored nor specifically tested in this session",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 636,
+            "old_lines": 8,
+            "new_start": 912,
+            "new_lines": 32
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 665,
+            "old_lines": 9,
+            "new_start": 965,
+            "new_lines": 53
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 679,
+            "old_lines": 11,
+            "new_start": 1023,
+            "new_lines": 16
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 713,
+            "old_lines": 7,
+            "new_start": 1062,
+            "new_lines": 8
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "untested here: hidden demo restarting on a stale mouseleave; min-height after resize"
+    },
+    {
+      "id": "T12",
+      "title": "jsdom build dependency",
+      "role": "supporting",
+      "what": "- Adds jsdom ^25.0.1 as a viewer devDependency\n- Lockfile gains jsdom and its transitive deps, all dev-only",
+      "why": "- prerender.mjs needs a DOM at build time",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/package.json",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 16,
+            "new_start": 1,
+            "new_lines": 18
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 27,
+            "old_lines": 6,
+            "new_start": 27,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 52,
+            "old_lines": 6,
+            "new_start": 53,
+            "new_lines": 20
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 197,
+            "old_lines": 6,
+            "new_start": 212,
+            "new_lines": 121
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 1697,
+            "old_lines": 6,
+            "new_start": 1827,
+            "new_lines": 16
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 1779,
+            "old_lines": 6,
+            "new_start": 1919,
+            "new_lines": 13
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2026,
+            "old_lines": 6,
+            "new_start": 2173,
+            "new_lines": 19
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2126,
+            "old_lines": 6,
+            "new_start": 2286,
+            "new_lines": 27
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2133,
+            "old_lines": 6,
+            "new_start": 2314,
+            "new_lines": 20
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2151,
+            "old_lines": 6,
+            "new_start": 2346,
+            "new_lines": 13
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2168,
+            "old_lines": 6,
+            "new_start": 2370,
+            "new_lines": 16
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2235,
+            "old_lines": 6,
+            "new_start": 2447,
+            "new_lines": 19
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2275,
+            "old_lines": 6,
+            "new_start": 2500,
+            "new_lines": 22
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2568,
+            "old_lines": 6,
+            "new_start": 2809,
+            "new_lines": 46
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2709,
+            "old_lines": 6,
+            "new_start": 2990,
+            "new_lines": 22
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2732,
+            "old_lines": 6,
+            "new_start": 3029,
+            "new_lines": 19
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2753,
+            "old_lines": 6,
+            "new_start": 3063,
+            "new_lines": 34
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2883,
+            "old_lines": 6,
+            "new_start": 3221,
+            "new_lines": 13
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2917,
+            "old_lines": 6,
+            "new_start": 3262,
+            "new_lines": 47
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 2957,
+            "old_lines": 6,
+            "new_start": 3343,
+            "new_lines": 13
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 3168,
+            "old_lines": 6,
+            "new_start": 3561,
+            "new_lines": 13
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 3231,
+            "old_lines": 6,
+            "new_start": 3631,
+            "new_lines": 19
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 3520,
+            "old_lines": 6,
+            "new_start": 3933,
+            "new_lines": 16
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 3776,
+            "old_lines": 6,
+            "new_start": 4199,
+            "new_lines": 13
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 3807,
+            "old_lines": 6,
+            "new_start": 4237,
+            "new_lines": 19
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 4143,
+            "old_lines": 6,
+            "new_start": 4586,
+            "new_lines": 13
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 4296,
+            "old_lines": 6,
+            "new_start": 4746,
+            "new_lines": 26
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 4319,
+            "old_lines": 6,
+            "new_start": 4789,
+            "new_lines": 32
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 4605,
+            "old_lines": 6,
+            "new_start": 5101,
+            "new_lines": 80
+          }
+        },
+        {
+          "path": "package-lock.json",
+          "hunk": {
+            "old_start": 5145,
+            "old_lines": 6,
+            "new_start": 5715,
+            "new_lines": 23
+          }
+        }
+      ],
+      "provenance": "from_transcript"
+    },
+    {
+      "id": "T13",
+      "title": "Generated stylesheet, comments and labels",
+      "role": "incidental",
+      "what": "- Regenerates `styles.css` from the tailwind build\n- Rewrites the FAQ JSON-LD comment for per-page metadata\n- Renames the CI build step; command unchanged\n- Updates the viewer package description",
+      "why": "- Build output; CI fails if styles.css is stale",
+      "anchors": [
+        {
+          "path": "apps/github-app/viewer/styles.css",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 3,
+            "new_start": 1,
+            "new_lines": 3
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 16,
+            "old_lines": 9,
+            "new_start": 16,
+            "new_lines": 9
+          }
+        },
+        {
+          "path": ".github/workflows/deploy-app.yml",
+          "hunk": {
+            "old_start": 25,
+            "old_lines": 7,
+            "new_start": 25,
+            "new_lines": 7
+          }
+        },
+        {
+          "path": "apps/github-app/viewer/package.json",
+          "hunk": {
+            "old_start": 1,
+            "old_lines": 16,
+            "new_start": 1,
+            "new_lines": 18
+          }
+        }
+      ],
+      "provenance": "from_transcript"
+    }
+  ],
+  "verification": {
+    "performed": [
+      {
+        "kind": "build",
+        "description": "npm run build -w @review-assist/viewer, after all amend fixes",
+        "result": "prerendered 21 pages"
+      },
+      {
+        "kind": "test",
+        "description": "npx vitest run, after all amend fixes",
+        "result": "184/184 in 11 files; analytics tests edited, not added"
+      },
+      {
+        "kind": "typecheck",
+        "description": "npm run typecheck -w @review-assist/github-app-worker",
+        "result": "reported pass after the amend; output not shown"
+      },
+      {
+        "kind": "manual",
+        "description": "Built post's BlogPosting JSON-LD parsed; sitemap '/' entry inspected",
+        "result": "parses; '/' has no lastmod"
+      },
+      {
+        "kind": "manual",
+        "description": "jsdom once-per-page check (scrollIntoView stubbed)",
+        "result": "landing_view 1 after 2 hash changes"
+      },
+      {
+        "kind": "manual",
+        "description": "jsdom richHtml check, before the permissions copy rewrite",
+        "result": "intent-*.md and intent-*.toml render with `*`"
+      },
+      {
+        "kind": "build",
+        "description": "All CI steps locally before fd873f4; pre-commit release check on the amend",
+        "result": "pass; '1.0.5, 16 tools'; no drift"
+      },
+      {
+        "kind": "manual",
+        "description": "curl -sL https://reviewassist.dev (before the change)",
+        "result": "body only 'Loading…' without JS"
+      },
+      {
+        "kind": "manual",
+        "description": "gh api /apps/review-assist-guided-review",
+        "result": "permissions and events used in the copy"
+      },
+      {
+        "kind": "manual",
+        "description": "No-JS text extraction over dist pages",
+        "result": "~10.7k chars on index.html; title, canonical, FAQPage JSON-LD present"
+      },
+      {
+        "kind": "manual",
+        "description": "jsdom behaviour script against a local dist server (mocked /api, example document as #acme/checkout-service/pull/42)",
+        "result": "section order, prerender replaced on boot, legacy #/blog, /installed/ per setup_action, no landing text on PR route"
+      },
+      {
+        "kind": "manual",
+        "description": "jsdom on hostname reviewassist.dev for the analytics gate, re-run after the amend fixes",
+        "result": "tags on landing; none on fresh PR link; pasted PR hash sets ga-disable, clarity stop, attempts reload; installation_id dropped; other hosts load nothing"
+      },
+      {
+        "kind": "manual",
+        "description": "npx wrangler dev --port 8788 serving dist (before the amend)",
+        "result": "routes and content types OK; /blog -> /blog/ 307; /DESIGN.md 404; Cache-Control max-age=86400"
+      },
+      {
+        "kind": "manual",
+        "description": "Chrome (claude --chrome) at 1920px against wrangler dev, before the amend fixes",
+        "result": "/, /blog/, /blog/1.0.1/, /installed/?setup_action=install render; found the glob and theme defects"
+      },
+      {
+        "kind": "manual",
+        "description": "Signed synthetic webhooks to wrangler dev on 8789 (before the analytics changes)",
+        "result": "installation created 202 app_installed; deleted app_uninstalled; suspend not counted; bad signature 401"
+      },
+      {
+        "kind": "manual",
+        "description": "npx wrangler secret list (names only)",
+        "result": "GA_API_SECRET present on production Worker"
+      },
+      {
+        "kind": "manual",
+        "description": "Reviewer read of 044e9ba: webhook.ts and deploy-app.yml",
+        "result": "posted link is /#owner/repo/pull/N; installation branch after verifySignature; purge_everything on production deploy"
+      }
+    ],
+    "added_tests": [
+      {
+        "covers": "installationEvent mapping; names never leave; off without either secret; pseudonym keyed by SESSION_SECRET, not api_secret; never throws",
+        "anchors": [
+          {
+            "path": "apps/github-app/worker/test/analytics.test.ts",
+            "hunk": {
+              "old_start": 0,
+              "old_lines": 0,
+              "new_start": 1,
+              "new_lines": 80
+            }
+          }
+        ]
+      }
+    ],
+    "not_verified": [
+      "No real-browser run after the amend; the Chrome run predates all six fixes",
+      "Theme persistence from / to /blog/<v>/ and on reload: no output shown",
+      "Uninstall globs re-checked only before the permissions copy rewrite",
+      "No wrangler dev or synthetic webhook re-run after the analytics.ts and webhook.ts changes",
+      "Once-per-page tracking: back/forward not shown; release_notes_view and app_install_return not tested",
+      "Mobile widths, PR route, and /installed/ request and update in a real browser",
+      "Any real PR or real Intent Document in the viewer (mock /api only)",
+      "Reloaded state after pasting a PR link into an open site tab (jsdom cannot navigate)",
+      "pull_request path emitting review_posted / review_no_document / review_invalid_document end to end",
+      "Any event arriving in GA or Clarity, including install_app_click as the page leaves for github.com",
+      "Real GitHub delivery of installation webhooks",
+      "Not deployed; Setup URL not set; production /installed/ does not exist yet",
+      "Release-note figures, one by one; user never reviewed the text",
+      "User never saw the amend or the rewritten permissions copy",
+      "Review subagent did not cover: Clarity-off-PR gate, GA site tag, worker analytics, permissions copy rewrite, release notes",
+      "Pre-existing demo scroll fixes (T11) not tested in this session"
+    ]
+  },
+  "diagrams": [
+    {
+      "title": "Where funnel events come from",
+      "mermaid": "flowchart LR\n  L[Landing and release notes] -->|track| C[Clarity]\n  L -->|track| G[GA4 G-JMHGW95G13]\n  I[installed page] -->|app_install_return| C\n  I --> G\n  W[GitHub webhooks] --> K[Worker webhook.ts]\n  K -->|Measurement Protocol, counts and keyed hash| G\n  P[PR route] -.->|SITE_ANALYTICS false, no tags| N[nothing sent]",
+      "caption": "Site tags load only on reviewassist.dev and never on a PR route; Worker events need GA_API_SECRET and SESSION_SECRET"
+    }
+  ]
+}
