@@ -10,7 +10,8 @@ Two one-time installs, no paid tier: an MCP server that runs beside the coding a
 
 - [Install and usage (README)](https://github.com/uditk2/review-assist#readme)
 - [Architecture and internals](https://github.com/uditk2/review-assist/blob/main/docs/ARCHITECTURE.md)
-- [Release notes](https://reviewassist.dev/blog/)
+- [Blog](https://reviewassist.dev/blog/)
+- [Release notes](https://reviewassist.dev/releases/)
 - [Source code](https://github.com/uditk2/review-assist)
 - [MCP server package](https://www.npmjs.com/package/review-assist-mcp)
 

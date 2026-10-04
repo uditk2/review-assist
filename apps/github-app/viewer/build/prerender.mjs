@@ -11,8 +11,8 @@
 // load. Each top-level node is marked data-prerendered, so a PR link (which lands on "/")
 // can hide it from the first paint (see the data-route script in <head>).
 //
-// Routes: /, /blog/, /blog/<version>/, /installed/ (GitHub's post-install Setup URL).
-// Also writes sitemap.xml, since the release list now decides it.
+// Routes: /, /blog/, /blog/<article>/, /releases/, /releases/<version>/, /installed/.
+// Also writes sitemap.xml from the article and release lists.
 
 import { JSDOM, VirtualConsole } from "jsdom";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -187,7 +187,7 @@ for (const a of articles) {
 }
 
 for (const r of releases) {
-  const path = `/blog/${r.v}/`;
+  const path = `/releases/${r.v}/`;
   const { html } = await render(path);
   const title = `${plain(r.title)} · Review Assist v${r.v}`;
   const description = plain(r.summary);
@@ -205,6 +205,14 @@ for (const r of releases) {
   }));
 }
 
+const releaseIndex = await render("/releases/");
+await write("/releases/", page({
+  path: "/releases/",
+  title: "Release notes · Review Assist",
+  description: "What changed in each Review Assist release, what broke, and why it was done that way.",
+  html: releaseIndex.html,
+}));
+
 const installed = await render("/installed/");
 await write("/installed/", page({
   path: "/installed/",
@@ -221,7 +229,8 @@ const urls = [
   { loc: "/", priority: "1.0" },
   { loc: "/blog/", lastmod: isoDate(articles[0].date), priority: "0.7" },
   ...articles.map((a) => ({ loc: `/blog/${a.slug}/`, lastmod: isoDate(a.date), priority: "0.7" })),
-  ...releases.map((r) => ({ loc: `/blog/${r.v}/`, lastmod: isoDate(r.date), priority: "0.5" })),
+  { loc: "/releases/", lastmod: isoDate(releases[0].date), priority: "0.5" },
+  ...releases.map((r) => ({ loc: `/releases/${r.v}/`, lastmod: isoDate(r.date), priority: "0.5" })),
 ];
 await writeFile(join(DIST, "sitemap.xml"), [
   '<?xml version="1.0" encoding="UTF-8"?>',
@@ -231,4 +240,4 @@ await writeFile(join(DIST, "sitemap.xml"), [
   "",
 ].join("\n"));
 
-console.log(`prerendered ${3 + articles.length + releases.length} pages into ${DIST}`);
+console.log(`prerendered ${4 + articles.length + releases.length} pages into ${DIST}`);
