@@ -60,12 +60,21 @@
   .site-nav { @apply rounded-md px-2 py-1 font-mono text-micro tracking-[0.02em] text-ink-600 hover:bg-ink-100 hover:text-ink-900 hover:no-underline; }
   .site-nav.is-active { @apply font-medium text-ink-900; }
 
-  .article-grid { @apply grid grid-cols-1 gap-5 md:grid-cols-2; }
-  .article-card { @apply block overflow-hidden rounded-lg border border-ink-200 bg-surface transition; }
-  .article-card:hover { @apply border-accent-600; box-shadow: 0 10px 30px -20px var(--lift); }
-  .article-card-image { @apply aspect-[16/9] overflow-hidden border-b border-ink-200 bg-ink-50; }
-  .article-card-image img { @apply h-full w-full object-cover transition-transform; }
-  .article-card:hover .article-card-image img { transform: scale(1.015); }
+.blog-main { width: 100%; max-width: 68rem; }
+.article-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+.article-card { @apply flex h-full flex-col overflow-hidden rounded-lg border border-ink-200 bg-surface transition; }
+.article-card:hover { @apply border-accent-600; box-shadow: 0 10px 30px -20px var(--lift); }
+.article-card-image { @apply aspect-[16/9] overflow-hidden border-b border-ink-200 bg-ink-50; }
+.article-card-image img { @apply h-full w-full object-cover transition-transform; }
+.article-card:hover .article-card-image img { transform: scale(1.015); }
+.article-card > :last-child { flex: 1; }
+@media (max-width: 40rem) {
+  .article-grid { grid-template-columns: minmax(0, 1fr); }
+}
 
   /* Inline code inside authored prose — quieter than a diff line. */
   .code-inline { @apply rounded border border-ink-200 bg-ink-50 px-1 py-px font-mono text-[0.85em] text-ink-700; }

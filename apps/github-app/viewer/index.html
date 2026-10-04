@@ -1133,12 +1133,12 @@ function articleRow(a){
   return el("a",{class:"article-card hover:no-underline", href:blogHref(a.slug)},
     el("div",{class:"article-card-image"},
       el("img",{src:a.hero, alt:"", loading:"lazy"})),
-    el("div",{class:"p-5"},
+    el("div",{class:"p-6"},
       el("div",{class:"mb-3 flex items-baseline gap-2.5"},
         el("span",{class:"tag"}, "Article"),
-        el("span",{class:"ml-auto shrink-0 text-sm text-ink-500"}, a.date)),
-      el("h2",{class:"mb-2 text-[1.05rem] leading-tight"}, a.title),
-      el("p",{class:"text-sm text-ink-600", html:richHtml(a.summary)})));
+        el("span",{class:"ml-auto shrink-0 text-[0.875rem] text-ink-500"}, a.date)),
+      el("h2",{class:"mb-3 text-[1.25rem] leading-tight"}, a.title),
+      el("p",{class:"text-[1rem] leading-relaxed text-ink-600", html:richHtml(a.summary)})));
 }
 function releaseRow(r){
   return el("a",{class:"block border-t border-ink-200 py-3 hover:no-underline", href:releaseHref(r.v)},
@@ -1152,11 +1152,11 @@ function releaseRow(r){
 function renderBlogIndex(){
   return el("div",{class:"page min-h-screen"},
     siteHeader("blog"),
-    el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
+    el("main",{class:"blog-main mx-auto px-6 py-16"},
       el("section",{class:"grid-field is-short mb-8"},
         el("p",{class:"eyebrow mb-2"}, "Review Assist blog"),
-        el("h1",{class:"text-[2rem] leading-tight"}, "Better reviews for AI-written code"),
-        el("p",{class:"mt-3 text-ink-600"}, "Architecture, practice, and field notes for teams reviewing code at agent speed.")),
+        el("h1",{class:"text-[2.25rem] leading-tight"}, "Better reviews for AI-written code"),
+        el("p",{class:"mt-3 text-[1.05rem] text-ink-600"}, "Architecture, practice, and field notes for teams reviewing code at agent speed.")),
       el("section",{class:"article-grid mb-12"}, ...ARTICLES.map(articleRow)),
       siteFooter()));
 }
@@ -1262,9 +1262,9 @@ const ARTICLES = [
     date: "4 Oct 2026",
     title: "The conversation spine: turning an agent session into useful code review context",
     summary: "Reviewers need more than a diff. The spine keeps the decisions, failures, edits, and verification that explain how the code got there.",
-    hero: "/blog/conversation-spine-code-review-context.png",
-    alt: "A conversation spine with decisions, failures, edits, plans, and verification flowing into a pull request review",
-    caption: "The spine keeps the conversation intact and turns the work around it into evidence the Author can trace.",
+    hero: "/blog/conversation-spine-code-review-context-v2.png",
+    alt: "A conversation thread connecting a failed test, code edit, decision, verification result, and source into a reviewer dossier",
+    caption: "The spine preserves useful evidence and carries its source into one reviewer-ready view.",
     body: [
       "A pull request shows what changed. It rarely shows how the change got there.",
       "That missing path matters more when an agent wrote the code. For AI code review, the useful context is sitting in the coding session: the user’s request, the agent’s proposal, a rejected approach, a failed command, a scope decision, the test that passed, and the thing nobody verified. By the time the pull request opens, most of that has disappeared.",
@@ -1303,9 +1303,9 @@ const ARTICLES = [
     date: "3 Oct 2026",
     title: "How Review Assist’s architecture catches bugs before code review",
     summary: "A two-agent, evidence-gated approach to reviewing AI-generated code while the implementation can still change.",
-    hero: "/blog/how-review-assist-architecture-catches-bugs-early.png",
-    alt: "A code change splitting into isolated author and reviewer lanes, catching a bug, passing five validation gates, and reaching a pull request",
-    caption: "Role isolation finds unsupported assumptions; deterministic gates stop incomplete evidence from reaching the pull request.",
+    hero: "/blog/how-review-assist-architecture-catches-bugs-early-v2.png",
+    alt: "Independent reviewers inspecting a defect in a pull request diff before the change is verified",
+    caption: "Independent review makes hidden defects visible while the change can still be corrected.",
     body: [
       "AI coding agents can produce a plausible pull request in minutes. The hard part is no longer generating the diff. It is recovering the reasoning behind it: what the agent believed, what it tried, what it verified, and where it is still uncertain.",
       "Most **AI code review tools** begin after the change exists and inspect the diff as a finished artifact. Review Assist moves part of that scrutiny earlier. Its architecture creates a separate, cold reviewer while the coding session is still active, then refuses to publish the review document unless the evidence and the diff agree.",
