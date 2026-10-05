@@ -1258,6 +1258,37 @@ function renderArticle(a){
 
 const ARTICLES = [
   {
+    slug: "how-to-spot-unexplained-changes-in-ai-written-prs",
+    date: "5 Oct 2026",
+    title: "How to spot unexplained changes in an AI-written pull request",
+    summary: "Use diff coverage to find changes the review narrative missed, then decide what the author needs to explain or fix before approval.",
+    hero: "/blog/how-to-spot-unexplained-changes-in-ai-written-prs.png",
+    alt: "One diff hunk outlined in red lacks a review anchor while the other hunks connect to blue anchors",
+    caption: "An uncovered hunk is a question to investigate, not a verdict about the code.",
+    body: [
+      "How do you tell whether an AI-written pull request explains every change it made? Start by comparing the review narrative with the actual diff, hunk by hunk. A polished summary can describe the main feature and still miss a config edit, a removed check, or a test change that alters what the PR proves.",
+      "In a GitHub code review, the useful signal is **coverage**: which substantive diff hunks have a reason attached, and which do not. Coverage does not say the code is correct. It tells you where the explanation stops so you can spend your attention there.",
+      { h: "Read the count, then open the gap" },
+      "Review Assist’s local flow writes an Intent Document to be committed with the branch. Its tour stops point to diff hunks. On a pull request, the GitHub App recomputes how many substantive hunks have an overlapping tour anchor and posts a count such as “4 of 5 changes explained” in its check and summary comment. The guided review has an Uncovered changes view that shows the remaining hunks.",
+      "Treat a partial count as a starting point. Open each uncovered hunk and ask what behavior it changes. A renamed file, altered permission, deleted assertion, or new fallback can matter more than the larger feature beside it. If the hunk is harmless mechanical work, the author should still be able to say why it belongs in this PR.",
+      "A missing Intent Document is a different case. The App reports that absence rather than inventing a review. Ask the author to generate and commit the document if your team expects one.",
+      { h: "Ask for the reason that belongs to the code" },
+      "For an uncovered hunk, use three concrete questions:",
+      { ul: [
+        "**Why is this change in scope?** Tie it to the original request, a discovered requirement, or a deliberate cleanup. If nobody can make that connection, consider removing it from the PR.",
+        "**What assumption does it rely on?** For example, a fallback may assume callers tolerate a new default. Identify the caller or test that would disprove it.",
+        "**What was actually verified?** Name the command or manual check that exercised this behavior, and name what was not checked. A passing suite elsewhere is not evidence for this hunk.",
+      ] },
+      "The answer may call for a new tour stop, a stronger test, or a code fix. Do not turn the coverage count into a target that someone can satisfy with a vague sentence. An anchor only proves that a tour stop overlaps a hunk; a human still has to judge whether its explanation is useful.",
+      { h: "Check the boundary of the signal" },
+      "The local validator blocks publication of an Intent Document with an unexplained substantive hunk. It also warns when a tour anchor no longer overlaps a diff hunk, which can point to a stale location. The GitHub App currently reports partial coverage with a **neutral** check, not a failing one. A green coverage check means the hunks are accounted for, not that the implementation has been approved.",
+      "The document’s own `.intent/` changes are excluded from the coverage count, because a review document should not have to explain itself. Repository rules in `.reviewer/` are ordinary PR changes and remain in scope. The count is about substantive diff hunks, not files, lines, risk, or test quality.",
+      { h: "Finish the review beyond coverage" },
+      "Once every gap has a real explanation, read the assumptions before the tour. Challenge the ones whose failure would change the design. Then follow the anchored stops and compare each claim with the code. End at verification: separate checks that ran from behavior nobody exercised. This is a practical pull request review checklist for AI-written code, even when the coverage count is already complete.",
+      "If the author pushes another commit, recheck the count and the changed hunks. The local document is pinned to a commit range, so new code needs a fresh explanation. You can use the [Intent Document specification](https://github.com/uditk2/review-assist/blob/main/SPEC.md) to see what the tour and verification fields mean, or [install Review Assist](/#install) to try this workflow on a PR.",
+    ],
+  },
+  {
     slug: "conversation-spine-code-review-context",
     date: "4 Oct 2026",
     title: "The conversation spine: turning an agent session into useful code review context",
