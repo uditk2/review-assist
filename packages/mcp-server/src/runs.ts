@@ -149,6 +149,17 @@ export interface HunkNote {
   at: string;
 }
 
+/** One plan item, and the hunks the reviewer judged to carry it. */
+export interface PlanItemMapping {
+  /** The plan item, in the author's words. */
+  item: string;
+  /** Content keys of the hunks carrying it. */
+  keys: string[];
+  /** The ids those hunks had when mapped, so drift is visible. */
+  ids_when_mapped: string[];
+  at: string;
+}
+
 export interface RunRecord {
   version: 1;
   run_id: string;
@@ -186,6 +197,25 @@ export interface RunRecord {
    * anchors; it should not also cost the reading.
    */
   hunk_notes?: Record<string, HunkNote>;
+  /**
+   * The reviewer's own mapping of the author's plan items onto hunks.
+   *
+   * Recorded rather than held in context, for the reason the hunk ledger exists: what the
+   * reviewer keeps in its head it has to rebuild later. With this stored the server can
+   * compute the two halves of the plan/hunk delta — a hunk in no plan item, a plan item
+   * with no hunk — which is what batch one should be asking about. Today batch one is a
+   * union of the baseline set, the house rules and everything the diff provoked, which is
+   * why the count runs 18 to 34, and question count is what drives the author's single
+   * 14.4K-token answer call.
+   *
+   * The mapping stays the REVIEWER's. The author gives the plan and never the mapping: it
+   * has not read the diff, and the assignment is the reviewer's independent read of the
+   * change, which is the thing the role split exists to protect.
+   *
+   * Keyed by hunk content like the notes, so a commit that renumbers the diff does not
+   * silently re-point a plan item at different code.
+   */
+  plan_map?: PlanItemMapping[];
   /**
    * How many batches of NEW questions the reviewer has recorded. Not the same as the
    * number of `record_interview_round` calls: re-recording a question the run already
@@ -563,6 +593,59 @@ export function recordHunkNotes(
   }
   writeRun(run);
   return run;
+}
+
+/**
+ * Record the reviewer's plan-to-hunk mapping, replacing any previous one.
+ *
+ * Replaced wholesale rather than merged: a second mapping is the reviewer's considered
+ * view after reading more, and a half-updated mapping would produce a delta that is wrong
+ * in both directions at once.
+ */
+export function recordPlanMapping(
+  runId: string,
+  items: { item: string; keys: string[]; ids: string[] }[]
+): RunRecord | undefined {
+  const run = readRun(runId);
+  if (!run) return undefined;
+  const at = new Date().toISOString();
+  run.plan_map = items.map((i) => ({ item: i.item, keys: i.keys, ids_when_mapped: i.ids, at }));
+  writeRun(run);
+  return run;
+}
+
+export interface PlanDelta {
+  /** Hunks needing coverage that no plan item claims: discovered en route, or churn? */
+  unclaimed: { key: string; note?: string }[];
+  /** Plan items no hunk carries: dropped, or landed elsewhere? */
+  unlanded: string[];
+  /** Items mapped to hunks that are no longer in the diff. */
+  stale: string[];
+}
+
+/**
+ * Where the plan and the change disagree — which is the only place batch one has to ask.
+ *
+ * `unclaimed` and `unlanded` are the two questions worth a round trip, and each is a
+ * genuine fork rather than a fishing expedition: a hunk no plan item claims is either
+ * something found en route, often the most valuable stop in the document, or it is churn,
+ * and only the author knows which. A plan item nothing carries was either dropped or it
+ * landed somewhere the reviewer did not recognise.
+ *
+ * Agreement needs no question. A hunk that sits under the plan item that predicted it is
+ * explained, and asking about it spends the author's one answer call on a confirmation.
+ */
+export function planDelta(run: RunRecord, presentKeys: Set<string>): PlanDelta {
+  const map = run.plan_map ?? [];
+  const claimed = new Set(map.flatMap((m) => m.keys));
+  const notes = hunkNotes(run);
+  return {
+    unclaimed: Array.from(presentKeys)
+      .filter((k) => !claimed.has(k))
+      .map((k) => ({ key: k, ...(notes[k] ? { note: notes[k].note } : {}) })),
+    unlanded: map.filter((m) => m.keys.length === 0).map((m) => m.item),
+    stale: map.filter((m) => m.keys.length > 0 && m.keys.every((k) => !presentKeys.has(k))).map((m) => m.item),
+  };
 }
 
 /** The notes on this run, by content key. */

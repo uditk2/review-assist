@@ -902,3 +902,77 @@ describe("hunk notes", () => {
     expect(runs.recordHunkNotes("nosuchrun", [{ key: "k", note: "n", id: "H1", path: "p" }])).toBeUndefined();
   });
 });
+
+/**
+ * The plan/hunk delta: the only place batch one has to ask.
+ *
+ * Batch one used to be a union of the baseline set, the house rules and everything the
+ * diff provoked, which is why the count ran 18 to 34 — and question count is what drives
+ * the author's single answer call, a median 57.8 KB and about 14.4K generated tokens, all
+ * of it on the critical path. Where the plan and the change agree there is nothing to ask:
+ * a hunk sitting under the item that predicted it is already explained.
+ */
+describe("planDelta", () => {
+  const fresh = () => runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD }).run.run_id;
+  const k = (s: string) => runs.hunkKey(s);
+  const present = (...texts: string[]) => new Set(texts.map(k));
+
+  it("asks nothing when every hunk sits under the item that predicted it", () => {
+    const runId = fresh();
+    runs.recordPlanMapping(runId, [{ item: "page the spine", keys: [k("a"), k("b")], ids: ["H1", "H2"] }]);
+    const d = runs.planDelta(runs.getRun(runId)!, present("a", "b"));
+    expect(d.unclaimed).toEqual([]);
+    expect(d.unlanded).toEqual([]);
+  });
+
+  it("names a hunk no plan item claims, which is a fork only the author can settle", () => {
+    // Found en route — often the most valuable stop in the document — or churn.
+    const runId = fresh();
+    runs.recordPlanMapping(runId, [{ item: "page the spine", keys: [k("a")], ids: ["H1"] }]);
+    const d = runs.planDelta(runs.getRun(runId)!, present("a", "surprise"));
+    expect(d.unclaimed.map((u) => u.key)).toEqual([k("surprise")]);
+  });
+
+  it("carries the note already written for an unclaimed hunk, so the question writes itself", () => {
+    const runId = fresh();
+    runs.recordHunkNotes(runId, [{ key: k("surprise"), note: "- drops the retry hold", id: "H2", path: "src/a.ts" }]);
+    runs.recordPlanMapping(runId, [{ item: "page the spine", keys: [k("a")], ids: ["H1"] }]);
+    const d = runs.planDelta(runs.getRun(runId)!, present("a", "surprise"));
+    expect(d.unclaimed[0].note).toBe("- drops the retry hold");
+  });
+
+  it("names a plan item nothing carries: dropped, or landed elsewhere", () => {
+    const runId = fresh();
+    runs.recordPlanMapping(runId, [
+      { item: "page the spine", keys: [k("a")], ids: ["H1"] },
+      { item: "also rewrite the guide", keys: [], ids: [] },
+    ]);
+    expect(runs.planDelta(runs.getRun(runId)!, present("a")).unlanded).toEqual(["also rewrite the guide"]);
+  });
+
+  it("flags an item whose hunks have all left the diff", () => {
+    // Distinct from never landing: the work was there and a later commit removed or
+    // rewrote it, which is a different question to put to the author.
+    const runId = fresh();
+    runs.recordPlanMapping(runId, [{ item: "the approach we abandoned", keys: [k("gone")], ids: ["H9"] }]);
+    const d = runs.planDelta(runs.getRun(runId)!, present("a"));
+    expect(d.stale).toEqual(["the approach we abandoned"]);
+    expect(d.unlanded).toEqual([]);
+  });
+
+  it("replaces a previous mapping wholesale", () => {
+    // A second mapping is the reviewer's considered view after reading more; a half-updated
+    // one would produce a delta wrong in both directions at once.
+    const runId = fresh();
+    runs.recordPlanMapping(runId, [{ item: "first guess", keys: [k("a")], ids: ["H1"] }]);
+    runs.recordPlanMapping(runId, [{ item: "what it really was", keys: [k("a")], ids: ["H1"] }]);
+    expect(runs.getRun(runId)!.plan_map!.map((m) => m.item)).toEqual(["what it really was"]);
+  });
+
+  it("treats a run with no mapping as claiming nothing", () => {
+    const runId = fresh();
+    const d = runs.planDelta(runs.getRun(runId)!, present("a", "b"));
+    expect(d.unclaimed).toHaveLength(2);
+    expect(d.unlanded).toEqual([]);
+  });
+});

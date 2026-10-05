@@ -57,6 +57,10 @@
       "description": "The run's per-hunk notes, mapped onto the current hunk ids, for drafting the tour and for surviving head drift."
     },
     {
+      "name": "map_plan_to_hunks",
+      "description": "Record which hunks carry each plan item and return the delta, so the interview asks only where the plan and the change disagree."
+    },
+    {
       "name": "get_reviewer_instructions",
       "description": "Reviewer role: read the repository's own .reviewer/ house rules, the extra questions this repo always wants asked."
     },

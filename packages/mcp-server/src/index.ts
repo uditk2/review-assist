@@ -63,6 +63,8 @@ import {
   hunkKey,
   recordHunkNotes,
   hunkNotes,
+  recordPlanMapping,
+  planDelta,
   evaluatedRounds,
   unresolvedRounds,
   attestedInterview,
@@ -453,6 +455,83 @@ registerTool(
       );
     } catch (e) {
       return textResult(`get_hunk_notes failed: ${(e as Error).message}`, true);
+    }
+  }
+);
+
+registerTool(
+  "map_plan_to_hunks",
+  "Reviewer role: record which hunks carry each of the author's plan items, and get back the DELTA — " +
+    "the only place batch one has to ask. Call it once you have the author's PLAN answer and your own " +
+    "hunk notes. It returns `unclaimed` (hunks needing coverage that no plan item claims, each with the " +
+    "note you wrote for it) and `unlanded` (plan items no hunk carries). Those two are your batch one, " +
+    "plus the house rules, plus follow-ups where a standing answer came back thin — and nothing else. " +
+    "Where the plan and the change AGREE there is no question: a hunk sitting under the item that " +
+    "predicted it is explained, and asking about it spends the author's single answer call on a " +
+    "confirmation. Batch one today runs 18 to 34 questions and question count is what drives that call. " +
+    "The mapping is yours alone: the author gives the plan and never the mapping, because it has not read " +
+    "the diff. Mapped by hunk content, so a commit that renumbers the diff does not re-point an item at " +
+    "different code.",
+  {
+    run_id: z.string().describe("Run handle from compute_diff."),
+    items: z
+      .array(
+        z.object({
+          item: z.string().min(1).describe("The plan item, in the author's words."),
+          hunks: z.array(z.string()).describe('Hunk ids carrying it, e.g. ["H3","H4"]. Empty if nothing in this diff does.'),
+        })
+      )
+      .min(1)
+      .describe("Every item of the plan the author gave you. Replaces any previous mapping."),
+  },
+  async ({ run_id, items }) => {
+    const run = getRun(run_id);
+    if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    try {
+      const { diff } = await computeDiff(run.repo, run.base_sha, run.head_sha);
+      const indexed = indexHunks(diff);
+      const page = pageDiff(diff, { maxBytes: Number.MAX_SAFE_INTEGER });
+      const byId = new Map(page.hunks.map((h) => [h.id.toUpperCase(), h]));
+      const required = new Set(
+        indexed.filter((h) => h.coverage_required).map((h) => hunkKey(byId.get(h.id.toUpperCase())!.text))
+      );
+      const unknown: string[] = [];
+      const mapped = items.map((i) => {
+        const keys: string[] = [];
+        const ids: string[] = [];
+        for (const id of i.hunks) {
+          const h = byId.get(id.trim().toUpperCase());
+          if (!h) {
+            unknown.push(id);
+            continue;
+          }
+          keys.push(hunkKey(h.text));
+          ids.push(h.id);
+        }
+        return { item: i.item, keys, ids };
+      });
+      const updated = recordPlanMapping(run_id, mapped)!;
+      const delta = planDelta(updated, required);
+      const idOf = new Map(page.hunks.map((h) => [hunkKey(h.text), h.id]));
+      return textResult(
+        JSON.stringify(
+          {
+            mapped: mapped.length,
+            unknown_hunk_ids: unknown.length ? unknown : undefined,
+            unclaimed: delta.unclaimed.map((u) => ({ hunk: idOf.get(u.key) ?? "(gone)", note: u.note })),
+            unlanded: delta.unlanded,
+            stale: delta.stale.length ? delta.stale : undefined,
+            next:
+              delta.unclaimed.length === 0 && delta.unlanded.length === 0
+                ? "The plan accounts for every hunk and every item landed. Batch one is the house rules plus any thin standing answer — nothing more."
+                : `Ask about these ${delta.unclaimed.length + delta.unlanded.length}: an unclaimed hunk was found en route or is churn, and only the author knows which; an unlanded item was dropped or landed somewhere you did not recognise. Add the house rules and any thin standing answer, and that is the whole batch.`,
+          },
+          null,
+          2
+        )
+      );
+    } catch (e) {
+      return textResult(`map_plan_to_hunks failed: ${(e as Error).message}`, true);
     }
   }
 );

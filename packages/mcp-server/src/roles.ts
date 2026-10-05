@@ -370,6 +370,7 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
     "read_diff",
     "record_hunk_notes",
     "get_hunk_notes",
+    "map_plan_to_hunks",
     "get_reviewer_instructions",
     "record_interview_round",
     "get_answers",
@@ -395,6 +396,8 @@ const TOOL_BLURB: Record<string, string> = {
     "what a hunk does, one line, written AS YOU READ IT. These become your tour `what` bullets; writing them at the end is the largest cost in a distillation.",
   get_hunk_notes:
     "your own notes, mapped onto the diff's current hunk ids. Kept through head drift, because they are keyed by content rather than id.",
+  map_plan_to_hunks:
+    "which hunks carry each plan item, and the delta — a hunk no item claims, an item no hunk carries. That delta is your batch one.",
   get_contexts:
     "what the session was about, one labelled context per subject, scored against this diff. Call it before get_spine.",
   record_contexts:

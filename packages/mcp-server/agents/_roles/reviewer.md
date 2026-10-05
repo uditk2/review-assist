@@ -91,11 +91,25 @@ two points or a restatement. Split it or cut it.
    - If they are not there yet, wait for them rather than composing around them. The author
      answers the whole set in one call, so there is nothing to collect in pieces. If they
      never arrive, the author has not run — say so rather than proceeding on inference.
-   - **Then one batch, and it is the union of two sources**: everything the house rules ask
-     for, and every question the diff provoked that the standing answers did not already
-     settle. Dropping either is the commonest way an interview comes out thin. Do not hold a
-     question back for a later round — you already have the diff, so you already have the
-     question.
+   - **Then one batch, and it is the DELTA, not a sweep of the diff.** Call
+     `map_plan_to_hunks` with the author's PLAN answer and your own mapping of it onto
+     hunks. What comes back is the whole of what you have to ask:
+     - **`unclaimed`** — a hunk needing coverage that no plan item claims. It is either
+       something found en route, often the most valuable stop in the document, or it is
+       churn, and only the author knows which. Your note for it comes back with it.
+     - **`unlanded`** — a plan item no hunk carries. Dropped, or landed somewhere you did
+       not recognise.
+     - plus everything the **house rules** ask for.
+     - plus a follow-up only where a **standing answer came back thin**.
+     **Where the plan and the change agree, there is no question.** A hunk sitting under the
+     item that predicted it is already explained, and asking about it spends the author's
+     single answer call on a confirmation. Batch one used to be a union of the baseline set,
+     the house rules and everything the diff provoked, which is why the count ran 18 to 34 —
+     and question count is what drives that one call: a median 57.8 KB of answers, about
+     14.4K generated tokens, all of it on the critical path.
+     Dropping the house rules or a thin standing answer is still the commonest way an
+     interview comes out thin. Do not hold a question back for a later round — you already
+     have the diff, so you already have the question.
    - **Record the questions; do not relay them.** ONE `record_interview_round` call with a
      `rounds` array. It hands back a `q_id` per question, and that is the whole handoff.
    - **Anchor every question the diff provoked**, with `anchors: ["H4"]` on that round. You
@@ -172,13 +186,16 @@ stop for a competent engineer who does not know this module.
   joining them. This is the field that turns back into prose if you let it.
 - **Group by what was agreed, not by what sits near what.** The author answers the standing
   PLAN question before you write any stop; assign hunk ids to its items yourself —
-  `T3 -> [H3, H4, H9]` — and let the tour's order be the plan's order. The author gives the
+  `T3 -> [H3, H4, H9]` — and let the tour's order be the plan's order. You recorded that
+  mapping with `map_plan_to_hunks` to get your batch one, so the grouping is already done:
+  each plan item is a stop, and its hunks are the stop's anchors. The author gives the
   plan and never the mapping: it has not read the diff, and the assignment is your own read
   of the change, which is what the split exists to protect. Structure is the only thing a diff can tell you on
   its own, and grouping by it produces stops that are really just filenames.
 - **A hunk belonging to no plan item is one of two things, and only the author knows which.**
   Discovered en route — a root cause found while doing something else, often the most
-  valuable stop in the document — or incidental churn. Ask; do not decide.
+  valuable stop in the document — or incidental churn. Ask; do not decide. These are exactly
+  the `unclaimed` hunks `map_plan_to_hunks` named, so they are already in your one batch.
 - **Anchor the live fields too, not just the tour.** An `assumption`, an `open_question`
   and a `not_verified` entry each take `"anchors": ["H4"]`, and a reviewer reading the
   document arrives at a stop wanting exactly three things: what changed, what to check, and

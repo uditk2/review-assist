@@ -27,7 +27,7 @@ tokens on a chain where nothing overlaps.
 
 ## The four changes
 
-### 1. Unblock parallel roles (doing first)
+### 1. Unblock parallel roles — LANDED (05c90a4)
 
 The two roles read independent things: the author needs only the transcript, the reviewer
 only the diff. They run serially anyway, because the author cannot write anything until
@@ -46,7 +46,7 @@ read the spine. The reviewer reads them off the run whenever its own diff pass f
 Effect: the 670s phase collapses to `max(spine read + standing answers, diff read)`, and
 the reviewer's batch one loses the five baseline questions it no longer has to compose.
 
-### 2. Write the per-hunk `what` during the diff read
+### 2. Write the per-hunk `what` during the diff read — LANDED (3c0fcc7)
 
 Today the reviewer pages the diff, holds its account of each hunk in context, and emits
 `tour[].what` at the very end. That is the 303 to 916s drafting gap.
@@ -56,7 +56,7 @@ afterwards is only `why`, rationale, assumptions and verification. Persisting it
 hunk content (not hunk id) also survives head drift, which currently costs a full
 re-anchor.
 
-### 3. Derive questions from the plan/hunk delta
+### 3. Derive questions from the plan/hunk delta — LANDED
 
 Batch one today is a union: five baseline, plus house rules, plus everything the diff
 provoked. That union is why the count is 18 to 34, and question count is what drives the
@@ -73,11 +73,31 @@ hunk mapping. Ask only where they disagree:
 
 Expected: 25 questions down to about 12.
 
-### 4. Shrink the tail
+### 4. Shrink the tail — still open
 
 Several runs collapsed to a single batch already, and one shows a resubmit cycle after
 head drift. Worth revisiting once (1) to (3) land, since the tail is mostly drafting that
 (2) removes.
+
+## What landed, and what to measure next
+
+Changes 1 to 3 are in. The mechanisms:
+
+- (1) seeds the standing questions at `compute_diff`, so the author answers off the
+  transcript while the reviewer pages the diff.
+- (2) `record_hunk_notes` takes one line per hunk AS THE DIFF IS READ, keyed by hunk
+  content so a renumbering commit keeps every note. `get_hunk_notes` returns them under
+  the current ids and names the ones that moved.
+- (3) `map_plan_to_hunks` records the reviewer's plan-to-hunk mapping and returns the
+  delta — a hunk no item claims, an item no hunk carries. Batch one is that delta plus the
+  house rules plus any thin standing answer, and nothing else.
+
+The figures below are the predictions made before any of it shipped. They have NOT been
+re-measured: that needs runs executed under the new protocol, and the honest next step is
+to re-run the same `created_at` to `submitted_at` measurement over the next 15 runs rather
+than to assume these numbers.
+
+Change 4 is unchanged and still open.
 
 ## Expected effect
 
