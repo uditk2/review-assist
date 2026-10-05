@@ -8,7 +8,7 @@
  */
 
 import { basename } from "node:path";
-import { FAILURE_SIGNAL, oneLine, stripInjected } from "./text.js";
+import { FAILURE_SIGNAL, oneLine, stripInjected, extractPaths } from "./text.js";
 import type { ParsedEntry, ParsedEvent, TranscriptParser } from "./types.js";
 import { nothing } from "./types.js";
 
@@ -99,11 +99,14 @@ export class ClaudeCodeParser implements TranscriptParser {
       if (name === "AskUserQuestion") question = questionSummary(input);
       else if (name === "TodoWrite") plan = todoContents(input);
       else if (name === "Bash") {
-        const cmd = oneLine(String(input.command ?? ""));
-        if (cmd) events.push({ kind: "command", summary: cmd });
+        const raw = String(input.command ?? "");
+        const cmd = oneLine(raw);
+        // Paths come from `raw`, not `cmd`: oneLine caps at 200 characters and a heredoc
+        // writes its file well past that.
+        if (cmd) events.push({ kind: "command", summary: cmd, paths: extractPaths(raw) });
       } else if (EDIT_TOOLS.has(name)) {
         const p = String(input.file_path ?? input.notebook_path ?? "");
-        if (p) events.push({ kind: "edit", summary: basename(p) });
+        if (p) events.push({ kind: "edit", summary: basename(p), path: p });
       }
     }
 

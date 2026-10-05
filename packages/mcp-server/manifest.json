@@ -4,7 +4,7 @@
   "display_name": "Review Assist",
   "version": "1.0.6",
   "description": "Turn an AI agent's coding session into a reviewable Intent Document.",
-  "long_description": "Review Assist runs a two-agent author/reviewer distillation over your coding session and produces an Intent Document — the problem, the assumptions, the rejected alternatives, and an anchored walkthrough of every change — gatekept by a deterministic validator. It also generates a ready-made PR description (with optional Mermaid diagrams) and asks per repository before it does anything. Works with Claude Code, Codex, and any MCP-capable agent.",
+  "long_description": "Review Assist runs a two-agent author/reviewer distillation over your coding session and produces an Intent Document \u2014 the problem, the assumptions, the rejected alternatives, and an anchored walkthrough of every change \u2014 gatekept by a deterministic validator. It also generates a ready-made PR description (with optional Mermaid diagrams) and asks per repository before it does anything. Works with Claude Code, Codex, and any MCP-capable agent.",
   "author": {
     "name": "Udit Khandelwal",
     "url": "https://github.com/uditk2"
@@ -69,6 +69,10 @@
       "description": "Read a window of the full transcript around a spine index, for the tool output behind a claim."
     },
     {
+      "name": "find_sessions_touching",
+      "description": "Name the other sessions on this machine that touched given files, for a hunk the current session cannot explain."
+    },
+    {
       "name": "record_interview_round",
       "description": "Record the reviewer's questions; each comes back with a q_id to relay to the author."
     },
@@ -78,7 +82,7 @@
     },
     {
       "name": "answer_questions",
-      "description": "The author's own answers, by q_id — the half of the interview the server can attest."
+      "description": "The author's own answers, by q_id \u2014 the half of the interview the server can attest."
     },
     {
       "name": "get_answers",

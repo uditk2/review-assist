@@ -18,6 +18,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { findSessionsTouching } from "./footprint.js";
 import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -689,6 +690,60 @@ registerTool(
         2
       )
     );
+  }
+);
+
+registerTool(
+  "find_sessions_touching",
+  "Author role: name the OTHER sessions on this machine that touched given files. Call this " +
+    "before you answer \"the transcript does not cover this\" about a hunk — work begun one day and " +
+    "finished the next leaves the reason in a different session, and that is recoverable. Pass the " +
+    "`run_id` and the hunk's `paths` (the hunk index from compute_diff has them; you do not need to page " +
+    "the diff). Pass `exclude` with the transcript you already read, so the answer is who ELSE wrote it. " +
+    "Then get_spine that session and answer the SAME q_id again with answer_questions — an answer is " +
+    "replaced in place, so this costs the interview no extra round. A session is ranked first by how many " +
+    "of the files it touched, because the session that made a change touched the whole set; `edited` is a " +
+    "recorded file write, `mentioned` is a shell command naming the file, which may be a read. Empty is a " +
+    "real answer: say the transcript does not cover it.",
+  {
+    run_id: z.string().describe("Run handle from compute_diff."),
+    paths: z
+      .array(z.string())
+      .min(1)
+      .describe("Repo-relative paths behind the hunk you could not explain, from the hunk index."),
+    exclude: z
+      .array(z.string())
+      .optional()
+      .describe("Transcript paths you have already read — normally the session you hydrated from."),
+  },
+  async ({ run_id, paths, exclude }) => {
+    const run = getRun(run_id);
+    if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    try {
+      const matches = findSessionsTouching(run.repo, paths, { exclude });
+      return textResult(
+        JSON.stringify(
+          {
+            asked_about: paths,
+            candidates: matches.map((m) => ({
+              path: m.path,
+              covered: `${m.covered}/${paths.length}`,
+              edited: m.edited,
+              mentioned: m.mentioned,
+              last_active: new Date(m.mtime).toISOString(),
+            })),
+            next:
+              matches.length === 0
+                ? "No other session on this machine touched these files. The transcript genuinely does not cover this — answer that, and say so rather than inferring a reason from the diff."
+                : "Read the top candidate with get_spine, then answer the SAME q_id with answer_questions. Check `last_active` against when the change was made: a session that ended before the work cannot have produced it.",
+          },
+          null,
+          2
+        )
+      );
+    } catch (e) {
+      return textResult(`find_sessions_touching failed: ${(e as Error).message}`, true);
+    }
   }
 );
 

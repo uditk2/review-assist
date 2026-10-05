@@ -68,8 +68,8 @@ describe("ClaudeCodeParser", () => {
   it("reduces shell and edits to one line each", () => {
     const bash = claude.parse(cc([{ type: "tool_use", name: "Bash", input: { command: "npm test   --silent" } }]));
     const edit = claude.parse(cc([{ type: "tool_use", name: "Edit", input: { file_path: "/repo/src/a.ts" } }]));
-    expect(bash.events).toEqual([{ kind: "command", summary: "npm test --silent" }]);
-    expect(edit.events).toEqual([{ kind: "edit", summary: "a.ts" }]);
+    expect(bash.events).toEqual([{ kind: "command", summary: "npm test --silent", paths: [] }]);
+    expect(edit.events).toEqual([{ kind: "edit", summary: "a.ts", path: "/repo/src/a.ts" }]);
   });
 
   it("treats a tool_result turn as transport, not as something the user said", () => {
@@ -99,14 +99,16 @@ describe("CodexParser", () => {
 
   it("digs the shell command out of the JS snippet an exec call arrives as", () => {
     const e = cx({ type: "custom_tool_call", name: "exec", input: 'const r = await tools.exec_command({cmd:"rg --files -g \'!*node_modules*\'","workdir":"/x"});' });
-    expect(codex.parse(e).events).toEqual([{ kind: "command", summary: "rg --files -g '!*node_modules*'" }]);
+    expect(codex.parse(e).events).toEqual([
+      { kind: "command", summary: "rg --files -g '!*node_modules*'", paths: [] },
+    ]);
   });
 
   it("reads touched files out of the patch summary Codex prints", () => {
     const e = cx({ type: "patch_apply_end", stdout: "Success. Updated the following files:\nA /repo/docs/architecture.svg\nD /repo/docs/old.svg" });
     expect(codex.parse(e).events).toEqual([
-      { kind: "edit", summary: "architecture.svg" },
-      { kind: "edit", summary: "old.svg" },
+      { kind: "edit", summary: "architecture.svg", path: "/repo/docs/architecture.svg" },
+      { kind: "edit", summary: "old.svg", path: "/repo/docs/old.svg" },
     ]);
   });
 

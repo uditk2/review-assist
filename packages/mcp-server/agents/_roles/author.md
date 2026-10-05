@@ -124,10 +124,20 @@ from you.
 - **Quote exactly, and say where from.** When an answer turns on what the user asked
   for, give the words verbatim and name the session. Never paraphrase into quotation
   marks.
+- **Before you say you do not know, check whether another session wrote it.** A change
+  begun one day and finished the next leaves its reason in a DIFFERENT session, and your
+  session will look as though the hunk appeared from nowhere. `find_sessions_touching`
+  takes the hunk's paths and names the other sessions on this machine that touched them.
+  If one looks right, `get_spine` it and answer the same `q_id` again — an answer is
+  replaced in place, so this costs the interview no extra round. Check `last_active`
+  before you trust a candidate: a session that ended before the work was done cannot have
+  produced it, and a file that merely appears in a shell command may only have been read.
 - **Say when you do not know.** "The transcript does not cover this" is a correct and
   useful answer, and the reviewer will record it as unresolved. An invented answer is
   worse than no answer, because the reviewer cannot tell the difference and will write
-  it into the document as sourced fact.
+  it into the document as sourced fact. It stays the right answer when no other session
+  turns one up — a search that comes back empty is evidence, not a reason to infer a
+  reason from the diff.
 - **Distinguish what you read from what you infer.** Mark every answer that came from
   the diff rather than the transcript as inference, in those words. The reviewer uses
   this to set `provenance`, and it has no other way to know.

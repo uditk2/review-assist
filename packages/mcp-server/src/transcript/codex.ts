@@ -13,22 +13,30 @@
  */
 
 import { basename } from "node:path";
-import { FAILURE_SIGNAL, oneLine, stripInjected } from "./text.js";
+import { FAILURE_SIGNAL, oneLine, stripInjected, extractPaths } from "./text.js";
 import type { ParsedEntry, ParsedEvent, TranscriptParser } from "./types.js";
 import { nothing } from "./types.js";
 
-/** Codex `exec` calls arrive as a JS snippet; the shell command is inside it. */
-function execCommand(input: unknown): string {
+/**
+ * Codex `exec` calls arrive as a JS snippet; the shell command is inside it. Returned
+ * untruncated — the caller decides what to cap, because path extraction needs the whole
+ * command and the one-line summary does not.
+ */
+function execCommandRaw(input: unknown): string {
   const raw = typeof input === "string" ? input : JSON.stringify(input ?? "");
   const m = /cmd:\s*"((?:[^"\\]|\\.)*)"/.exec(raw);
-  const cmd = m ? m[1].replace(/\\"/g, '"').replace(/\\n/g, " ") : raw;
-  return oneLine(cmd);
+  return m ? m[1].replace(/\\"/g, '"').replace(/\\n/g, " ") : raw;
 }
 
-/** Codex prints the files it touched when a patch lands. */
+/**
+ * Codex prints the files it touched when a patch lands, as `M path/to/file`. Returned
+ * whole rather than reduced to a basename: the basename is for the one-liner, the path is
+ * what a caller matches against a diff. Codex prints absolute and repo-relative paths
+ * both, depending on how the patch was addressed, so a caller must handle either.
+ */
 function patchedFiles(stdout: unknown): string[] {
   if (typeof stdout !== "string") return [];
-  return Array.from(stdout.matchAll(/^[ADM]\s+(.+)$/gm)).map((m) => basename(m[1].trim()));
+  return Array.from(stdout.matchAll(/^[ADM]\s+(.+)$/gm)).map((m) => m[1].trim());
 }
 
 export class CodexParser implements TranscriptParser {
@@ -54,16 +62,23 @@ export class CodexParser implements TranscriptParser {
     }
 
     if (kind === "custom_tool_call" || kind === "function_call") {
-      const summary =
+      const raw =
         kind === "custom_tool_call"
-          ? execCommand(payload.input)
-          : oneLine(`${String(payload.name ?? "")} ${String(payload.arguments ?? "")}`);
-      const events: ParsedEvent[] = summary ? [{ kind: "command", summary }] : [];
+          ? execCommandRaw(payload.input)
+          : `${String(payload.name ?? "")} ${String(payload.arguments ?? "")}`;
+      const summary = oneLine(raw);
+      const events: ParsedEvent[] = summary
+        ? [{ kind: "command", summary, paths: extractPaths(raw) }]
+        : [];
       return { events, failure };
     }
 
     if (kind === "patch_apply_end") {
-      const events: ParsedEvent[] = patchedFiles(payload.stdout).map((f) => ({ kind: "edit", summary: f }));
+      const events: ParsedEvent[] = patchedFiles(payload.stdout).map((f) => ({
+        kind: "edit",
+        summary: basename(f),
+        path: f,
+      }));
       return { events, failure };
     }
 

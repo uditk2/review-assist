@@ -23,6 +23,23 @@ export interface ParsedTurn {
 export interface ParsedEvent {
   kind: "command" | "edit";
   summary: string;
+  /**
+   * For `edit`: the file's path exactly as the transcript recorded it — absolute from
+   * Claude Code's `file_path`, either form from Codex's patch summary. `summary` stays the
+   * basename because it is read as prose; this is the only field a caller may compare
+   * against a diff, and a caller must handle both forms.
+   *
+   * Parsers do not resolve it. They cannot: an entry says nothing about which repository
+   * it belongs to, and this interface is deliberately free of that knowledge. Whoever
+   * knows the repo root relativizes it.
+   */
+  path?: string;
+  /**
+   * For `command`: every path-like token in the UNTRUNCATED command, which is where a
+   * Bash-driven session records the files it wrote. `summary` is capped at 200 characters
+   * and the writes routinely sit past that cap, so this is not derivable from it.
+   */
+  paths?: string[];
 }
 
 /**

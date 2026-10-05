@@ -296,6 +296,7 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
     "read_diff",
     "get_questions",
     "answer_questions",
+    "find_sessions_touching",
   ],
   // `get_role_definitions` and `manage_consent` were granted here and belong to neither
   // role: the first installs the role definitions (a reviewer already IS one), the second
@@ -327,6 +328,8 @@ const TOOL_BLURB: Record<string, string> = {
   list_transcripts: "candidate sessions for this repo, ranked. Parents only; a subagent is never a session.",
   get_spine: "a session's whole conversation, paged. Follow `next_cursor` to the end; each item is indexed into the full transcript.",
   read_transcript: "a window of the full transcript around an index, for the tool output behind a claim.",
+  find_sessions_touching:
+    "other sessions that touched given files. For a hunk your own session cannot explain — the work may have been done in another one.",
   compute_diff:
     "the run handle, the numbered hunk index and the SHAs. Opens the run. Returns no diff text.",
   read_diff: "the diff itself, paged by hunk. Follow `next_cursor` to the end, or ask for hunks/paths.",
