@@ -178,3 +178,49 @@ describe("installRoles", () => {
     expect(installRoles(local, { onlyIfChanged: true })).toEqual([]);
   });
 });
+
+/**
+ * The author can read the repository, and that grant was previously missing by accident.
+ *
+ * `tools:` in a Claude Code subagent is an ALLOWLIST, and it was generated from ROLE_TOOLS
+ * — a list of this server's MCP tools and nothing else. So the author shipped with no Read,
+ * Grep or Glob, not as a decision about code access but as a side effect of expressing a
+ * different one ("the author must not reach submit_document"). Codex scopes MCP per server
+ * and keeps its own file tools, so the same intent left the author able to read code there
+ * and unable to read it here.
+ *
+ * It matters because many of the reviewer's questions are not about the session at all:
+ * "deleteWorkflow has no transaction around its three calls" is answered by the surrounding
+ * function, outside the diff. Unable to look, the author reported the transcript silent and
+ * the question reached the document as a gap that was never really a gap.
+ */
+describe("the author's repository access", () => {
+  const authorDef = () => getRoles({ env: "claude" }).roles.author!.definition;
+  const toolsLine = (def: string) => def.split("\n").find((l) => l.startsWith("tools:")) ?? "";
+
+  it("grants read-only file tools on the allowlist, beside the MCP tools", () => {
+    const line = toolsLine(authorDef());
+    for (const t of ["Read", "Grep", "Glob"]) expect(line).toContain(t);
+    expect(line).toContain("mcp__review-assist__get_spine");
+  });
+
+  it("grants nothing that can write or execute", () => {
+    // A role that can edit the repository it is describing can make its own answers true.
+    const line = toolsLine(authorDef());
+    for (const t of ["Bash", "Edit", "Write", "NotebookEdit"]) expect(line).not.toContain(t);
+  });
+
+  it("documents them in the access list, so the prose cannot drift from the allowlist", () => {
+    // The same failure this file already guards for MCP tools: the grant and the prose
+    // describing it are generated from one constant precisely because they drifted before.
+    const def = authorDef();
+    for (const t of ["Read", "Grep", "Glob"]) expect(def).toContain(`- \`${t}\``);
+  });
+
+  it("leaves the reviewer without them", () => {
+    // Its independence is from the AUTHOR's framing rather than from the repository, so
+    // widening it is defensible — but it is a separate decision, not this one.
+    const line = toolsLine(getRoles({ env: "claude" }).roles.reviewer!.definition);
+    for (const t of ["Read", "Grep", "Glob"]) expect(line).not.toContain(t);
+  });
+});

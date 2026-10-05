@@ -112,12 +112,40 @@ const REGISTRY: Record<RoleEnv, EnvEntry> = {
 };
 
 /**
+ * Read-only tools of the CLIENT, not of this server, so they carry no `mcp__` prefix.
+ *
+ * The author needs these to answer a question the transcript does not cover. Many such
+ * questions are not about the session at all — "deleteWorkflow has no transaction around
+ * its three calls" is answered by the surrounding function, which lies OUTSIDE the diff,
+ * and before this the author could see a diff and a transcript and nothing else. It had no
+ * way to look, so it reported that the transcript was silent and the question travelled to
+ * the document as a gap that was never really a gap.
+ *
+ * Read-only on purpose. No Bash and no write tool: the author answers questions, and a
+ * role that can edit the repository it is describing can make its own answers true.
+ *
+ * Claude Code is the only client this changes. It takes a `tools:` allowlist, so an
+ * omission here is a real lockout; Codex scopes MCP access per server and keeps its own
+ * file tools, and a generic client gets whatever it already had.
+ */
+const ROLE_CLIENT_TOOLS: Record<RoleName, readonly string[]> = {
+  author: ["Read", "Grep", "Glob"],
+  // The reviewer is unchanged, deliberately. Its independence is from the AUTHOR's
+  // framing, not from the repository, so widening it is defensible — but it is a separate
+  // decision with its own consequences for the interview, and it is not this change.
+  reviewer: [],
+};
+
+/**
  * Fill a template. {{TOOLS}} is derived from ROLE_TOOLS rather than written by hand:
  * the two drifted the moment search_transcript was added, leaving the Claude author
  * unable to call the one tool the interview depends on.
  */
 function render(tpl: string, role: RoleName): string {
-  const allowlist = ROLE_TOOLS[role].map((t) => `mcp__review-assist__${t}`).join(", ");
+  const allowlist = [
+    ...ROLE_TOOLS[role].map((t) => `mcp__review-assist__${t}`),
+    ...ROLE_CLIENT_TOOLS[role],
+  ].join(", ");
   return tpl
     .replace("{{BODY}}", BODY[role].trim())
     .replace("{{ACCESS}}", accessList(role))
@@ -328,6 +356,9 @@ const TOOL_BLURB: Record<string, string> = {
   list_transcripts: "candidate sessions for this repo, ranked. Parents only; a subagent is never a session.",
   get_spine: "a session's whole conversation, paged. Follow `next_cursor` to the end; each item is indexed into the full transcript.",
   read_transcript: "a window of the full transcript around an index, for the tool output behind a claim.",
+  Read: "a file in the repository, read-only. For a question the transcript cannot answer but the code can.",
+  Grep: "search the repository, read-only. Where to look when a question is about code outside the diff.",
+  Glob: "find files by pattern, read-only.",
   find_sessions_touching:
     "which OTHER session wrote a hunk yours cannot explain. Narrows by file, then matches the hunk's added lines: `authored` wrote them, `observed` only read them.",
   compute_diff:
@@ -344,7 +375,7 @@ const TOOL_BLURB: Record<string, string> = {
 };
 
 function accessList(role: RoleName): string {
-  return ROLE_TOOLS[role]
+  return [...ROLE_TOOLS[role], ...ROLE_CLIENT_TOOLS[role]]
     .map((t) => `- \`${t}\` — ${TOOL_BLURB[t] ?? "see the tool description."}`)
     .join("\n");
 }

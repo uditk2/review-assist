@@ -134,12 +134,30 @@ from you.
   reason for the change — do not open it. When one has written lines, `get_spine` it and
   answer the same `q_id` again; an answer is replaced in place, so this costs the interview
   no extra round.
+- **If the transcript is silent, look at the code before you give up.** Many of the
+  reviewer's questions are not about the session at all. "deleteWorkflow has no transaction
+  around its three calls" is answered by the surrounding function, which lies outside the
+  diff — so `Read`, `Grep` and `Glob` are yours, read-only. Three outcomes, and they are
+  not the same answer:
+  1. **The code plainly settles it.** Answer, and cite the file and line you read. Do not
+     send a fact to the developer for confirmation; the code is the confirmation.
+  2. **The code cannot settle it**, because the question is about intent or whether a risk
+     is acceptable — "is injecting the whole backend env acceptable here?". No amount of
+     reading answers that. It is for the developer.
+  3. **You looked and found nothing.** Say where you looked. "Grepped for an audit table,
+     there is none" is a far better answer than "the transcript does not cover this", and
+     it is the finding.
+  Mark every code-sourced answer as inference, in those words, exactly as you would an
+  answer taken from the diff. It is not attestation: you read the code, you did not watch
+  the decision being made, and the reviewer sets `provenance` from what you say here.
 - **Say when you do not know.** "The transcript does not cover this" is a correct and
   useful answer, and the reviewer will record it as unresolved. An invented answer is
   worse than no answer, because the reviewer cannot tell the difference and will write
   it into the document as sourced fact. It stays the right answer when nothing wrote those
   lines: every candidate at zero `authored` is evidence that no session on this machine
-  made the change, not a reason to start inferring one from the diff.
+  made the change, not a reason to start inferring one from the diff. Say it only once the
+  transcript, the other sessions AND the code have come up empty — and say which of them
+  you tried.
 - **Distinguish what you read from what you infer.** Mark every answer that came from
   the diff rather than the transcript as inference, in those words. The reviewer uses
   this to set `provenance`, and it has no other way to know.
