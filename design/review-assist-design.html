@@ -1,0 +1,1004 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review Assist Design Document</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="doc.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <marker id="ar" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" class="d-marker"/>
+  </marker>
+  <marker id="ar-a" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" class="d-marker-a"/>
+  </marker>
+</defs></svg>
+
+<div class="page">
+
+<nav class="toc">
+  <div class="toc-title">Contents</div>
+  <a href="#overview">1. Overview</a>
+  <a href="#problem">2. Problem statement</a>
+  <a href="#requirements">3. Requirements</a>
+  <a class="sub" href="#req-functional">3.1 Functional</a>
+  <a class="sub" href="#req-technical">3.2 Technical</a>
+  <a class="sub" href="#req-nonfunctional">3.3 Non-functional</a>
+  <a class="sub" href="#req-nongoals">3.4 Non-goals</a>
+  <a href="#approach">4. Approach</a>
+  <a class="sub" href="#hld">4.1 High-level design</a>
+  <a class="sub" href="#dfd">4.2 Data flow</a>
+  <a class="sub" href="#sequence">4.3 Sequence</a>
+  <a class="sub" href="#decisions">4.4 Key decisions</a>
+  <a class="sub" href="#rejected">4.5 Rejected alternatives</a>
+  <a href="#state">5. State of play</a>
+  <a class="doc-switch" href="review-assist-lld.html" data-artifact="https://claude.ai/artifact/BTBvC7fzBGXjLJz8Hpn8t8">Low-level design &rarr;</a>
+</nav>
+
+<main>
+
+<header class="masthead">
+  <p class="eyebrow">Design document</p>
+  <h1>Review Assist</h1>
+  <p class="standfirst">
+    Turn an AI coding agent's session into a guided, mechanically verified pull-request review,
+    without the session transcript or the code ever being stored by the service.
+  </p>
+  <div class="factbar">
+    <span><b>Status</b> shipped, v1.0.4 (MCP server)</span>
+    <span><b>Format</b> Intent Document, schema 0.1 (frozen)</span>
+    <span><b>Licence</b> Apache-2.0</span>
+    <span><b>Companion</b> <a href="review-assist-lld.html" data-artifact="https://claude.ai/artifact/BTBvC7fzBGXjLJz8Hpn8t8">Low-level design</a></span>
+  </div>
+</header>
+
+<!-- ============================================================ 1. OVERVIEW -->
+<section id="overview">
+  <h2>Section 1</h2>
+  <p class="h2-title">Overview</p>
+
+  <p>
+    Review Assist is three cooperating pieces and one file format. A developer's coding agent
+    runs a local <strong>MCP server</strong> that distils the session into an
+    <strong>Intent Document</strong>: what was asked, what was assumed, what was tried and
+    abandoned, what was actually verified, and a guided tour of the diff with every stop
+    anchored to real hunks. A <strong>deterministic validator</strong> refuses to write the
+    document unless it demonstrably covers the change. The document is committed to the branch
+    at <code>.intent/&lt;branch&gt;.json</code> and travels with the code. A
+    <strong>GitHub App</strong> reacts to every push on the pull request, recomputes coverage,
+    posts a check and a summary, and serves a browser view that walks a human reviewer through
+    the change assumption by assumption and hunk by hunk.
+  </p>
+
+  <div class="cards">
+    <div class="card">
+      <h4>The format</h4>
+      <p>Six sections: <code>meta</code>, <code>problem</code>, <code>assumptions</code>,
+      <code>approach</code>, <code>tour</code>, <code>verification</code>. JSON Schema
+      2020-12, version <code>0.1</code>, deliberately frozen.</p>
+    </div>
+    <div class="card">
+      <h4>The producer</h4>
+      <p>An MCP server over stdio that hosts a two-agent author/reviewer distillation. It
+      never calls a model. It computes ground truth, serves source material, and gatekeeps
+      the result.</p>
+    </div>
+    <div class="card">
+      <h4>The consumer</h4>
+      <p>A stateless Cloudflare Worker: webhook automation as the app bot, plus an OAuth
+      broker and thin GitHub proxy behind a client-side viewer.</p>
+    </div>
+  </div>
+
+  <p>
+    The architectural centre of gravity is a single claim: <strong>the document must be
+    earned, not asserted</strong>. An agent writing a summary of its own work is a press
+    release. So the producing side is split into two role-locked contexts that cannot reach
+    each other's tools, an interview between them is recorded and attested by the server
+    rather than narrated by either side, and the finished document is admitted only after
+    five deterministic checks it cannot argue with.
+  </p>
+
+  <div class="callout">
+    <span class="callout-title">The one-line version</span>
+    <p>
+      Agents write code faster than anyone can read diffs. The context that makes review fast
+      is thrown away the moment the PR opens. Review Assist captures it at the source and
+      proves, mechanically, that what it captured actually explains the change.
+    </p>
+  </div>
+</section>
+
+<!-- ======================================================= 2. PROBLEM STATEMENT -->
+<section id="problem">
+  <h2>Section 2</h2>
+  <p class="h2-title">Problem statement</p>
+
+  <h3>2.1 What is breaking</h3>
+  <p>
+    Code review was designed around an assumption that no longer holds: that the person who
+    wrote the change is available, remembers why, and produced it slowly enough that reading
+    it back is proportionate work. With an agent in the loop, a 600-line change can arrive in
+    twenty minutes, and the only durable artefact is the diff.
+  </p>
+  <p>Everything that makes a review fast is discarded at exactly the moment it becomes useful:</p>
+  <ul>
+    <li><strong>The ask.</strong> What the human actually requested, in their own words, and how it
+      drifted. Scope creep and half-finished migrations hide in that drift.</li>
+    <li><strong>The assumptions.</strong> The things the change takes to be true about the world,
+      which the diff cannot show and which are the cheapest thing to check and the most
+      expensive thing to get wrong.</li>
+    <li><strong>The road not taken.</strong> What was tried and abandoned, and why. A reviewer who
+      does not know an approach was already rejected will propose it.</li>
+    <li><strong>The verification boundary.</strong> What was actually exercised, and, more
+      importantly, what was not. Authors go quiet about the second half.</li>
+  </ul>
+
+  <h3>2.2 Why the obvious fixes do not work</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:24%">Obvious fix</th><th>Why it fails</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Ask the agent to write a PR description</td>
+        <td>It is diff-inferred, not session-derived. The agent restates what the code already
+          says, smooths over what it guessed, and nothing checks whether the description covers
+          the change. It is unfalsifiable by construction.</td>
+      </tr>
+      <tr>
+        <td>Dump the transcript into the PR</td>
+        <td>Raw sessions are roughly 95% machinery. Measured across 41 sessions in one
+          workspace: 85&nbsp;MB of transcript, of which actual conversation is a median 4.8%.
+          It also leaks secrets, internal chatter, and dead ends with equal billing.</td>
+      </tr>
+      <tr>
+        <td>An AI reviewer that reads the diff</td>
+        <td>It has the same information the human has, which is the information that is
+          missing. It can find bugs; it cannot tell you what the user asked for.</td>
+      </tr>
+      <tr>
+        <td>Make developers write it by hand</td>
+        <td>The context is already gone by the time the PR opens, and the work is charged to the
+          person least motivated to do it.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>2.3 The problem, stated</h3>
+  <div class="callout">
+    <p>
+      Capture the intent behind an agent-authored change <em>at the source</em>, while the
+      session is still live; make the capture verifiable rather than merely plausible; and
+      deliver it to a human reviewer inside the pull request they were going to open anyway,
+      without storing their code and without asking them to install anything.
+    </p>
+  </div>
+  <p>Four constraints follow directly from that sentence, and they shape everything downstream:</p>
+  <ul>
+    <li><strong>At the source</strong> means the producer runs on the developer's machine, in the
+      agent's own session, with access to the transcript.</li>
+    <li><strong>Verifiable</strong> means a deterministic checker, not a model, decides whether
+      the document is admissible.</li>
+    <li><strong>Inside the pull request</strong> means GitHub holds every durable piece of review
+      state, and the service adds no second place to look.</li>
+    <li><strong>Without storing code</strong> means the service has no database, and the
+      transcript never leaves the machine that produced it.</li>
+  </ul>
+</section>
+
+<!-- ========================================================= 3. REQUIREMENTS -->
+<section id="requirements">
+  <h2>Section 3</h2>
+  <p class="h2-title">Requirements</p>
+
+  <h3 id="req-functional">3.1 Functional requirements</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:8%">ID</th><th style="width:30%">Requirement</th><th>Detail and rationale</th></tr></thead>
+    <tbody>
+      <tr><td class="id-col">FR-1</td><td>Derive the document from the session, not from the diff</td>
+        <td>Every claim traces to something that happened in the authoring session, or to the code
+          itself. This is the property diff-only tools cannot replicate, so it is the first
+          requirement rather than a nice-to-have.</td></tr>
+      <tr><td class="id-col">FR-2</td><td>Split production into two role-locked contexts</td>
+        <td>An <em>Author</em> that holds the transcript and answers, and an <em>Intent Reviewer</em>
+          that reads the diff cold, interrogates, and writes. Neither may hold the other's tools.</td></tr>
+      <tr><td class="id-col">FR-3</td><td>Make the interview two-sided and server-attested</td>
+        <td>Questions are recorded and hashed to a <code>q_id</code>; answers are filed against that
+          id by the author itself. <code>meta.interview</code> reports what the server witnessed,
+          overriding anything the agent self-reports.</td></tr>
+      <tr><td class="id-col">FR-4</td><td>Let a repository teach the reviewer its own questions</td>
+        <td>A committed <code>.reviewer/</code> folder of markdown house rules is served to the
+          reviewer after the diff and before round one. It may add questions; it may never relax a
+          check or excuse the interview.</td></tr>
+      <tr><td class="id-col">FR-5</td><td>Gate the write behind deterministic validation</td>
+        <td>Five checks: schema, staleness, coverage, cross-references, secret redaction. Coverage is
+          the load-bearing one: the union of tour anchors must cover every substantive diff hunk.</td></tr>
+      <tr><td class="id-col">FR-6</td><td>Commit the document with the code</td>
+        <td><code>.intent/&lt;branch&gt;.json</code>, reviewed like any other file, versioned like any
+          other file, and excluded from its own coverage denominator.</td></tr>
+      <tr><td class="id-col">FR-7</td><td>Require explicit per-repository consent</td>
+        <td>The server is installed once, globally. It must not silently write into every repository
+          the developer touches. Decisions are <code>always</code>, <code>once</code> or
+          <code>never</code>, stored per user and outside any repo.</td></tr>
+      <tr><td class="id-col">FR-8</td><td>Report automatically on every push</td>
+        <td>On <code>opened</code>, <code>synchronize</code> and <code>reopened</code>: a check run, a
+          sticky summary comment carrying the coverage count and the guided link, and a managed block
+          in the PR description.</td></tr>
+      <tr><td class="id-col">FR-9</td><td>Serve a guided review, assumptions first</td>
+        <td>Front page of problem, assumptions and approach, then the anchored tour in narrative
+          order, a coverage overlay that badges unexplained hunks, and a verification panel that
+          leads with <code>not_verified</code>.</td></tr>
+      <tr><td class="id-col">FR-10</td><td>Write review output as the human, not as a bot</td>
+        <td>Comments, replies and the verdict post with the signed-in reviewer's own token. Automation
+          output posts as the app. The two identities never blur.</td></tr>
+      <tr><td class="id-col">FR-11</td><td>Degrade to markdown</td>
+        <td>The PR description block renders the document for anyone who never opens the viewer, so
+          the artefact has value with zero clicks.</td></tr>
+      <tr><td class="id-col">FR-12</td><td>Return findings to the live session</td>
+        <td>The reviewer role's closing message (unanswered questions, everything in
+          <code>not_verified</code>, defects exposed by reading the diff cold) reaches the session
+          while the code can still be changed. The document is the after-the-fact half.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 id="req-technical">3.2 Technical requirements</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:8%">ID</th><th style="width:30%">Requirement</th><th>Detail and rationale</th></tr></thead>
+    <tbody>
+      <tr><td class="id-col">TR-1</td><td>MCP over stdio, Node 18+, one bundled file</td>
+        <td>Distributed as <code>review-assist-mcp</code> on npm (runnable through <code>npx</code>)
+          and as a one-click <code>.mcpb</code> bundle. esbuild inlines the role templates, so there
+          is exactly one artefact to ship.</td></tr>
+      <tr><td class="id-col">TR-2</td><td>The server never calls a model</td>
+        <td>Generation is delegated to the calling agent through a guide. The server computes ground
+          truth, serves source, and validates. That keeps it deterministic, testable, free to run and
+          free of an API key.</td></tr>
+      <tr><td class="id-col">TR-3</td><td>No response may grow with the size of the change</td>
+        <td>Diff, spine, transcript windows, house rules and answers are all paged with a cursor,
+          default 20&nbsp;KB per page. Opening a run returns a hunk index and a handle, never diff
+          text.</td></tr>
+      <tr><td class="id-col">TR-4</td><td>Role isolation must be structural</td>
+        <td><code>REVIEW_ASSIST_ROLE</code> decides which tools are registered at all, so the other
+          role's tools are <em>absent</em> rather than disallowed. A client-side allowlist is belt and
+          braces, not the mechanism.</td></tr>
+      <tr><td class="id-col">TR-5</td><td>Both roles must derive the same run handle without speaking</td>
+        <td><code>run_id = sha256(repo | base_sha | branch)</code>. The head SHA is state on the run,
+          not identity, so committing the document (itself a commit) does not orphan the interview.</td></tr>
+      <tr><td class="id-col">TR-6</td><td>Run state on disk, outside the repository</td>
+        <td><code>~/.review-assist/runs/</code>, beside the consent file. The roles are separate
+          processes, and a reviewer has resumed a run eleven hours later across a restart. Interview
+          scratch state has no business in a pull request.</td></tr>
+      <tr><td class="id-col">TR-7</td><td>One diff, produced in one place</td>
+        <td><code>compute_diff</code>, <code>read_diff</code> and <code>submit_document</code> all go
+          through the same function, with <code>.intent/</code> excluded at source. Hunk ids handed
+          out, text paged, and the diff validated against therefore cannot disagree.</td></tr>
+      <tr><td class="id-col">TR-8</td><td>The application holds no state</td>
+        <td>No KV, D1, R2 or Durable Objects. The session <em>is</em> an encrypted HTTP-only cookie
+          (AES-GCM); decrypting it is the entire session lookup.</td></tr>
+      <tr><td class="id-col">TR-9</td><td>Repo content must never enter a shared cache</td>
+        <td>Documents, diffs and file context are served <code>Cache-Control: private, no-store</code>.
+          A shared cache entry is content at rest and an access-control bypass. Static assets are
+          edge-cached aggressively; they carry no repo content.</td></tr>
+      <tr><td class="id-col">TR-10</td><td>Two distinct GitHub identities</td>
+        <td>A short-lived installation token (App JWT, RS256, exchanged per event) for automation
+          output; the signed-in reviewer's user-to-server token for everything a human is
+          accountable for.</td></tr>
+      <tr><td class="id-col">TR-11</td><td>Webhook must verify and return fast</td>
+        <td>HMAC-SHA256 signature check with a constant-time compare, then a <code>202</code> inside
+          the budget with the GitHub round-trips moved into <code>waitUntil</code>.</td></tr>
+      <tr><td class="id-col">TR-12</td><td>Treat repository content as untrusted data</td>
+        <td><code>.reviewer/</code> and <code>.intent/</code> are both editable from a fork's pull
+          request. House rules are framed as reference material that cannot override the protocol;
+          rendered markdown is sanitised and mermaid sandboxed before display.</td></tr>
+      <tr><td class="id-col">TR-13</td><td>Agent-portable</td>
+        <td>Claude Code and Codex are first-class, with a generic fallback. Role prose lives once in
+          <code>agents/_roles/</code>; each environment supplies only a thin container template, so
+          the three copies cannot drift.</td></tr>
+      <tr><td class="id-col">TR-14</td><td>The schema is the contract</td>
+        <td>JSON Schema draft 2020-12 is normative; TypeScript types mirror it. Version
+          <code>0.1</code> is frozen because a change ripples through the validator, the viewer, and
+          every document already committed.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 id="req-nonfunctional">3.3 Non-functional requirements</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:8%">ID</th><th style="width:26%">Quality</th><th>Target and how it is met</th></tr></thead>
+    <tbody>
+      <tr><td class="id-col">NFR-1</td><td>Privacy</td>
+        <td>The session transcript never leaves the developer's machine. The application has no
+          database and stores no code at rest; it reads document and diff from GitHub per request with
+          the reviewer's own token and holds them in memory for the length of that request. Code does
+          pass through the hosted service in transit, which is stated plainly rather than glossed, and
+          self-hosting is the answer for teams where that matters.</td></tr>
+      <tr><td class="id-col">NFR-2</td><td>Adoption friction</td>
+        <td>A declared budget of exactly two one-time installs: the MCP server on the developer side,
+          the GitHub App on the repository side. No workflow file, no CI minutes, no secrets, and no
+          per-reviewer browser extension. Reviewers sign in once.</td></tr>
+      <tr><td class="id-col">NFR-3</td><td>Non-blocking by default</td>
+        <td>The check run never concludes <code>failure</code>. Missing document or incomplete
+          coverage is <code>neutral</code>; full coverage is <code>success</code>. A tool that blocks
+          merges on day one gets uninstalled on day two.</td></tr>
+      <tr><td class="id-col">NFR-4</td><td>Distillation latency</td>
+        <td>Measured, not estimated: median 1400&nbsp;s from run open to submit over 15 runs, range
+          389&nbsp;s to 2242&nbsp;s. The largest single phase (670&nbsp;s, 48%) was the two roles
+          waiting on each other, which seeding the standing questions at run open collapses to the
+          longer of the two independent reads.</td></tr>
+      <tr><td class="id-col">NFR-5</td><td>Cost</td>
+        <td>Free, with no paid tier. The server calls no model and runs as a child process; the
+          application is a single stateless Worker that fits a free tier.</td></tr>
+      <tr><td class="id-col">NFR-6</td><td>Honesty of the artefact</td>
+        <td>Fields carry provenance markers (<code>from_transcript</code>,
+          <code>confirmed_in_interview</code>, <code>inferred_from_code</code>). What the interview
+          could not resolve is listed as an open question rather than smoothed over. The server
+          attests interview counts so a document cannot claim a rigour it did not have.</td></tr>
+      <tr><td class="id-col">NFR-7</td><td>Reviewer time to first judgement</td>
+        <td>The front page is designed so a reviewer can reject the framing in about two minutes
+          without reading a line of code: problem, out of scope, assumptions with blast radius, open
+          questions, approach with rejected trials.</td></tr>
+      <tr><td class="id-col">NFR-8</td><td>Openness and portability</td>
+        <td>Apache-2.0, fully self-hostable (one stateless container plus the operator's own GitHub
+          App registration). The hosted instance is a convenience, not a dependency. The format is
+          published so other producers and renderers can exist.</td></tr>
+      <tr><td class="id-col">NFR-9</td><td>Operability</td>
+        <td>No database means no migrations, no backups and no data-retention policy to write. CI
+          builds, typechecks, tests, validates the example document, and fails if generated files are
+          stale or release metadata is inconsistent.</td></tr>
+      <tr><td class="id-col">NFR-10</td><td>Failure behaviour</td>
+        <td>Every gate returns a typed, actionable failure rather than a refusal: the consent prompt
+          carries its options, head drift names both SHAs and the fix, unknown anchors list the valid
+          ids, and validator failures return findings plus uncovered hunk ids. Nothing is written on
+          any failing path, and the run with its attested interview survives.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 id="req-nongoals">3.4 Non-goals</h3>
+  <ul>
+    <li><strong>Not a bug finder.</strong> The Intent Reviewer's job is to interrogate intent and
+      anchor it to the diff. Defect hunting is a side effect of reading the diff cold, reported in
+      its closing message, not the product.</li>
+    <li><strong>Not a gate on merge.</strong> Merging stays on GitHub, and the check stays advisory.</li>
+    <li><strong>Not a replacement for human review.</strong> The output is a better-prepared review,
+      not a substitute verdict.</li>
+    <li><strong>Not a diff renderer for the native GitHub page.</strong> A GitHub App cannot modify
+      that view; overlaying it was considered and rejected (see <a href="#rejected">4.5</a>).</li>
+    <li><strong>Not multi-repo, yet.</strong> One document describes exactly one commit range in one
+      repository. Cross-repo linking is designed but not built.</li>
+  </ul>
+</section>
+
+<!-- ============================================================= 4. APPROACH -->
+<section id="approach">
+  <h2>Section 4</h2>
+  <p class="h2-title">Approach</p>
+
+  <p>
+    The system is shaped by one asymmetry: the expensive, privileged, context-rich work happens
+    on the developer's machine, and the cheap, public, stateless work happens in the cloud. Every
+    boundary in the design follows that line. Anything that needs the transcript stays local.
+    Anything that needs to be durable goes to GitHub. The service in the middle owns nothing.
+  </p>
+
+  <h3 id="hld">4.1 High-level design</h3>
+  <p>
+    Three systems and two external actors. The developer's machine produces the change and its
+    Intent Document. GitHub stores the pull request and every durable piece of review state. The
+    Review Assist application reacts to events as a bot, then serves the guided review as a proxy
+    for the signed-in human.
+  </p>
+
+  <figure class="fig-wide">
+    <div class="fig-scroll">
+      <svg viewBox="0 0 1150 560" role="img" aria-label="Container-level architecture. A developer works on their own machine, where a coding agent drives a local review-assist MCP server; the session transcript stays there and an Intent Document is written into the working tree. The machine pushes code and the document to GitHub, which holds the pull request, the committed document, the automation output and the review record. GitHub sends pull_request events to the Review Assist application, a stateless Cloudflare Worker, which posts the check run, summary comment and PR description block as its bot identity, and separately serves a guided-review viewer that reads the document and diff and writes comments and the verdict as the signed-in human reviewer.">
+
+        <rect class="d-box-soft" x="85" y="30" width="180" height="44" rx="22"/>
+        <text class="d-title" x="175" y="58" text-anchor="middle">Developer</text>
+        <rect class="d-box-soft" x="875" y="30" width="200" height="44" rx="22"/>
+        <text class="d-title" x="975" y="58" text-anchor="middle">Human reviewer</text>
+
+        <path class="d-arrow" d="M175 74 V 106"/>
+        <text class="d-edge" x="185" y="97">asks for the change</text>
+        <path class="d-arrow" d="M975 74 V 106"/>
+        <text class="d-edge" x="965" y="97" text-anchor="end">opens the guided link</text>
+
+        <rect class="d-zone" x="20" y="112" width="310" height="388" rx="12"/>
+        <text class="d-zone-title" x="36" y="136">DEVELOPER MACHINE</text>
+        <rect class="d-zone" x="470" y="112" width="220" height="388" rx="12"/>
+        <text class="d-zone-title" x="486" y="136">GITHUB</text>
+        <rect class="d-zone" x="820" y="112" width="310" height="388" rx="12"/>
+        <text class="d-zone-title" x="836" y="136">REVIEW ASSIST APPLICATION</text>
+
+        <rect class="d-box" x="38" y="156" width="274" height="60" rx="8"/>
+        <text class="d-title-sm" x="175" y="180" text-anchor="middle">Coding agent</text>
+        <text class="d-sub" x="175" y="198" text-anchor="middle">Claude Code or Codex, the orchestrator</text>
+        <rect class="d-box" x="38" y="228" width="274" height="60" rx="8"/>
+        <text class="d-title-sm" x="175" y="252" text-anchor="middle">review-assist MCP server</text>
+        <text class="d-sub" x="175" y="270" text-anchor="middle">local stdio process, calls no model</text>
+        <rect class="d-box-soft" x="38" y="300" width="274" height="60" rx="8"/>
+        <text class="d-title-sm" x="175" y="324" text-anchor="middle">Session transcript</text>
+        <text class="d-sub" x="175" y="342" text-anchor="middle">JSONL on disk, never leaves this machine</text>
+        <rect class="d-box" x="38" y="372" width="274" height="60" rx="8"/>
+        <text class="d-title-sm" x="175" y="396" text-anchor="middle">Working tree</text>
+        <text class="d-sub" x="175" y="414" text-anchor="middle">code plus .intent/&lt;branch&gt;.json</text>
+        <text class="d-mono" x="175" y="464" text-anchor="middle">~/.review-assist/ runs + consent</text>
+
+        <rect class="d-box" x="488" y="156" width="184" height="60" rx="8"/>
+        <text class="d-title-sm" x="580" y="180" text-anchor="middle">Pull request</text>
+        <text class="d-sub" x="580" y="198" text-anchor="middle">branch, diff, head SHA</text>
+        <rect class="d-box" x="488" y="228" width="184" height="60" rx="8"/>
+        <text class="d-title-sm" x="580" y="252" text-anchor="middle">Intent Document</text>
+        <text class="d-sub" x="580" y="270" text-anchor="middle">committed on the branch</text>
+        <rect class="d-box" x="488" y="300" width="184" height="60" rx="8"/>
+        <text class="d-title-sm" x="580" y="324" text-anchor="middle">Automation output</text>
+        <text class="d-sub" x="580" y="342" text-anchor="middle">check, comment, PR body</text>
+        <rect class="d-box" x="488" y="372" width="184" height="60" rx="8"/>
+        <text class="d-title-sm" x="580" y="396" text-anchor="middle">Review record</text>
+        <text class="d-sub" x="580" y="414" text-anchor="middle">comments, replies, verdict</text>
+        <text class="d-sub" x="580" y="464" text-anchor="middle">the only durable store</text>
+
+        <rect class="d-box" x="838" y="156" width="274" height="60" rx="8"/>
+        <text class="d-title-sm" x="975" y="180" text-anchor="middle">Webhook automation</text>
+        <text class="d-sub" x="975" y="198" text-anchor="middle">POST /api/webhook, acts as the bot</text>
+        <rect class="d-box" x="838" y="228" width="274" height="60" rx="8"/>
+        <text class="d-title-sm" x="975" y="252" text-anchor="middle">OAuth broker</text>
+        <text class="d-sub" x="975" y="270" text-anchor="middle">encrypted cookie, no server store</text>
+        <rect class="d-box" x="838" y="300" width="274" height="60" rx="8"/>
+        <text class="d-title-sm" x="975" y="324" text-anchor="middle">GitHub proxy</text>
+        <text class="d-sub" x="975" y="342" text-anchor="middle">per request, private and no-store</text>
+        <rect class="d-box" x="838" y="372" width="274" height="60" rx="8"/>
+        <text class="d-title-sm" x="975" y="396" text-anchor="middle">Guided-review viewer</text>
+        <text class="d-sub" x="975" y="414" text-anchor="middle">SPA, renders in the browser</text>
+        <text class="d-sub" x="975" y="464" text-anchor="middle">stateless Cloudflare Worker, self-hostable</text>
+
+        <path class="d-arrow-accent" d="M330 270 H 464"/>
+        <text class="d-edge-accent" x="397" y="249" text-anchor="middle">push: code and</text>
+        <text class="d-edge-accent" x="397" y="262" text-anchor="middle">Intent Document</text>
+
+        <path class="d-arrow" d="M690 200 H 804"/>
+        <text class="d-edge" x="747" y="192" text-anchor="middle">pull_request event</text>
+
+        <path class="d-arrow" d="M820 300 H 696"/>
+        <text class="d-edge" x="755" y="279" text-anchor="middle">check, comment,</text>
+        <text class="d-edge" x="755" y="292" text-anchor="middle">PR body, as the bot</text>
+
+        <path class="d-arrow" d="M690 412 H 804"/>
+        <text class="d-edge" x="747" y="401" text-anchor="middle">document and diff</text>
+        <path class="d-arrow" d="M820 448 H 696"/>
+        <text class="d-edge" x="755" y="437" text-anchor="middle">comments and verdict</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>Figure 1. Container view.</b> The dashed boxes are trust boundaries, not deployment units.
+      The application reacts only to <code>opened</code>, <code>synchronize</code> and <code>reopened</code>. The two arrows in the right-hand gap are the whole of its relationship's with
+      GitHub: it reads the document and diff per request and writes back with whichever identity is
+      accountable for that write. Nothing crosses from the left-hand box except the code and the
+      document that the developer commits.
+    </figcaption>
+  </figure>
+
+  <h3 id="dfd">4.2 Data flow</h3>
+  <p>
+    The high-level view says which systems talk. This one says what actually moves, where it rests,
+    and which line it must never cross. Four trust zones, read top to bottom: the developer's
+    machine, GitHub, the Worker, and the reviewer's browser.
+  </p>
+
+  <figure class="fig-wide">
+    <div class="fig-scroll">
+      <svg viewBox="0 0 1180 1060" role="img" aria-label="Data flow across four trust zones. On the developer machine the session transcript feeds the spine reader which feeds the Author role, and the git repository feeds compute_diff and read_diff which feed the Reviewer role. Between them sits a run file holding questions, their ids and the answers; the author reads questions and writes answers, the reviewer records questions and reads answers. The repository's .reviewer house rules are served to the reviewer through a tool. The reviewer submits a candidate document to the submit_document gate, which also reads the consent file, and on pass the Intent Document is written into the working tree and pushed with the code. The transcript, the spine and the run file never cross out of the machine. GitHub holds the pull request and diff, the committed document, the automation output and the review record. The stateless Worker receives pull_request events and posts the check, comment and PR body as the installation bot, and separately reads the document and diff and posts comments and the verdict with the reviewer's token. The reviewer's browser runs the viewer SPA which receives private, no-store content and sends the human's decisions back.">
+
+        <rect class="d-zone" x="20" y="26" width="1140" height="472" rx="12"/>
+        <text class="d-zone-title" x="38" y="50">DEVELOPER MACHINE</text>
+        <rect class="d-zone" x="20" y="540" width="1140" height="160" rx="12"/>
+        <text class="d-zone-title" x="38" y="564">GITHUB: DURABLE STATE</text>
+        <rect class="d-zone" x="20" y="742" width="1140" height="130" rx="12"/>
+        <text class="d-zone-title" x="38" y="766">REVIEW ASSIST WORKER: STATELESS</text>
+        <rect class="d-zone" x="20" y="914" width="1140" height="120" rx="12"/>
+        <text class="d-zone-title" x="38" y="938">REVIEWER'S BROWSER</text>
+
+        <rect class="d-store" x="50" y="72" width="240" height="44" rx="3"/>
+        <rect class="d-store-bar" x="50" y="72" width="4" height="44"/>
+        <text class="d-title-sm" x="170" y="93" text-anchor="middle">Session transcript</text>
+        <text class="d-sub" x="170" y="108" text-anchor="middle">JSONL, one file per session</text>
+
+        <rect class="d-store" x="910" y="72" width="240" height="44" rx="3"/>
+        <rect class="d-store-bar" x="910" y="72" width="4" height="44"/>
+        <text class="d-title-sm" x="1030" y="93" text-anchor="middle">Git repository</text>
+        <text class="d-sub" x="1030" y="108" text-anchor="middle">base…head, read-only</text>
+
+        <rect class="d-box" x="50" y="144" width="240" height="44" rx="10"/>
+        <text class="d-title-sm" x="170" y="165" text-anchor="middle">get_spine / read_transcript</text>
+        <text class="d-sub" x="170" y="180" text-anchor="middle">deterministic parse, paged</text>
+
+        <rect class="d-box" x="910" y="144" width="240" height="44" rx="10"/>
+        <text class="d-title-sm" x="1030" y="165" text-anchor="middle">compute_diff / read_diff</text>
+        <text class="d-sub" x="1030" y="180" text-anchor="middle">.intent/ excluded at source</text>
+
+        <rect class="d-box" x="50" y="216" width="240" height="70" rx="26"/>
+        <text class="d-title-sm" x="170" y="242" text-anchor="middle">AUTHOR role</text>
+        <text class="d-sub" x="170" y="259" text-anchor="middle">holds the transcript</text>
+        <text class="d-sub" x="170" y="274" text-anchor="middle">cannot submit</text>
+
+        <rect class="d-store" x="400" y="216" width="380" height="70" rx="3"/>
+        <rect class="d-store-bar" x="400" y="216" width="4" height="70"/>
+        <text class="d-title-sm" x="590" y="240" text-anchor="middle">Run file</text>
+        <text class="d-mono" x="590" y="256" text-anchor="middle">~/.review-assist/runs/&lt;run_id&gt;.json</text>
+        <text class="d-sub" x="590" y="274" text-anchor="middle">questions · q_id · answers · batches · head history</text>
+
+        <rect class="d-box" x="910" y="216" width="240" height="70" rx="26"/>
+        <text class="d-title-sm" x="1030" y="242" text-anchor="middle">REVIEWER role</text>
+        <text class="d-sub" x="1030" y="259" text-anchor="middle">holds the diff, cold</text>
+        <text class="d-sub" x="1030" y="274" text-anchor="middle">no transcript, no filesystem</text>
+
+        <rect class="d-box-accent" x="400" y="330" width="380" height="70" rx="10"/>
+        <text class="d-title-sm" x="590" y="356" text-anchor="middle">submit_document gate</text>
+        <text class="d-sub" x="590" y="373" text-anchor="middle">consent · head · attestation · anchors</text>
+        <text class="d-sub" x="590" y="388" text-anchor="middle">then the five deterministic checks</text>
+
+        <rect class="d-store" x="50" y="340" width="240" height="44" rx="3"/>
+        <rect class="d-store-bar" x="50" y="340" width="4" height="44"/>
+        <text class="d-title-sm" x="170" y="361" text-anchor="middle">consent.json</text>
+        <text class="d-sub" x="170" y="376" text-anchor="middle">per user, outside every repo</text>
+
+        <rect class="d-store" x="910" y="340" width="240" height="44" rx="3"/>
+        <rect class="d-store-bar" x="910" y="340" width="4" height="44"/>
+        <text class="d-title-sm" x="1030" y="361" text-anchor="middle">.reviewer/ house rules</text>
+        <text class="d-sub" x="1030" y="376" text-anchor="middle">committed, untrusted</text>
+
+        <rect class="d-store" x="400" y="430" width="380" height="44" rx="3"/>
+        <rect class="d-store-bar" x="400" y="430" width="4" height="44"/>
+        <text class="d-title-sm" x="590" y="451" text-anchor="middle">.intent/&lt;branch&gt;.json</text>
+        <text class="d-sub" x="590" y="466" text-anchor="middle">written into the working tree</text>
+
+        <path class="d-arrow" d="M170 116 V 140"/>
+        <text class="d-edge" x="180" y="133">raw JSONL</text>
+        <path class="d-arrow" d="M170 188 V 212"/>
+        <text class="d-edge" x="180" y="205">conversation spine</text>
+        <path class="d-arrow" d="M1030 116 V 140"/>
+        <text class="d-edge" x="1020" y="133" text-anchor="end">unified diff, three-dot</text>
+        <path class="d-arrow" d="M1030 188 V 212"/>
+        <text class="d-edge" x="1020" y="205" text-anchor="end">hunk index H1…Hn, paged text</text>
+
+        <path class="d-arrow" d="M396 240 H 296"/>
+        <text class="d-edge" x="346" y="231" text-anchor="middle">reads questions</text>
+        <path class="d-arrow" d="M290 266 H 390"/>
+        <text class="d-edge" x="346" y="283" text-anchor="middle">writes answers</text>
+        <path class="d-arrow" d="M906 240 H 786"/>
+        <text class="d-edge" x="846" y="231" text-anchor="middle">records questions</text>
+        <path class="d-arrow" d="M780 266 H 900"/>
+        <text class="d-edge" x="846" y="283" text-anchor="middle">reads answers</text>
+
+        <path class="d-arrow" d="M990 340 V 292"/>
+        <text class="d-edge" x="900" y="362" text-anchor="end">repo house rules</text>
+        <path class="d-arrow-accent" d="M1060 286 V 312 H 788"/>
+        <text class="d-edge-accent" x="930" y="300" text-anchor="middle">candidate Intent Document</text>
+        <path class="d-arrow" d="M290 362 H 394"/>
+        <text class="d-edge" x="342" y="353" text-anchor="middle">consent</text>
+        <text class="d-edge" x="342" y="379" text-anchor="middle">always | once | never</text>
+
+        <path class="d-arrow-accent" d="M590 400 V 426"/>
+        <text class="d-edge-accent" x="602" y="419">only on pass</text>
+        <path class="d-arrow-accent" d="M590 474 V 536"/>
+        <text class="d-edge-accent" x="602" y="511">committed and pushed with the code</text>
+        <text class="d-tag" x="1150" y="529" text-anchor="end">TRANSCRIPT, SPINE AND RUN FILE NEVER CROSS THIS LINE</text>
+
+        <rect class="d-box" x="40" y="596" width="255" height="68" rx="8"/>
+        <text class="d-title-sm" x="168" y="624" text-anchor="middle">Pull request</text>
+        <text class="d-sub" x="168" y="642" text-anchor="middle">diff pinned to head SHA</text>
+        <rect class="d-box" x="321" y="596" width="255" height="68" rx="8"/>
+        <text class="d-title-sm" x="449" y="624" text-anchor="middle">Intent Document</text>
+        <text class="d-sub" x="449" y="642" text-anchor="middle">committed on the branch</text>
+        <rect class="d-box" x="602" y="596" width="255" height="68" rx="8"/>
+        <text class="d-title-sm" x="730" y="624" text-anchor="middle">Automation output</text>
+        <text class="d-sub" x="730" y="642" text-anchor="middle">check, comment, PR body block</text>
+        <rect class="d-box" x="883" y="596" width="255" height="68" rx="8"/>
+        <text class="d-title-sm" x="1011" y="624" text-anchor="middle">Review record</text>
+        <text class="d-sub" x="1011" y="642" text-anchor="middle">comments, replies, verdict</text>
+
+        <path class="d-arrow" d="M180 668 V 782"/>
+        <text class="d-edge" x="170" y="712" text-anchor="end">pull_request event</text>
+        <text class="d-edge" x="170" y="725" text-anchor="end">opened · synchronize · reopened</text>
+        <path class="d-arrow" d="M330 782 V 672"/>
+        <text class="d-edge" x="342" y="712">check, comment, PR body</text>
+        <text class="d-edge" x="342" y="725">as the installation bot</text>
+        <path class="d-arrow" d="M820 668 V 782"/>
+        <text class="d-edge" x="810" y="712" text-anchor="end">document and diff</text>
+        <text class="d-edge" x="810" y="725" text-anchor="end">read with the reviewer's token</text>
+        <path class="d-arrow" d="M960 782 V 672"/>
+        <text class="d-edge" x="972" y="712">comments, replies, verdict</text>
+        <text class="d-edge" x="972" y="725">posted as that human</text>
+
+        <rect class="d-box" x="60" y="790" width="520" height="68" rx="10"/>
+        <text class="d-title-sm" x="320" y="818" text-anchor="middle">Webhook handler</text>
+        <text class="d-sub" x="320" y="836" text-anchor="middle">verify HMAC · mint installation token · recompute coverage · never fails</text>
+        <rect class="d-box" x="620" y="790" width="520" height="68" rx="10"/>
+        <text class="d-title-sm" x="880" y="818" text-anchor="middle">Auth broker and GitHub proxy</text>
+        <text class="d-sub" x="880" y="836" text-anchor="middle">OAuth code exchange · encrypted cookie · private, no-store</text>
+
+        <path class="d-arrow" d="M880 858 V 950"/>
+        <text class="d-edge" x="870" y="891" text-anchor="end">document, diff, comments</text>
+        <text class="d-edge" x="870" y="904" text-anchor="end">private, no-store</text>
+        <path class="d-arrow" d="M960 950 V 862"/>
+        <text class="d-edge" x="972" y="891">acknowledge, flag, comment,</text>
+        <text class="d-edge" x="972" y="904">request changes or approve</text>
+
+        <rect class="d-box-soft" x="60" y="954" width="340" height="60" rx="26"/>
+        <text class="d-title-sm" x="230" y="990" text-anchor="middle">Human reviewer</text>
+        <rect class="d-box" x="620" y="954" width="520" height="60" rx="10"/>
+        <text class="d-title-sm" x="880" y="978" text-anchor="middle">Guided-review viewer (SPA)</text>
+        <text class="d-sub" x="880" y="996" text-anchor="middle">assumptions first, then the anchored tour</text>
+        <path class="d-arrow" d="M400 984 H 614"/>
+        <text class="d-edge" x="507" y="976" text-anchor="middle">reads, then decides</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>Figure 2. Data flow and trust zones.</b> Rectangles with a solid left bar are stores;
+      rounded rectangles are processes; pill shapes are role-locked agent sessions. The run file is
+      the <em>only</em> thing the two roles share, and it is a file rather than a message channel
+      precisely because they are separate processes that may be minutes or hours apart. The run is
+      opened by <code>compute_diff</code>, which also seeds six standing questions on it, so the
+      Author has work to do before the Reviewer has asked anything.
+    </figcaption>
+  </figure>
+
+  <h3 id="sequence">4.3 Sequence</h3>
+  <p>
+    End to end, in two parts, because the two halves share almost no participants. The first is the
+    distillation on the developer's machine, where the interesting thing is that the two roles start
+    together, read independent things, and meet only through the run file. The second is what happens
+    once the pull request exists.
+  </p>
+
+  <figure class="fig-wide">
+    <div class="fig-scroll">
+      <svg viewBox="0 0 1060 890" role="img" aria-label="Distillation sequence on the developer's machine. The developer asks the coding agent to implement a change. The agent installs the role definitions through the MCP server, then dispatches the author and reviewer roles in one message so they run concurrently. In parallel the reviewer calls compute_diff and receives a run id, hunk index and SHAs, while the author calls compute_diff and derives the same run id, reads the session spine, and answers the seeded standing questions. The reviewer pages the diff and reads the repository house rules. Then the interview: the reviewer records a batch of questions and receives a question id for each, the author answers by id, the reviewer reads the answers back in the author's words, capped at two batches. The reviewer calls submit_document, which applies consent, head drift, interview attestation, anchor resolution and the five checks before writing the document, and sends a closing message back to the session. The reviewer then sends a closing message back to the session.">
+
+        <rect class="d-box" x="25" y="20" width="140" height="52" rx="8"/>
+        <text class="d-title-sm" x="95" y="42" text-anchor="middle">Developer</text>
+        <text class="d-sub" x="95" y="58" text-anchor="middle">human</text>
+        <rect class="d-box" x="185" y="20" width="130" height="52" rx="8"/>
+        <text class="d-title-sm" x="250" y="42" text-anchor="middle">Coding agent</text>
+        <text class="d-sub" x="250" y="58" text-anchor="middle">orchestrator</text>
+        <rect class="d-box" x="385" y="20" width="170" height="52" rx="8"/>
+        <text class="d-title-sm" x="470" y="42" text-anchor="middle">Author role</text>
+        <text class="d-sub" x="470" y="58" text-anchor="middle">transcript only</text>
+        <rect class="d-box-accent" x="610" y="20" width="180" height="52" rx="8"/>
+        <text class="d-title-sm" x="700" y="42" text-anchor="middle">MCP server</text>
+        <text class="d-sub" x="700" y="58" text-anchor="middle">tools + run file</text>
+        <rect class="d-box" x="845" y="20" width="170" height="52" rx="8"/>
+        <text class="d-title-sm" x="930" y="42" text-anchor="middle">Reviewer role</text>
+        <text class="d-sub" x="930" y="58" text-anchor="middle">diff only</text>
+
+        <line class="d-life" x1="95" y1="72" x2="95" y2="870"/>
+        <line class="d-life" x1="250" y1="72" x2="250" y2="870"/>
+        <line class="d-life" x1="470" y1="72" x2="470" y2="870"/>
+        <line class="d-life" x1="700" y1="72" x2="700" y2="870"/>
+        <line class="d-life" x1="930" y1="72" x2="930" y2="870"/>
+
+        <path class="d-arrow" d="M95 108 H 246"/>
+        <text class="d-edge" x="172" y="100" text-anchor="middle">implement the change</text>
+        <path class="d-arrow" d="M250 140 H 696"/>
+        <text class="d-edge" x="473" y="132" text-anchor="middle">get_role_definitions(install: true)</text>
+        <path class="d-arrow-dash" d="M700 170 H 254"/>
+        <text class="d-edge" x="477" y="162" text-anchor="middle">role prompts installed, stale copies swept</text>
+
+        <path class="d-arrow" d="M250 206 H 466"/>
+        <text class="d-edge" x="358" y="198" text-anchor="middle">dispatch</text>
+        <path class="d-arrow" d="M250 232 H 926"/>
+        <text class="d-edge" x="588" y="224" text-anchor="middle">dispatch, same message: both start now</text>
+
+        <rect class="d-par" x="400" y="252" width="610" height="252" rx="6"/>
+        <text class="d-tag" x="412" y="269">PARALLEL · THE TWO READS ARE INDEPENDENT</text>
+
+        <path class="d-arrow" d="M930 292 H 704"/>
+        <text class="d-edge" x="817" y="284" text-anchor="middle">compute_diff(repo, base)</text>
+        <path class="d-arrow-dash" d="M700 318 H 926"/>
+        <text class="d-edge" x="813" y="310" text-anchor="middle">run_id · hunk index · SHAs · consent</text>
+        <path class="d-arrow" d="M470 348 H 696"/>
+        <text class="d-edge" x="583" y="340" text-anchor="middle">compute_diff(repo, base)</text>
+        <path class="d-arrow-dash" d="M700 374 H 474"/>
+        <text class="d-edge" x="587" y="366" text-anchor="middle">the same run_id, the same seeded questions</text>
+
+        <path class="d-arrow" d="M470 404 H 696"/>
+        <text class="d-edge" x="583" y="396" text-anchor="middle">list_transcripts, then get_spine(cursor)</text>
+        <path class="d-arrow-dash" d="M700 434 H 474"/>
+        <text class="d-edge" x="587" y="426" text-anchor="middle">the whole conversation, paged</text>
+        <path class="d-arrow" d="M470 464 H 696"/>
+        <text class="d-edge" x="583" y="456" text-anchor="middle">get_questions → answer_questions(q_id)</text>
+
+        <path class="d-arrow" d="M930 428 H 704"/>
+        <text class="d-edge" x="817" y="420" text-anchor="middle">read_diff(cursor) to the end</text>
+        <path class="d-arrow" d="M930 458 H 704"/>
+        <text class="d-edge" x="817" y="450" text-anchor="middle">get_reviewer_instructions()</text>
+        <path class="d-arrow-dash" d="M700 488 H 926"/>
+        <text class="d-edge" x="813" y="480" text-anchor="middle">house rules, as reference material</text>
+
+        <path class="d-arrow" d="M930 530 H 704"/>
+        <text class="d-edge" x="817" y="522" text-anchor="middle">record_interview_round(batch 1)</text>
+        <path class="d-arrow-dash" d="M700 556 H 926"/>
+        <text class="d-edge" x="813" y="548" text-anchor="middle">a q_id per question, hashed from its text</text>
+        <path class="d-arrow" d="M470 582 H 696"/>
+        <text class="d-edge" x="583" y="574" text-anchor="middle">get_questions → answer_questions</text>
+        <path class="d-arrow" d="M930 608 H 704"/>
+        <text class="d-edge" x="817" y="600" text-anchor="middle">get_answers</text>
+        <path class="d-arrow-dash" d="M700 634 H 926"/>
+        <text class="d-edge" x="813" y="626" text-anchor="middle">the author's own words, with answered_by</text>
+
+        <path class="d-line" d="M1030 516 H 1038 V 646 H 1030"/>
+        <text class="d-edge" x="1022" y="574" text-anchor="end">at most</text>
+        <text class="d-edge" x="1022" y="587" text-anchor="end">2 batches</text>
+
+        <path class="d-arrow-accent" d="M930 668 H 704"/>
+        <text class="d-edge-accent" x="817" y="660" text-anchor="middle">submit_document(run_id, document)</text>
+
+        <rect class="d-box" x="556" y="676" width="350" height="114" rx="8"/>
+        <text class="d-tag" x="574" y="696">THE GATE, IN ORDER</text>
+        <text class="d-sub" x="574" y="714">1 · repository consent</text>
+        <text class="d-sub" x="574" y="730">2 · head drift: run head vs live HEAD</text>
+        <text class="d-sub" x="574" y="746">3 · interview attestation from this run</text>
+        <text class="d-sub" x="574" y="762">4 · every anchor resolves to a known hunk id</text>
+        <text class="d-sub" x="574" y="778">5 · schema · staleness · coverage · refs · redaction</text>
+
+        <path class="d-arrow-dash" d="M700 812 H 926"/>
+        <text class="d-edge" x="813" y="804" text-anchor="middle">ok · wrote .intent/&lt;branch&gt;.json · PR markdown</text>
+        <path class="d-arrow" d="M930 850 H 254"/>
+        <text class="d-edge" x="592" y="829" text-anchor="middle">closing message: unanswered questions,</text>
+        <text class="d-edge" x="592" y="842" text-anchor="middle">not_verified, and defects found cold</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>Figure 3. Distillation, on the developer's machine.</b> Dashed arrows are returns. The
+      parallel band is the change that matters most for latency: before it, the Author could not write
+      anything until the Reviewer had paged the entire diff and composed a batch, because answers are
+      filed by <code>q_id</code> and no ids existed yet. Seeding the standing questions at run open
+      means both sides derive the same ids from the same constant text, so neither waits on the other
+      to start.
+    </figcaption>
+  </figure>
+
+  <figure class="fig-wide">
+    <div class="fig-scroll">
+      <svg viewBox="0 0 860 400" role="img" aria-label="Publish and review sequence. The developer commits, pushes and opens the pull request. GitHub sends a pull_request webhook to the application, which verifies the signature, mints an installation token and recomputes coverage, then posts the check run, summary comment and PR description block as the bot. It then requests the document and diff with the signed-in reviewer's own token, receives them, and posts the reviewer's comments, replies and verdict as that human.">
+        <rect class="d-box" x="20" y="20" width="140" height="52" rx="8"/>
+        <text class="d-title-sm" x="90" y="42" text-anchor="middle">Developer</text>
+        <text class="d-sub" x="90" y="58" text-anchor="middle">human</text>
+        <rect class="d-box" x="325" y="20" width="150" height="52" rx="8"/>
+        <text class="d-title-sm" x="400" y="42" text-anchor="middle">GitHub</text>
+        <text class="d-sub" x="400" y="58" text-anchor="middle">durable state</text>
+        <rect class="d-box-accent" x="640" y="20" width="160" height="52" rx="8"/>
+        <text class="d-title-sm" x="720" y="42" text-anchor="middle">App + reviewer</text>
+        <text class="d-sub" x="720" y="58" text-anchor="middle">Worker, browser</text>
+
+        <line class="d-life" x1="90" y1="72" x2="90" y2="370"/>
+        <line class="d-life" x1="400" y1="72" x2="400" y2="370"/>
+        <line class="d-life" x1="720" y1="72" x2="720" y2="370"/>
+
+        <path class="d-arrow-accent" d="M90 104 H 396"/>
+        <text class="d-edge-accent" x="243" y="96" text-anchor="middle">commit and push, open the pull request</text>
+
+        <path class="d-arrow" d="M400 140 H 716"/>
+        <text class="d-edge" x="558" y="132" text-anchor="middle">pull_request webhook</text>
+
+        <path class="d-arrow" d="M720 162 H 776 V 192 H 726"/>
+        <text class="d-edge" x="712" y="174" text-anchor="end">verify HMAC, mint installation token,</text>
+        <text class="d-edge" x="712" y="187" text-anchor="end">recompute coverage</text>
+
+        <path class="d-arrow" d="M720 228 H 404"/>
+        <text class="d-edge" x="562" y="208" text-anchor="middle">check run, comment, PR description block</text>
+        <text class="d-edge" x="562" y="221" text-anchor="middle">as the installation bot</text>
+
+        <path class="d-arrow" d="M720 272 H 404"/>
+        <text class="d-edge" x="562" y="252" text-anchor="middle">GET document and diff</text>
+        <text class="d-edge" x="562" y="265" text-anchor="middle">with the reviewer's own token</text>
+
+        <path class="d-arrow-dash" d="M400 308 H 716"/>
+        <text class="d-edge" x="558" y="300" text-anchor="middle">document and diff, private no-store</text>
+
+        <path class="d-arrow-accent" d="M720 348 H 404"/>
+        <text class="d-edge-accent" x="562" y="328" text-anchor="middle">comments, replies, verdict</text>
+        <text class="d-edge-accent" x="562" y="341" text-anchor="middle">posted as that human</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>Figure 4. Publish and review, on GitHub.</b> A separate figure because it has almost no
+      participants in common with the distillation: by the time the pull request opens, the two roles
+      and the MCP server are finished. The two identities are the thing to read here. Everything
+      automated posts under a short-lived installation token as the bot; everything a human is
+      accountable for posts under that human's own token.
+    </figcaption>
+  </figure>
+
+  <h3 id="decisions">4.4 Key design decisions</h3>
+
+  <h4>4.4.1 Two roles, enforced by tool registration</h4>
+  <p>
+    A single agent summarising its own session produces a document with no adversary in it. The
+    split gives the Author the transcript and the Reviewer the diff, and lets the Reviewer, which
+    knows nothing about intent, decide what has to be asked. The enforcement matters as much as the
+    split: <code>REVIEW_ASSIST_ROLE</code> determines which tools the server registers, so the other
+    role's tools are not present to be misused. A client-side allowlist alone would be a suggestion.
+  </p>
+  <p>
+    The Reviewer has no filesystem tools at all, which is why the repository's own house rules
+    arrive through <code>get_reviewer_instructions</code> rather than through a file read: handing it
+    a general read tool to pick up <code>.reviewer/</code> would open the door to the transcript, and
+    the whole isolation is that everything it knows about intent it had to ask for.
+  </p>
+
+  <h4>4.4.2 The interview is attested, not narrated</h4>
+  <p>
+    If the Reviewer reported both halves of the conversation, the server could not distinguish a real
+    interview from an invented one. So <code>record_interview_round</code> returns a
+    <code>q_id</code> per question, the Author answers by id through its own tool, and each round
+    records <code>answered_by</code>. A Reviewer transcribing on the Author's behalf is still allowed
+    and still recorded, but marked reviewer-sourced rather than attested. At submit time the server
+    stamps <code>meta.interview</code> from what it witnessed, overriding whatever the document
+    claimed.
+  </p>
+  <p>
+    Rounds are keyed by a hash of the question text, so recording is an upsert: retrying cannot
+    inflate the count, which is what makes the number worth attesting at all.
+  </p>
+
+  <h4>4.4.3 The run handle is content-addressed</h4>
+  <p>
+    <code>run_id = sha256(repo | base_sha | branch)</code>. Two processes that are forbidden from
+    talking derive the same handle from <code>compute_diff</code> alone, and a Reviewer resumed hours
+    later recomputes it rather than remembering it. The head SHA was once part of that hash and was
+    removed: committing the Intent Document is itself a commit, so the correction cycle the protocol
+    promises used to destroy the attestation it was meant to preserve. The head is now state on the
+    run, moved forward on open, with the previous value kept in <code>head_history</code>.
+  </p>
+
+  <h4>4.4.4 Coverage is the load-bearing check</h4>
+  <p>
+    Schema, cross-references and redaction catch malformed documents. Coverage catches
+    <em>dishonest</em> ones. Every tour stop carries anchors pinned to the head SHA; the union of
+    those anchors is compared against the actual diff hunks, and any substantive hunk nobody explained
+    is reported as an unexplained change. This is the check that makes the document falsifiable, and
+    therefore the check that makes the rest of it worth reading.
+  </p>
+  <p>
+    <code>.intent/</code> is excluded from the denominator (a document must not have to explain its
+    own file) and is excluded from the diff <em>at source</em> rather than filtered downstream,
+    because it sorts first in git's path order and would otherwise shift every hunk id by one
+    whenever the document was committed.
+  </p>
+
+  <h4>4.4.5 GitHub is the database</h4>
+  <p>
+    Every durable piece of review state (the document, the diff, the check, the comments, the
+    verdict) already has a home in the pull request. Adding a second home would mean a database, a
+    retention policy, an access-control model that has to agree with GitHub's, and a copy of the
+    customer's code at rest. The application therefore holds nothing: the reviewer's session is an
+    encrypted HTTP-only cookie, repo content is fetched per request with that reviewer's own token,
+    and every response carrying it is <code>private, no-store</code>.
+  </p>
+
+  <h4>4.4.6 Two identities, never blurred</h4>
+  <p>
+    Automation output posts under a short-lived installation token as the Review Assist bot.
+    Comments, replies and the verdict post under the signed-in reviewer's token as that human. A
+    verdict attributed to a bot is worthless; automation attributed to a human is misleading.
+  </p>
+
+  <h4>4.4.7 Consent before the first write</h4>
+  <p>
+    The MCP server is installed once and then present in every repository the developer opens.
+    <code>submit_document</code> therefore refuses on an unknown repository and returns a prompt with
+    three options rather than an error. <code>always</code> and <code>never</code> persist to
+    <code>~/.review-assist/consent.json</code>; <code>once</code> lives in memory for the life of the
+    process and is never written down.
+  </p>
+
+  <h3 id="rejected">4.5 Rejected alternatives</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:26%">Option</th><th style="width:20%">Verdict</th><th>Reasoning</th></tr></thead>
+    <tbody>
+      <tr><td>Browser extension overlaying the native GitHub diff</td><td>Rejected</td>
+        <td>In-place rendering is a real advantage and it still lost: a per-reviewer install is
+          outside the friction budget, and the implementation would be hostage to GitHub's DOM.</td></tr>
+      <tr><td>Pure static viewer on GitHub Pages</td><td>Rejected, design retained</td>
+        <td>Zero infrastructure and the strongest privacy story, but private-repo auth is blocked
+          because GitHub's OAuth token endpoint sends no CORS headers. The alternatives were pasting
+          a personal access token or running a proxy. The stateless-renderer design survives inside
+          the App.</td></tr>
+      <tr><td>A CI action instead of a GitHub App</td><td>Rejected as the default</td>
+        <td>Requires a workflow file, secrets and runner minutes in every repository. The CLI remains
+          available for teams that prefer to run the same checks on their own runners.</td></tr>
+      <tr><td>Server-side generation (the MCP server calls a model)</td><td>Rejected</td>
+        <td>It would need an API key, add cost, make the server non-deterministic, and mean shipping
+          the transcript somewhere. Generation is delegated to the agent already in the room.</td></tr>
+      <tr><td>One agent writing its own document</td><td>Rejected</td>
+        <td>No adversary, no interview to attest, and every claim self-certified. The two-role split
+          exists precisely to make the document cost something to produce.</td></tr>
+      <tr><td>Keeping interview state in memory, keyed by repo path</td><td>Rejected after failure</td>
+        <td>In a workspace holding several repositories the server's working directory and the
+          submitted repo path resolve differently, so rounds were filed under one key and looked up
+          under another. Observed: 21 record calls for 7 questions and four submits of the same
+          document. State moved to a content-addressed file on disk.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ========================================================== 5. STATE OF PLAY -->
+<section id="state">
+  <h2>Section 5</h2>
+  <p class="h2-title">State of play</p>
+
+  <h3>5.1 What is built</h3>
+  <div class="cards">
+    <div class="card"><h4>packages/schema</h4><p>JSON Schema 2020-12 plus mirrored TypeScript types. Frozen at <code>0.1</code>.</p></div>
+    <div class="card"><h4>packages/validator</h4><p>The five checks, the diff parser and hunk indexer, the pager, the markdown renderer, and a CLI.</p></div>
+    <div class="card"><h4>packages/mcp-server</h4><p>Sixteen tools, the role split, the run store, the spine builder, per-agent transcript parsers, consent.</p></div>
+    <div class="card"><h4>apps/github-app/worker</h4><p>Webhook automation, OAuth broker, GitHub proxy. Stateless Cloudflare Worker.</p></div>
+    <div class="card"><h4>apps/github-app/viewer</h4><p>Client-side guided-review SPA, plus the public landing page at reviewassist.dev.</p></div>
+  </div>
+
+  <h3>5.2 Measured behaviour worth knowing</h3>
+  <div class="cards">
+    <div class="card"><span class="metric">1400 s</span><p>Median distillation, run open to submit, over 15 real runs. Range 389 s to 2242 s.</p></div>
+    <div class="card"><span class="metric">4.8%</span><p>Median share of a raw transcript that is actual conversation. The spine keeps that and marks the rest.</p></div>
+    <div class="card"><span class="metric">40 of 41</span><p>Sessions whose entire conversation spine fits in a single tool call, median ~11,900 tokens.</p></div>
+    <div class="card"><span class="metric">2</span><p>Interview batches, capped. Three observed runs opened a third round after the Author had handed back, which nothing could answer.</p></div>
+  </div>
+
+  <h3>5.3 Open questions</h3>
+  <ul>
+    <li><strong>Anchor durability across force-pushes.</strong> Re-anchor by content hash of the hunk
+      rather than by line range? Today a moved head renumbers hunks and costs a re-anchor.</li>
+    <li><strong>Quoting policy in public repositories.</strong> How much of
+      <code>problem.user_asks</code> is safe to quote verbatim by default, and should the redaction
+      level be a per-repo setting?</li>
+    <li><strong>Interview budget.</strong> Fixed at two batches, or budget-based on the size of the
+      change?</li>
+    <li><strong>Cross-repo features.</strong> An additive <code>feature</code> block with a globally
+      unique id stamped into every sibling document, with PR links resolved live at view time.
+      Designed, agreed, not built.</li>
+    <li><strong>Richer authored content.</strong> Optional markdown <code>body</code> per section and
+      mermaid <code>diagrams</code>, which would require a schema bump and the sanitising and
+      sandboxing rules that go with rendering untrusted repository content.</li>
+  </ul>
+
+  <div class="note">
+    <p>
+      Component internals, the full tool and route inventory, data structures, algorithms and failure
+      modes are in the companion document:
+      <a href="review-assist-lld.html" data-artifact="https://claude.ai/artifact/BTBvC7fzBGXjLJz8Hpn8t8">Review Assist low-level design</a>.
+    </p>
+  </div>
+</section>
+
+<footer>
+  Review Assist design document · sources of truth:
+  <a href="../SPEC.md">SPEC.md</a> (the frozen format),
+  <a href="../docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a> (container and component views),
+  <a href="../README.md">README.md</a> (install and usage).
+  Where this document and the code disagree, the code is right.
+</footer>
+
+</main>
+</div>
+<script>
+// The repo copies cross-link by filename, which is right next to each other on disk.
+// The published copies are two separate artifacts, so swap in their URLs there.
+if (location.hostname.endsWith("claude.ai")) {
+  for (const a of document.querySelectorAll("a[data-artifact]")) a.href = a.dataset.artifact;
+}
+</script>
+</body>
+</html>

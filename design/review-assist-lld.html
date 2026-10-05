@@ -1,0 +1,1000 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review Assist Low-Level Design</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="doc.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <marker id="ar" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" class="d-marker"/>
+  </marker>
+  <marker id="ar-a" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" class="d-marker-a"/>
+  </marker>
+</defs></svg>
+
+<div class="page">
+
+<nav class="toc">
+  <div class="toc-title">Contents</div>
+  <a href="#map">1. Component map</a>
+  <a href="#schema">2. Schema package</a>
+  <a href="#validator">3. Validator package</a>
+  <a href="#mcp">4. MCP server</a>
+  <a class="sub" href="#mcp-process">4.1 Process and role gate</a>
+  <a class="sub" href="#mcp-tools">4.2 Tool inventory</a>
+  <a class="sub" href="#mcp-runs">4.3 Run store</a>
+  <a class="sub" href="#mcp-interview">4.4 Interview protocol</a>
+  <a class="sub" href="#mcp-transcript">4.5 Transcript and spine</a>
+  <a class="sub" href="#mcp-diff">4.6 Diff production</a>
+  <a class="sub" href="#mcp-instructions">4.7 House rules</a>
+  <a class="sub" href="#mcp-consent">4.8 Consent</a>
+  <a class="sub" href="#mcp-gate">4.9 The submit gate</a>
+  <a href="#worker">5. Worker</a>
+  <a href="#viewer">6. Viewer</a>
+  <a href="#config">7. Config and release</a>
+  <a href="#failures">8. Failure modes</a>
+  <a href="#testing">9. Testing</a>
+  <a class="doc-switch" href="review-assist-design.html" data-artifact="https://claude.ai/artifact/XzsrWSLTzzHNZCWLuQynMj">&larr; Design document</a>
+</nav>
+
+<main>
+
+<header class="masthead">
+  <p class="eyebrow">Low-level design</p>
+  <h1>Review Assist internals</h1>
+  <p class="standfirst">
+    Component-by-component detail: data structures, algorithms, tool contracts, gates, limits and
+    failure behaviour. The companion to the
+    <a href="review-assist-design.html" data-artifact="https://claude.ai/artifact/XzsrWSLTzzHNZCWLuQynMj">design document</a>, which holds the problem, the
+    requirements and the high-level view.
+  </p>
+  <div class="factbar">
+    <span><b>Repository</b> npm workspaces monorepo</span>
+    <span><b>Language</b> TypeScript, ESM, Node 18+</span>
+    <span><b>Tests</b> vitest</span>
+    <span><b>Read with</b> <a href="review-assist-design.html" data-artifact="https://claude.ai/artifact/XzsrWSLTzzHNZCWLuQynMj">the design document</a></span>
+  </div>
+</header>
+
+<!-- =========================================================== 1. COMPONENT MAP -->
+<section id="map">
+  <h2>Section 1</h2>
+  <p class="h2-title">Component map</p>
+
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:26%">Path</th><th style="width:20%">Artefact</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td class="id-col">packages/schema</td><td><code>@review-assist/schema</code></td>
+        <td>The normative JSON Schema and the mirrored TypeScript types. No logic.</td></tr>
+      <tr><td class="id-col">packages/validator</td><td><code>@review-assist/validator</code> + <code>review-assist</code> CLI</td>
+        <td>Diff parsing and hunk indexing, byte-bounded paging, the five checks, the markdown
+          renderers. Pure functions, no I/O beyond the CLI shell.</td></tr>
+      <tr><td class="id-col">packages/mcp-server</td><td><code>review-assist-mcp</code> on npm, plus a <code>.mcpb</code></td>
+        <td>The distillation host: sixteen tools, the role gate, the run store, transcript discovery
+          and the spine, consent, and the submit gate.</td></tr>
+      <tr><td class="id-col">apps/github-app/worker</td><td>Cloudflare Worker</td>
+        <td>Webhook automation, OAuth broker, GitHub proxy, static asset serving.</td></tr>
+      <tr><td class="id-col">apps/github-app/viewer</td><td>Single-page app</td>
+        <td>Landing page and the guided-review experience. Renders entirely client-side.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>
+    Dependency direction is strictly one way: <code>schema</code> &rarr; <code>validator</code> &rarr;
+    <code>mcp-server</code>. The Worker and the viewer each carry their own compact reimplementation
+    of diff parsing and coverage, deliberately, because neither can import a Node package: the Worker
+    runs on the Workers runtime and the viewer runs in the browser. Those copies are small, marked as
+    mirrors in their source, and covered by tests that pin them to the same behaviour.
+  </p>
+</section>
+
+<!-- ================================================================= 2. SCHEMA -->
+<section id="schema">
+  <h2>Section 2</h2>
+  <p class="h2-title">Schema package</p>
+
+  <p>
+    <code>src/intent-doc.schema.json</code> is normative (JSON Schema draft 2020-12).
+    <code>src/index.ts</code> exports the raw schema object for Ajv plus TypeScript interfaces that
+    mirror it, so the validator, the MCP server and the viewer all speak the same shape without a
+    code generator in the build.
+  </p>
+
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:18%">Section</th><th style="width:30%">Shape</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>meta</code></td>
+        <td><code>id</code>, <code>repo</code>, <code>commit_range{base_sha, head_sha}</code>,
+          <code>session{agent, model, session_ids, started_at, ended_at}</code>,
+          <code>generated_by</code>, <code>generated_at</code>, <code>interview</code></td>
+        <td>Identification and staleness anchoring. Everything in the document anchors to
+          <code>head_sha</code>. <code>interview</code> carries <code>rounds</code>,
+          <code>questions_asked</code>, <code>unresolved</code>, <code>author_attested</code>,
+          <code>unanswered</code>, and is written by the server, not the agent.</td></tr>
+      <tr><td><code>problem</code></td>
+        <td><code>statement</code>, <code>origin</code>, <code>user_asks[]</code>,
+          <code>out_of_scope[]</code></td>
+        <td>Why the session happened. <code>origin</code> is
+          <code>stated_upfront</code> or <code>emerged_during_session</code>, which is how scope
+          drift becomes visible. <code>user_asks</code> is verbatim quotes only.</td></tr>
+      <tr><td><code>assumptions</code></td>
+        <td><code>id</code>, <code>assumption</code>, <code>impact_if_wrong</code>,
+          <code>depends[]</code>, <code>how_to_verify</code>, <code>confidence</code></td>
+        <td>The front page of the review. <code>confidence</code> is
+          <code>confirmed_by_user</code>, <code>grounded_in_code</code> or
+          <code>unverified</code>. <code>depends</code> points at tour stop ids and is
+          cross-reference checked.</td></tr>
+      <tr><td><code>open_questions</code></td>
+        <td><code>id</code>, <code>question</code>, <code>context</code>, <code>raised_by</code></td>
+        <td>Everything the interview could not resolve, including places the Author admitted
+          guessing. Optional as a field, mandatory in spirit.</td></tr>
+      <tr><td><code>approach</code></td>
+        <td><code>requirements[]</code>, <code>trials[]{what, outcome, why_abandoned}</code>,
+          <code>adopted{summary, rationale}</code></td>
+        <td>Why this way. Rejected alternatives get equal billing with the adopted one.</td></tr>
+      <tr><td><code>tour</code></td>
+        <td><code>id</code>, <code>title</code>, <code>role</code>, <code>what</code>,
+          <code>why</code>, <code>anchors[]</code>, <code>parent</code>, <code>provenance</code>,
+          <code>attention</code></td>
+        <td>The guided walk, in narrative order, as a tree through <code>parent</code>. An anchor is
+          <code>{path, hunk{old_start, old_lines, new_start, new_lines}}</code> pinned to the head
+          SHA. <code>role</code> is <code>core</code>, <code>supporting</code> or
+          <code>incidental</code>; incidental stops may batch many small anchors so mechanical noise
+          is covered without bloating the tour.</td></tr>
+      <tr><td><code>verification</code></td>
+        <td><code>performed[]</code>, <code>added_tests[]</code>, <code>not_verified[]</code></td>
+        <td>What was actually exercised. <code>not_verified</code> is the field the viewer surfaces
+          most prominently, because it is the one authors go quiet about.</td></tr>
+      <tr><td><code>diagrams</code></td>
+        <td><code>title</code>, <code>mermaid</code>, <code>caption</code></td>
+        <td>Optional. Rendered natively by GitHub in the PR description and sandboxed in the viewer.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <p>
+      <code>schema_version</code> is <code>"0.1"</code> and frozen. Any change ripples through the
+      validator, the Worker's mirror, the viewer, and every document already committed to a branch,
+      so a format change is an issue before it is a pull request.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================== 3. VALIDATOR -->
+<section id="validator">
+  <h2>Section 3</h2>
+  <p class="h2-title">Validator package</p>
+
+  <h3>3.1 Diff parsing and the hunk index</h3>
+  <p>
+    <code>src/diff.ts</code> parses unified diff text into <code>DiffFile[]</code>, each with
+    <code>DiffHunk</code> entries carrying <code>old_start</code>, <code>old_lines</code>,
+    <code>new_start</code>, <code>new_lines</code> and a <code>substantive</code> flag. A hunk is
+    substantive when at least one added or removed line has non-whitespace content; pure whitespace
+    churn is parsed, counted and then ignored by the default coverage threshold.
+  </p>
+  <p>
+    <code>indexHunks()</code> assigns stable, human-usable ids (<code>H1</code>, <code>H2</code>, …)
+    in git's own path order. Those ids are the entire vocabulary the Reviewer role uses to talk about
+    the change: they appear in <code>compute_diff</code>'s index, in <code>read_diff</code> requests,
+    and in the anchor expansion at submit time. Because one function produces the diff for all three,
+    an id always means what it meant when it was written down.
+  </p>
+
+  <h4>Range overlap</h4>
+  <p>
+    Coverage and anchor matching both reduce to interval overlap on the <em>new</em> side of the
+    diff. <code>newRange(hunk)</code> yields <code>[new_start, new_start + max(1, new_lines) - 1]</code>,
+    and <code>rangesOverlap(a, b)</code> is the standard <code>a0 &le; b1 &amp;&amp; b0 &le; a1</code>.
+    Using an inclusive range with a floor of one line is what makes a pure deletion hunk
+    (<code>new_lines: 0</code>) anchorable at all.
+  </p>
+
+  <h3>3.2 Paging</h3>
+  <p>
+    <code>src/page.ts</code> bounds every response that could otherwise scale with the size of a
+    change. <code>DEFAULT_PAGE_BYTES</code> is 20,000. <code>pageDiff()</code> cuts on hunk
+    boundaries and returns a cursor; a caller follows <code>next_cursor</code> until it is absent.
+    <code>summarizeFiles()</code> produces a per-file overview so a reader can decide what to page in
+    rather than paging everything.
+  </p>
+  <div class="callout">
+    <span class="callout-title">Why the server pages rather than the client truncating</span>
+    <p>
+      MCP does not tell a server what its client's tool-result cap is, so the ceiling here is a
+      guess. It is still worth more than the client's certainty: the server can stop on a hunk
+      boundary and hand back a cursor, where a client can only truncate or spill the whole result to
+      a file. That difference cost a real run: a 234,337-character <code>compute_diff</code> response
+      was spilled whole to disk, and the <code>run_id</code> inside it became unreachable to a
+      Reviewer that has no file access.
+    </p>
+  </div>
+
+  <h3>3.3 The five checks</h3>
+  <p>
+    <code>validate(doc, opts)</code> returns <code>{ok, findings[], coverage?}</code>. Findings carry
+    a <code>check</code>, a <code>severity</code> of <code>error</code> or <code>warning</code>, a
+    message and optionally a path. <code>ok</code> is false when any finding is an error.
+  </p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:8%">#</th><th style="width:16%">Check</th><th>Implementation</th></tr></thead>
+    <tbody>
+      <tr><td class="id-col">1</td><td>Schema</td>
+        <td>Ajv 2020 with <code>allErrors</code>. If the document does not parse structurally the
+          function returns immediately: every other check would be reporting on rubble.</td></tr>
+      <tr><td class="id-col">2</td><td>Staleness</td>
+        <td><code>meta.commit_range.head_sha</code> against the actual head, compared by prefix so a
+          short SHA and a full one agree. Failure message names both and says to regenerate.</td></tr>
+      <tr><td class="id-col">3</td><td>Coverage</td>
+        <td>Flatten every <code>tour[].anchors</code> into <code>{path, range, ref}</code>, walk every
+          diff hunk, and mark both directions. A substantive hunk no anchor overlaps becomes an
+          <strong>unexplained</strong> error; an anchor no hunk overlaps becomes a
+          <strong>dangling</strong> warning. Verification anchors do not count: only tour stops
+          explain. <code>strictCoverage</code> promotes whitespace-only hunks into the denominator.</td></tr>
+      <tr><td class="id-col">4</td><td>Cross-references</td>
+        <td><code>assumptions[].depends</code> entries beginning <code>T</code>, <code>tour[].parent</code>
+          and the id references in <code>tour[].why</code> must resolve to real ids.</td></tr>
+      <tr><td class="id-col">5</td><td>Redaction</td>
+        <td>Every string in the document is walked against six patterns: AWS access key id, GitHub
+          token, Slack token, private key block, generic <code>api_key</code>/<code>secret</code>/
+          <code>password</code>/<code>token</code> assignment, and a connection string carrying
+          credentials. Callers may add more through <code>extraSecretPatterns</code>. A hit is a hard
+          error.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4>The <code>.intent/</code> exclusion, and why it is subtle</h4>
+  <p>
+    The document travels in the same pull request it describes, so it must not have to explain its
+    own file. Coverage excludes <code>.intent/</code> paths from the denominator but deliberately
+    <em>not</em> from anchor matching. An earlier version skipped those files outright, which meant an
+    anchor pointing into one could never be marked as matched, so the dangling pass reported a hunk id
+    taken straight from <code>compute_diff</code>'s own index as a possible stale anchor. The
+    authoritative fix lives upstream in the MCP server, which excludes <code>.intent/</code> from the
+    diff at source; this path now exists for hand-written documents and diffs produced elsewhere.
+  </p>
+
+  <h3>3.4 Renderers and CLI</h3>
+  <p>
+    <code>renderMarkdown()</code> produces the full document view; <code>renderPrDescription()</code>
+    produces the compact block the Worker manages inside the PR body. <code>orderTour()</code> walks
+    the <code>parent</code> tree into display order. The <code>review-assist</code> CLI exposes
+    <code>validate</code> and <code>render</code>, so teams that prefer their own CI can run exactly
+    the checks the App runs.
+  </p>
+</section>
+
+<!-- ============================================================= 4. MCP SERVER -->
+<section id="mcp">
+  <h2>Section 4</h2>
+  <p class="h2-title">MCP server</p>
+
+  <h3 id="mcp-process">4.1 Process model and the role gate</h3>
+  <p>
+    One stdio process per agent session, spawned by the client, bundled by esbuild into a single ESM
+    file with the role markdown and TOML templates inlined as text. It calls no model and makes no
+    network requests. The repository it operates on is <code>REVIEW_ASSIST_REPO</code> or the
+    process working directory.
+  </p>
+  <p>
+    The role gate is four lines and is the whole enforcement mechanism:
+  </p>
+<pre><code>const ACTIVE_ROLE = activeRole();                       // from REVIEW_ASSIST_ROLE
+const registerTool = (name, ...rest) =&gt; {
+  if (ACTIVE_ROLE &amp;&amp; !ROLE_TOOLS[ACTIVE_ROLE].includes(name)) return;
+  return server.tool(name, ...rest);
+};</code></pre>
+  <p>
+    An Author instance therefore has no <code>submit_document</code> to call and a Reviewer instance
+    has no <code>read_transcript</code>, whatever the agent driving it decides to try. Claude Code's
+    subagent <code>tools:</code> allowlist and Codex's per-agent MCP configuration both point at the
+    same constant, generated from <code>ROLE_TOOLS</code> rather than hand-maintained, because the two
+    copies drifted the moment a tool was added.
+  </p>
+
+  <h4>Role definitions on disk</h4>
+  <p>
+    Role prose lives once in <code>agents/_roles/{author,reviewer,questions}.md</code>. Each
+    environment supplies a thin container template that wraps it: YAML frontmatter for Claude Code,
+    TOML for Codex, bare markdown otherwise. <code>get_role_definitions({install: true})</code>
+    renders and writes them to <code>~/.claude/agents/intent-{author,reviewer}.md</code> or
+    <code>~/.codex/agents/intent-{author,reviewer}.toml</code>. The environment is resolved from the
+    MCP <code>initialize</code> handshake's <code>clientInfo.name</code>, with an explicit override and
+    a <code>generic</code> fallback rather than a guess.
+  </p>
+  <p>
+    Installation is user-scoped, never project-scoped, and is preceded by a sweep. Two kinds of
+    residue are removed, for different reasons. <strong>Project-scoped</strong> copies are always
+    wrong: an earlier version told agents to place the files themselves, which landed them in whatever
+    directory the agent happened to be in, and Claude Code prefers a project-scoped subagent over a
+    user-scoped one, so a forgotten copy silently shadows the real definition. <strong>User-scoped</strong>
+    copies are legitimate, so only roles the current bundle no longer contains are removed. The sweep
+    never touches a file that lacks the generated-file marker or one of two legacy signatures, and
+    <code>installRoles</code> writes only when content actually changed, because Claude Code asks the
+    user to restart whenever a definition file moves.
+  </p>
+
+  <h3 id="mcp-tools">4.2 Tool inventory</h3>
+  <p>
+    Sixteen tools. Three belong to neither role and are the orchestrating agent's business; the rest
+    split eight and eight.
+  </p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:22%">Tool</th><th style="width:12%">Role</th><th>Contract</th></tr></thead>
+    <tbody>
+      <tr><td><code>get_role_definitions</code></td><td>orchestrator</td>
+        <td>Render and optionally install the two role definitions for the detected environment.
+          Returns how to run them. A Reviewer already <em>is</em> one, which is why this is not its
+          tool.</td></tr>
+      <tr><td><code>manage_consent</code></td><td>orchestrator</td>
+        <td>List or reset per-repository consent decisions across the machine. Deliberately not the
+          Reviewer's: the over-grant was exercised, by a Reviewer flailing at a submit failure that
+          had nothing to do with consent.</td></tr>
+      <tr><td><code>import_session</code></td><td>orchestrator</td>
+        <td>File a transcript into the repo's store when a session leaves nothing on this machine, for
+          example a cloud session whose transcript lives inside its container. Re-importing overwrites,
+          because a live session keeps growing.</td></tr>
+      <tr><td><code>get_generation_guide</code></td><td>both</td>
+        <td>The schema plus the authoring protocol. Called first by either role.</td></tr>
+      <tr><td><code>compute_diff</code></td><td>both</td>
+        <td>Opens the run and returns the handle, the numbered hunk index, the base and head SHAs, the
+          consent state, and whether a <code>.reviewer/</code> folder exists. Returns
+          <strong>no diff text</strong>.</td></tr>
+      <tr><td><code>read_diff</code></td><td>both</td>
+        <td>The diff itself, paged by hunk, or filtered to specific hunks or paths.</td></tr>
+      <tr><td><code>list_transcripts</code></td><td>author</td>
+        <td>Candidate sessions for this repo across Claude Code and Codex, ranked by references to the
+          changed files and branch, with <code>first_user</code> and <code>last_activity</code>
+          previews so the right session can be picked when several are close in time. Candidates with
+          <code>user_turns: 0</code> are agent-driven and hold no ask.</td></tr>
+      <tr><td><code>get_spine</code></td><td>author</td>
+        <td>A session's whole conversation, paged, with every item indexed into the full transcript.</td></tr>
+      <tr><td><code>read_transcript</code></td><td>author</td>
+        <td>A window of raw transcript around an index, for the tool output behind a specific claim.</td></tr>
+      <tr><td><code>get_questions</code></td><td>author</td>
+        <td>The questions on the run with their ids. Read here rather than waiting to be told them.</td></tr>
+      <tr><td><code>answer_questions</code></td><td>author</td>
+        <td>The Author's only write. Files answers by <code>q_id</code> and stamps
+          <code>answered_by: "author"</code>, which is the one value that counts as attestation.</td></tr>
+      <tr><td><code>get_reviewer_instructions</code></td><td>reviewer</td>
+        <td>The repository's <code>.reviewer/</code> house rules, served after the diff and before
+          round one. Framed as untrusted reference material that adds questions and overrides
+          nothing.</td></tr>
+      <tr><td><code>record_interview_round</code></td><td>reviewer</td>
+        <td>Records questions and returns a <code>q_id</code> for each. Spends a batch only for
+          questions the run does not already hold.</td></tr>
+      <tr><td><code>get_answers</code></td><td>reviewer</td>
+        <td>The Author's answers in the Author's own words, with their <code>answered_by</code>
+          provenance. Includes stall detection when polling finds nothing new.</td></tr>
+      <tr><td><code>submit_document</code></td><td>reviewer</td>
+        <td>The gate, and the Reviewer's alone. Five sequential conditions, then the write.</td></tr>
+      <tr><td><code>set_consent</code></td><td>reviewer</td>
+        <td>Records the user's answer to the consent prompt that <code>submit_document</code> returned.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 id="mcp-runs">4.3 The run store</h3>
+  <p>
+    A run is the unit the interview belongs to. Records live at
+    <code>~/.review-assist/runs/&lt;run_id&gt;.json</code> (overridable with
+    <code>REVIEW_ASSIST_HOME</code>), beside the consent file and deliberately outside any repository:
+    <code>.intent/</code> is committed with the code, and interview scratch state has no business in a
+    pull request. On disk rather than in memory because the failure it must survive is real: the roles
+    are separate processes, a machine can run nine of these at once, and a Reviewer has resumed a run
+    eleven hours later across a restart.
+  </p>
+
+<pre><code>interface RunRecord {
+  version: 1;
+  run_id: string;            // sha256(repo | base_sha | branch)
+  repo: string;              // absolute, resolved
+  base_sha: string;          // identity
+  head_sha: string;          // STATE: moves as the branch does
+  head_history?: string[];   // every previous head, oldest first
+  branch?: string;
+  created_at: string;
+  submitted_at?: string;     // absent until a document is written
+  document_path?: string;
+  updated_at?: string;       // what the sweep measures
+  rounds: Record&lt;string, InterviewRound&gt;;   // keyed by question hash
+  batches?: number;          // batches of NEW questions spent, cap 2
+}
+
+interface InterviewRound {
+  q_id: string;              // hash of the normalised question text
+  question: string;
+  answer: string;            // empty until someone answers
+  resolved: boolean;
+  answered_by?: "author" | "reviewer";   // only "author" is attestation
+  seeded?: boolean;          // standing question, not an interview round
+  at: string;
+}</code></pre>
+
+  <figure>
+    <div class="fig-scroll">
+      <svg viewBox="0 0 1100 300" role="img" aria-label="Run lifecycle. compute_diff opens a run. While open, the branch moving updates the head and grows head history while keeping the interview, and renumbering the hunk ids. A passing submit_document marks the run submitted. A submitted run can be resubmitted against the same run id with its interview intact. A submitted run is swept seven days after its last activity; an open run is swept after thirty days with no activity.">
+        <rect class="d-box-soft" x="40" y="100" width="170" height="56" rx="10"/>
+        <text class="d-title-sm" x="125" y="133" text-anchor="middle">no run</text>
+
+        <rect class="d-box" x="290" y="100" width="170" height="56" rx="10"/>
+        <text class="d-title-sm" x="375" y="133" text-anchor="middle">open</text>
+
+        <rect class="d-box-accent" x="620" y="100" width="170" height="56" rx="10"/>
+        <text class="d-title-sm" x="705" y="133" text-anchor="middle">submitted</text>
+
+        <rect class="d-box-soft" x="880" y="100" width="170" height="56" rx="10"/>
+        <text class="d-title-sm" x="965" y="133" text-anchor="middle">swept</text>
+
+        <path class="d-arrow" d="M210 128 H 286"/>
+        <text class="d-edge" x="248" y="104" text-anchor="middle">compute_diff</text>
+        <text class="d-edge" x="248" y="117" text-anchor="middle">opens the run</text>
+
+        <path class="d-arrow" d="M330 100 C 330 54, 420 54, 420 96"/>
+        <text class="d-edge" x="375" y="36" text-anchor="middle">the branch moves</text>
+        <text class="d-edge" x="375" y="49" text-anchor="middle">head_history grows · interview kept</text>
+
+        <path class="d-arrow" d="M460 128 H 616"/>
+        <text class="d-edge" x="538" y="104" text-anchor="middle">submit_document passes</text>
+        <text class="d-edge" x="538" y="117" text-anchor="middle">markSubmitted(path)</text>
+
+        <path class="d-arrow" d="M790 128 H 876"/>
+        <text class="d-edge" x="833" y="104" text-anchor="middle">7 days</text>
+        <text class="d-edge" x="833" y="117" text-anchor="middle">after last touch</text>
+
+        <path class="d-arrow" d="M705 156 V 196 H 424 V 160"/>
+        <text class="d-edge" x="560" y="212" text-anchor="middle">resubmit: same run_id, interview intact, re-anchor if the head moved</text>
+
+        <path class="d-arrow" d="M330 156 V 240 H 965 V 160"/>
+        <text class="d-edge" x="645" y="256" text-anchor="middle">30 days with no activity</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>Figure 5. Run lifecycle.</b> The self-loop is the decision that matters: the head SHA used to
+      be part of the run id, so every commit minted a new run, the interview recorded against the old
+      id became unreachable, and <code>openRun</code> silently recreated an empty record under the new
+      handle. Nothing errored. Committing the Intent Document is itself a commit, so the correction
+      cycle destroyed the attestation it was meant to preserve.
+    </figcaption>
+  </figure>
+
+  <h4>Sweeping</h4>
+  <p>
+    <code>openRun</code> sweeps before it opens. Age is measured from <code>updated_at</code>, not
+    <code>created_at</code>, because a single run now follows a branch from its first
+    <code>compute_diff</code> to its merge, and a branch worked on for a month is a live run rather
+    than an abandoned one. Open runs expire after 30 days of silence; submitted runs after 7, which is
+    long enough to fix a finding spotted after the fact and short enough that finished work does not
+    accumulate.
+  </p>
+
+  <h3 id="mcp-interview">4.4 The interview protocol</h3>
+
+  <h4>Question identity</h4>
+  <p>
+    <code>q_id</code> is a hash of the normalised question text. Three properties fall out of that
+    single choice:
+  </p>
+  <ul>
+    <li><strong>Recording is an upsert.</strong> Re-recording a question the run already holds replaces
+      it and does not spend a batch, so retrying an interview cannot inflate the count. That is what
+      makes <code>meta.interview</code> worth attesting: it reports distinct questions asked, not tool
+      calls made.</li>
+    <li><strong>Both roles derive the same id without speaking.</strong> The standing questions are
+      canonical constants, so the Author can answer them before the Reviewer has recorded anything.</li>
+    <li><strong>Answers cannot be misfiled.</strong> An answer arrives with the id of the question it
+      answers, not a position in a list.</li>
+  </ul>
+
+  <h4>The standing set</h4>
+  <p>
+    <code>openRun</code> seeds six questions that do not depend on the diff: the plan question (what
+    was agreed, what was learned, how it ended), plus the five that guard fields a diff cannot fill,
+    covering the verbatim ask, what was tried and abandoned, the assumptions about the world, what is
+    genuinely incidental, and what was actually run versus never exercised. Seeding is additive and
+    idempotent: a question already present keeps its answer, so backfilling an in-flight run cannot
+    erase an attestation.
+  </p>
+  <p>
+    What is deliberately <em>not</em> seeded is anything needing the hunk index. The incidental
+    question is asked by file, because otherwise the Author would have to page the diff to answer it,
+    which is the Reviewer's pass and puts the serialisation straight back. Assigning hunk ids to plan
+    items stays the Reviewer's own read of the change. An unanswered seeded question is not counted as
+    an interview round, so <code>rounds: 0</code> still means no Author ever ran.
+  </p>
+  <div class="note">
+    <p>
+      The wording of the standing questions is canonical in <code>runs.ts</code>, not in the role
+      markdown, because the id is a hash of the text: prose that drifts by a word produces a question
+      the Author cannot answer by id. The role file describes what each one guards.
+    </p>
+  </div>
+
+  <h4>Batches and stalls</h4>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:22%">Constant</th><th style="width:12%">Value</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td><code>MAX_BATCHES</code></td><td>2</td>
+        <td>Batches of <em>new</em> questions. Re-recording an existing question is a free retry.
+          Three observed runs opened a third round after the Author had already handed back, which
+          nothing can answer, and each burned an hour of the Reviewer polling for a reply that had
+          nowhere to come from.</td></tr>
+      <tr><td><code>STALL_POLLS</code></td><td>8</td>
+        <td><code>get_answers</code> tracks polls per run. Eight polls with unanswered questions and no
+          new answers is reported as a stall rather than left to spin.</td></tr>
+      <tr><td><code>STALL_MS</code></td><td>60,000</td>
+        <td>The same judgement on a time basis, for a Reviewer polling slowly.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4>Attestation</h4>
+  <p>
+    <code>summarizeRun()</code> produces the counts; <code>attestedInterview()</code> narrows them to
+    the fields the schema declares. At submit time the server overwrites
+    <code>meta.interview</code> with that value, so a document cannot claim a rigour it did not have.
+    A Reviewer transcribing an answer on the Author's behalf is still allowed and still recorded, but
+    lands as <code>answered_by: "reviewer"</code>, which is one role's account of a conversation the
+    server never witnessed.
+  </p>
+
+  <h3 id="mcp-transcript">4.5 Transcript discovery and the spine</h3>
+  <p>
+    Locating a transcript and reading one vary along different axes, so <code>transcript/sources.ts</code>
+    locates and one parser per agent reads, and they compose rather than nest. A cloud session is
+    stored by one system but written in another's format, which is exactly the case that breaks a
+    single inlined function.
+  </p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:20%">Source</th><th>Where it looks</th></tr></thead>
+    <tbody>
+      <tr><td><code>claude-code</code></td><td>The Claude config directory (<code>CLAUDE_CONFIG_DIR</code> aware), project-keyed, walking ancestor directories so a session started in a subdirectory is still found.</td></tr>
+      <tr><td><code>codex</code></td><td><code>CODEX_HOME</code> or the default Codex session store.</td></tr>
+      <tr><td><code>cowork-local</code></td><td>Cowork's local store, which holds Claude Code-format sessions.</td></tr>
+      <tr><td><code>exported</code></td><td>Sessions filed by <code>import_session</code> for runs whose transcript never existed on this machine.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>
+    Candidates are ranked by references to the changed file basenames and the branch name, with
+    recency as the tiebreak, and each carries a bounded preview of its first user turn so the Author
+    can recognise <em>this</em> session rather than the most recent one.
+  </p>
+
+  <h4>The spine</h4>
+  <p>
+    A raw transcript is roughly 95% machinery. Rather than searching it, <code>spine.ts</code> reads
+    all of it and keeps the parts a human wrote or an agent said, marking rather than deleting the
+    rest:
+  </p>
+  <ul>
+    <li><strong>Both sides of the conversation.</strong> Roughly two thirds of the prose is the agent's,
+      and it has to be: half a negotiation is the agent's side, and "yes, do that" means nothing
+      without the proposal it answers. Of 23 trials found across seven real documents, only 6 were
+      user redirects.</li>
+    <li><strong>Structured questions with the answer chosen,</strong> because scope decisions often
+      arrive as tool calls rather than prose.</li>
+    <li><strong>Commands and edits as one-liners:</strong> what ran and what was touched, without the
+      output that makes a transcript enormous.</li>
+    <li><strong>Plan revisions as deltas,</strong> where the session kept a todo list. One session
+      revised its list 31 times across 84 items, and a dropped item is an approach being abandoned.</li>
+    <li><strong>Gaps, sparingly.</strong> Items carry their own transcript indices, so a turn at 2
+      followed by one at 9 already says 3 to 8 were elided. Only a gap holding a failure, or long
+      enough to be a phase of work, is named.</li>
+  </ul>
+  <p>
+    Nothing is dropped to make it fit. An earlier version deleted assistant turns once the spine passed
+    600&nbsp;KB, which is the worst possible thing to lose. The response is bounded by paging instead,
+    cut on item boundaries, so a large session costs more calls rather than less material. The spine of
+    40 of 41 measured sessions fits in a single call, median around 11,900 tokens, and being complete it
+    removes the failure mode retrieval can never rule out: an answer the Author simply did not find.
+  </p>
+
+  <h3 id="mcp-diff">4.6 Diff production</h3>
+  <p>
+    <code>git.ts</code> shells out to git, read-only, with a 64&nbsp;MB buffer.
+    <code>computeDiff()</code> resolves both refs, then runs a three-dot diff
+    (<code>base...head</code>) so the result is the branch's own changes since the merge base rather
+    than everything that happened on the base meanwhile.
+  </p>
+  <p>
+    <code>.intent/</code> is excluded here, at the single place a diff is produced, and this is
+    load-bearing. From a branch's second commit onward the document arrives as a whole-file addition
+    (630 lines on the run that prompted the fix). It sorts first in git's path order, so it landed as
+    <code>H1</code> and shifted every other hunk id by one whenever the document was committed,
+    silently misanchoring any regeneration. Excluding it at source means <code>compute_diff</code>,
+    <code>read_diff</code> and <code>submit_document</code> all see the same diff, so the ids handed
+    out, the text paged and the diff validated against cannot disagree, and counting hunks in the raw
+    diff still reproduces the index.
+  </p>
+
+  <h3 id="mcp-instructions">4.7 Repository house rules</h3>
+  <p>
+    <code>&lt;repo&gt;/.reviewer/</code> holds markdown the repository wants asked about every change:
+    an invariant a past incident bought, a migration that must be paired with a backfill, a directory
+    whose churn is never incidental. It is served by <code>get_reviewer_instructions</code>, to the
+    Reviewer alone, after the diff and before round one.
+  </p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:26%">Property</th><th>Value and reason</th></tr></thead>
+    <tbody>
+      <tr><td>Readable extensions</td><td><code>.md</code>, <code>.markdown</code>, <code>.txt</code>. Anything else is listed but not read.</td></tr>
+      <tr><td>Limits</td><td>50 files, depth 3, 64&nbsp;KB per file, plus the caller's byte budget. House rules are hand-written, so these bound a mistake rather than a workload.</td></tr>
+      <tr><td>Served through a tool</td><td>The Reviewer has no filesystem tools by design. Granting it a read tool to pick up house rules would open the door to the transcript, so the folder arrives bounded, like the diff.</td></tr>
+      <tr><td>Trust level</td><td>Untrusted repository content: a fork's pull request can edit it. Both the tool description and the role prompt frame it as reference material that adds questions and cannot override the protocol, the schema or the sourcing rules.</td></tr>
+      <tr><td>Coverage</td><td>Unlike <code>.intent/</code>, <code>.reviewer/</code> stays inside the coverage denominator. A change to the house rules is an ordinary change the document should explain.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 id="mcp-consent">4.8 Consent</h3>
+  <p>
+    <code>~/.review-assist/consent.json</code>, keyed by resolved absolute repository path, honouring
+    <code>REVIEW_ASSIST_HOME</code>. <code>enabled</code> and <code>disabled</code> persist;
+    <code>once</code> is a <code>Set</code> in memory for the life of the process and is never written
+    down. A corrupt or unreadable file is treated as empty rather than crashing the flow, which fails
+    toward asking again rather than toward writing without permission.
+  </p>
+
+  <h3 id="mcp-gate">4.9 The submit gate</h3>
+  <p>
+    <code>submit_document</code> is the only tool that writes into the repository, and it is the
+    Reviewer's alone. Five conditions apply in order. Each returns a typed, actionable payload rather
+    than a bare error, and no failing path writes anything.
+  </p>
+
+  <figure class="fig-wide">
+    <div class="fig-scroll">
+      <svg viewBox="0 0 960 360" role="img" aria-label="The submit_document gate chain. A submission passes in order through repository consent, head drift, interview attestation, anchor resolution and the validator's five checks before the document is written to .intent slash branch dot json. Consent failure returns a prompt with three options; head drift returns both SHAs and the instruction to re-anchor; missing attestation reports that no interview was recorded on this run; unknown anchors return the valid hunk ids; validator failure returns the findings and the uncovered hunk ids. On every failing path nothing is written and the run with its attested interview survives.">
+
+        <text class="d-edge" x="85" y="66" text-anchor="middle">submit_document</text>
+        <text class="d-tag" x="85" y="84" text-anchor="middle">REVIEWER ONLY</text>
+        <path class="d-arrow" d="M85 94 V 122"/>
+
+        <rect class="d-box" x="15" y="126" width="140" height="80" rx="10"/>
+        <text class="d-tag" x="85" y="148" text-anchor="middle">GATE 1</text>
+        <text class="d-title-sm" x="85" y="168" text-anchor="middle">Consent</text>
+        <text class="d-sub" x="85" y="186" text-anchor="middle">always | once | never</text>
+
+        <rect class="d-box" x="173" y="126" width="140" height="80" rx="10"/>
+        <text class="d-tag" x="243" y="148" text-anchor="middle">GATE 2</text>
+        <text class="d-title-sm" x="243" y="168" text-anchor="middle">Head drift</text>
+        <text class="d-sub" x="243" y="186" text-anchor="middle">run head = live HEAD</text>
+
+        <rect class="d-box" x="331" y="126" width="140" height="80" rx="10"/>
+        <text class="d-tag" x="401" y="148" text-anchor="middle">GATE 3</text>
+        <text class="d-title-sm" x="401" y="168" text-anchor="middle">Attestation</text>
+        <text class="d-sub" x="401" y="186" text-anchor="middle">rounds &gt; 0 on this run</text>
+
+        <rect class="d-box" x="489" y="126" width="140" height="80" rx="10"/>
+        <text class="d-tag" x="559" y="148" text-anchor="middle">GATE 4</text>
+        <text class="d-title-sm" x="559" y="168" text-anchor="middle">Anchors</text>
+        <text class="d-sub" x="559" y="186" text-anchor="middle">every hunk id known</text>
+
+        <rect class="d-box" x="647" y="126" width="140" height="80" rx="10"/>
+        <text class="d-tag" x="717" y="148" text-anchor="middle">GATE 5</text>
+        <text class="d-title-sm" x="717" y="168" text-anchor="middle">Validator</text>
+        <text class="d-sub" x="717" y="186" text-anchor="middle">the five checks</text>
+
+        <rect class="d-box-accent" x="805" y="126" width="140" height="80" rx="10"/>
+        <text class="d-tag" x="875" y="148" text-anchor="middle">WRITE</text>
+        <text class="d-title-sm" x="875" y="168" text-anchor="middle">Document</text>
+        <text class="d-sub" x="875" y="186" text-anchor="middle">.intent/&lt;branch&gt;.json</text>
+
+        <path class="d-arrow" d="M155 166 H 171"/>
+        <path class="d-arrow" d="M313 166 H 329"/>
+        <path class="d-arrow" d="M471 166 H 487"/>
+        <path class="d-arrow" d="M629 166 H 645"/>
+        <path class="d-arrow-accent" d="M787 166 H 803"/>
+
+        <path class="d-arrow" d="M85 206 V 240"/>
+        <text class="d-edge" x="85" y="258" text-anchor="middle">consent prompt,</text>
+        <text class="d-edge" x="85" y="271" text-anchor="middle">three options, then retry</text>
+        <path class="d-arrow" d="M243 206 V 240"/>
+        <text class="d-edge" x="243" y="258" text-anchor="middle">run_head vs live_head,</text>
+        <text class="d-edge" x="243" y="271" text-anchor="middle">re-anchor and resubmit</text>
+        <path class="d-arrow" d="M401 206 V 240"/>
+        <text class="d-edge" x="401" y="258" text-anchor="middle">no interview recorded</text>
+        <text class="d-edge" x="401" y="271" text-anchor="middle">against this run</text>
+        <path class="d-arrow" d="M559 206 V 240"/>
+        <text class="d-edge" x="559" y="258" text-anchor="middle">unknown hunk ids,</text>
+        <text class="d-edge" x="559" y="271" text-anchor="middle">plus every valid id</text>
+        <path class="d-arrow" d="M717 206 V 240"/>
+        <text class="d-edge" x="717" y="258" text-anchor="middle">findings[] plus</text>
+        <text class="d-edge" x="717" y="271" text-anchor="middle">uncovered_hunk_ids</text>
+
+        <rect class="d-zone" x="15" y="292" width="772" height="40" rx="8"/>
+        <text class="d-sub" x="401" y="317" text-anchor="middle">nothing is written · the run and its attested interview survive · fix and resubmit</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>Figure 6. The submit gate.</b> Order is deliberate. Consent comes first because a repository
+      that opted out should never have its diff recomputed. Head drift comes before validation because
+      a moved branch is a <em>different change</em>, and catching it by name is better than surfacing it
+      as a staleness finding after the whole document has been re-emitted. The write is last and
+      unconditional on everything before it. Gate 5 is the validator pass named in
+      <a href="#validator">section 3.3</a>: schema, staleness, coverage, cross-references and redaction.
+    </figcaption>
+  </figure>
+
+  <h4>Between gate 4 and gate 5</h4>
+  <p>
+    Anchors in the submitted document may be written as hunk ids, which <code>expandAnchors()</code>
+    resolves against a diff recomputed from the run's own SHAs by the same function that handed the ids
+    out. Unknown ids fail with the full list of valid ones and a hint to re-read them rather than guess.
+    Only then does <code>validate()</code> run, against that same diff and the run's head SHA. On
+    success the server also returns the rendered PR description, the coverage report, the attested
+    interview, and any warnings, and marks the run submitted while leaving it open.
+  </p>
+</section>
+
+<!-- ================================================================= 5. WORKER -->
+<section id="worker">
+  <h2>Section 5</h2>
+  <p class="h2-title">Worker</p>
+
+  <h3>5.1 Routing</h3>
+  <p>
+    One <code>fetch</code> handler. A host-only redirect runs before anything else: the session cookie
+    carries no <code>Domain</code>, so a co-equal <code>www</code> origin would hand signed-in users a
+    second session and loop them through OAuth. Everything that is not an API path falls through to the
+    static SPA, which is edge-cacheable because it carries no repository content.
+  </p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:14%">Group</th><th style="width:26%">Route</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>Automation</td><td><code>POST /api/webhook</code></td><td>Signature check, then a fast 202 with the work deferred.</td></tr>
+      <tr><td rowspan="4">Auth</td><td><code>GET /api/login</code></td><td>Redirect to GitHub authorize with a signed state cookie. No <code>scope</code> parameter: access is fine-grained on the App.</td></tr>
+      <tr><td><code>GET /api/callback</code></td><td>Server-side code exchange (GitHub's token endpoint sends no CORS headers, which is the entire reason a server exists here), then seal the session cookie.</td></tr>
+      <tr><td><code>GET /api/logout</code></td><td>Clear the cookie.</td></tr>
+      <tr><td><code>GET /api/me</code></td><td>Who is signed in, for the SPA's first render.</td></tr>
+      <tr><td rowspan="2">Read</td><td><code>GET /api/document</code></td><td>The Intent Document and the PR diff, fetched with the reviewer's token, served <code>private, no-store</code>.</td></tr>
+      <tr><td><code>GET /api/comments</code></td><td>Existing review comments for the PR.</td></tr>
+      <tr><td rowspan="4">Write</td><td><code>POST /api/comments</code></td><td>A new line-anchored review comment, as the signed-in human.</td></tr>
+      <tr><td><code>POST /api/comments/reply</code></td><td>A reply in an existing thread.</td></tr>
+      <tr><td><code>POST /api/issue-comment</code></td><td>A PR-level comment, used when a reviewer flags an assumption.</td></tr>
+      <tr><td><code>POST /api/review</code></td><td>The verdict: approve or request changes.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>5.2 The webhook pipeline</h3>
+  <ol>
+    <li><strong>Verify.</strong> HMAC-SHA256 over the raw body against
+      <code>x-hub-signature-256</code>, compared in constant time. An unsigned or mismatched request is
+      a 401 before anything is parsed.</li>
+    <li><strong>Filter.</strong> <code>ping</code> answers <code>pong</code>. Only
+      <code>pull_request</code> events with action <code>opened</code>, <code>synchronize</code> or
+      <code>reopened</code> proceed; everything else is acknowledged and ignored.</li>
+    <li><strong>Defer.</strong> Return <code>202</code> immediately and move the GitHub round-trips
+      into <code>ctx.waitUntil</code>, so the handler never risks the webhook timeout.</li>
+    <li><strong>Mint.</strong> Sign an App JWT and exchange it for a short-lived installation token.</li>
+    <li><strong>Read.</strong> Fetch <code>.intent/&lt;branch&gt;.json</code> at the PR head SHA as raw
+      content, with the branch name slash-flattened, and the <code>base...head</code> comparison as a
+      diff.</li>
+    <li><strong>Recompute coverage.</strong> A compact mirror of the validator's coverage pass:
+      substantive hunks only, <code>.intent/</code> excluded, anchors from tour stops, interval overlap.
+      The webhook computes coverage <em>only</em>; schema, staleness, cross-reference and redaction are
+      local <code>submit_document</code> concerns.</li>
+    <li><strong>Write three things,</strong> all as the bot: a sticky summary comment (upserted by
+      searching for an HTML-comment marker in the existing comments), a check run, and a managed block
+      in the PR description delimited by start and end markers so the author's own prose is never
+      touched.</li>
+  </ol>
+  <div class="note">
+    <p>
+      The check run never concludes <code>failure</code>. A missing document or incomplete coverage is
+      <code>neutral</code>; full coverage is <code>success</code>. The title carries the count, for
+      example <code>4/5 changes explained</code>, and <code>details_url</code> deep-links into the
+      guided review.
+    </p>
+  </div>
+
+  <h3>5.3 Sessions</h3>
+  <p>
+    The reviewer's GitHub token lives only inside an encrypted, HTTP-only cookie. The key is
+    AES-GCM derived from a SHA-256 digest of <code>SESSION_SECRET</code>; the cookie value is
+    <code>base64url(iv).base64url(ciphertext)</code>. Decrypting it is the entire session lookup, which
+    is what lets the whole application run with zero state. A stored <code>exp</code> is checked on
+    open, and any failure to decrypt returns null rather than throwing, so a rotated secret logs people
+    out instead of breaking the service.
+  </p>
+  <p>
+    The OAuth <code>state</code> is a second short-lived cookie carrying the return path and a random
+    nonce, echoed back and validated in the callback as the CSRF guard.
+  </p>
+
+  <h3>5.4 Installation tokens</h3>
+  <p>
+    To act as the bot the Worker signs an App JWT with RS256 (<code>iat</code> backdated 60 seconds for
+    clock skew, <code>exp</code> at 9 minutes, under GitHub's 10-minute maximum) and exchanges it at
+    <code>POST /app/installations/{id}/access_tokens</code>. WebCrypto's <code>importKey</code> accepts
+    only PKCS#8 for RSA while GitHub issues PKCS#1 keys, so a <code>BEGIN RSA PRIVATE KEY</code> block
+    is wrapped into PKCS#8 before import and a <code>BEGIN PRIVATE KEY</code> block is used as-is.
+  </p>
+</section>
+
+<!-- ================================================================= 6. VIEWER -->
+<section id="viewer">
+  <h2>Section 6</h2>
+  <p class="h2-title">Viewer</p>
+  <p>
+    A single-page app with a hash route of the form
+    <code>#&lt;owner&gt;/&lt;repo&gt;/pull/&lt;number&gt;</code>, which is why the deep link in the
+    check and the comment works without any server-side routing. Boot reads
+    <code>/api/me</code>, then <code>/api/document</code>, then renders.
+  </p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:22%">Surface</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td>Overview</td><td><code>problem</code> and <code>out_of_scope</code>, then assumptions
+        with per-assumption acknowledge and flag controls, open questions, and the approach summary
+        with its trials. Flagging an assumption posts a PR-level comment as the reviewer. The goal is
+        that the framing can be rejected in about two minutes without reading code.</td></tr>
+      <tr><td>Tour</td><td>Stops in narrative order (<code>orderTour</code> walks the
+        <code>parent</code> tree), each rendering its own anchored hunks with keyboard next and
+        previous. <code>attention</code> notes surface inline. <code>incidental</code> stops collapse
+        by default.</td></tr>
+      <tr><td>Coverage</td><td>Unexplained hunks are badged, never hidden. The viewer computes this
+        with its own copy of the parse-and-overlap pass so the badge does not depend on a server
+        round-trip.</td></tr>
+      <tr><td>Verification</td><td>What was performed, what tests were added, and
+        <code>not_verified</code> given prominence rather than a footnote.</td></tr>
+      <tr><td>Commenting</td><td>Line-range selection inside a rendered hunk, threads with replies, and
+        the verdict composer. Every write goes through the Worker with the reviewer's own token.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>
+    The same document also serves the public landing page, its FAQ structured data, and the release
+    and blog routes, which is why the file is one large hand-written SPA rather than a framework build:
+    the demo on the landing page calls the same render function the real viewer does, so a screenshot
+    cannot go stale.
+  </p>
+</section>
+
+<!-- ======================================================= 7. CONFIG AND RELEASE -->
+<section id="config">
+  <h2>Section 7</h2>
+  <p class="h2-title">Configuration and release</p>
+
+  <h3>7.1 Environment</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:32%">Variable</th><th style="width:14%">Side</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>REVIEW_ASSIST_ROLE</code></td><td>MCP</td><td><code>author</code> or <code>reviewer</code>. Decides which tools are registered. Unset means all of them.</td></tr>
+      <tr><td><code>REVIEW_ASSIST_REPO</code></td><td>MCP</td><td>Absolute repository path. Defaults to the process working directory.</td></tr>
+      <tr><td><code>REVIEW_ASSIST_HOME</code></td><td>MCP</td><td>Overrides <code>~/.review-assist</code> for runs and consent. Used by tests and by anyone sandboxing the server.</td></tr>
+      <tr><td><code>REVIEW_ASSIST_MAX_RESULT_BYTES</code></td><td>MCP</td><td>Raises the per-result ceiling when a client is known to allow more. Floor 2,000; default 20,000.</td></tr>
+      <tr><td><code>CLAUDE_CONFIG_DIR</code>, <code>CODEX_HOME</code></td><td>MCP</td><td>Read, not set, when locating transcripts.</td></tr>
+      <tr><td><code>GITHUB_CLIENT_ID</code>, <code>GITHUB_CLIENT_SECRET</code></td><td>Worker</td><td>User-to-server OAuth for the reviewer's session.</td></tr>
+      <tr><td><code>SESSION_SECRET</code></td><td>Worker</td><td>Key material for the AES-GCM session cookie. Rotating it logs everyone out and nothing else.</td></tr>
+      <tr><td><code>GITHUB_APP_ID</code>, <code>GITHUB_APP_PRIVATE_KEY</code></td><td>Worker</td><td>Server-to-server identity for automation output.</td></tr>
+      <tr><td><code>GITHUB_WEBHOOK_SECRET</code></td><td>Worker</td><td>HMAC key for webhook signature verification.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>7.2 Build</h3>
+  <ul>
+    <li><strong>MCP server:</strong> <code>sync-version</code> then esbuild to a single ESM file
+      targeting Node 18, with <code>--loader:.md=text --loader:.toml=text</code> so the role templates
+      are authored as real files and inlined at build time. The version is read from
+      <code>package.json</code> at runtime rather than written as a literal, because a hand-maintained
+      copy drifts the moment <code>npm version</code> runs.</li>
+    <li><strong>Desktop bundle:</strong> <code>mcpb pack</code> produces
+      <code>review-assist-mcp.mcpb</code> for one-click install in the Claude desktop app.</li>
+    <li><strong>Worker and viewer:</strong> the viewer's stylesheet is built, the Worker is
+      typechecked, and <code>wrangler deploy</code> ships both. Production deploys purge the zone
+      cache, since static assets are edge-cached aggressively.</li>
+  </ul>
+
+  <h3>7.3 CI and release</h3>
+  <ul>
+    <li><strong>CI on every push to main:</strong> build all packages, typecheck, run vitest, validate
+      the example document with the built CLI, fail if generated files are not current
+      (<code>git diff --exit-code</code>), and fail if release metadata is inconsistent.</li>
+    <li><strong>Release consistency</strong> pins <code>packages/mcp-server/package.json</code>,
+      <code>manifest.json</code> and <code>server.json</code> to the same version, and is checked both
+      before and after the bump so a half-applied release cannot be published.</li>
+    <li><strong>Publish</strong> is manual with a version input, a dry-run mode and a release-only
+      mode: build, test, bump, commit and tag, publish to npm, pack the desktop bundle, cut the GitHub
+      release, then register with the MCP registry after npm has the version.</li>
+  </ul>
+</section>
+
+<!-- ========================================================== 8. FAILURE MODES -->
+<section id="failures">
+  <h2>Section 8</h2>
+  <p class="h2-title">Failure modes and responses</p>
+
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:26%">Condition</th><th style="width:22%">Response</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Repository never opted in</td><td>Consent prompt with three labelled options and the exact follow-up call</td><td>Not an error. The document is held, not discarded, and the same <code>run_id</code> is resubmitted after <code>set_consent</code>.</td></tr>
+      <tr><td>Branch moved since the run opened</td><td>Both SHAs, the preserved interview summary, and instructions to re-run <code>compute_diff</code> and re-anchor</td><td>The <code>run_id</code> does not change. The one thing that must survive a head move is the interview; the one thing that must not is an anchor.</td></tr>
+      <tr><td>No interview recorded</td><td>Refusal naming the run, with <code>require_interview: false</code> as the explicit escape</td><td>A seeded question nobody answered does not count, so <code>rounds: 0</code> genuinely means no Author ran.</td></tr>
+      <tr><td>Anchor cites an unknown hunk id</td><td>The unknown ids plus the complete list of valid ones</td><td>Ids come from <code>compute_diff</code> for this run. The hint tells the caller to re-read them rather than guess.</td></tr>
+      <tr><td>Coverage incomplete</td><td><code>findings[]</code> plus <code>uncovered_hunk_ids</code></td><td>Naming the hunks by id, not just by line range, is what makes the fix mechanical.</td></tr>
+      <tr><td>Third interview batch attempted</td><td>Refusal citing the cap, with the questions echoed</td><td>The Author has usually handed back by then, so a third batch is a question with nowhere to come from.</td></tr>
+      <tr><td>Reviewer polls and nothing arrives</td><td>Stall signal after 8 polls or 60 seconds with unanswered questions</td><td>Tells the Reviewer to proceed or escalate rather than spin.</td></tr>
+      <tr><td>Tool result would exceed the ceiling</td><td>A page plus <code>next_cursor</code>, cut on an item boundary</td><td>Never a truncation, because the handle the caller needs may be at the end.</td></tr>
+      <tr><td>No transcript found for the repo</td><td>Ranked candidates with previews, and guidance on recognising this session</td><td>Candidates with zero user turns are called out: one agent driven by another holds no ask, no plan and no decision.</td></tr>
+      <tr><td>Stale role definitions on disk</td><td>Swept before install, marker-gated</td><td>A project-scoped copy shadows the user-scoped one in Claude Code, so residue does not sit harmlessly beside the real definition.</td></tr>
+      <tr><td>No Intent Document on the PR</td><td>Check run <code>neutral</code>, comment explaining how to produce one</td><td>Never a failing check. The repository is no worse off than before the App was installed.</td></tr>
+      <tr><td>Document present but unparseable</td><td>Treated as missing</td><td>The webhook degrades rather than erroring in a place nobody is watching.</td></tr>
+      <tr><td>Webhook signature invalid</td><td>401 before parsing</td><td>Constant-time comparison.</td></tr>
+      <tr><td>Session cookie undecryptable</td><td>Treated as signed out</td><td>Covers secret rotation and tampering with the same path.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ================================================================ 9. TESTING -->
+<section id="testing">
+  <h2>Section 9</h2>
+  <p class="h2-title">Testing</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th style="width:30%">Suite</th><th>Covers</th></tr></thead>
+    <tbody>
+      <tr><td><code>validator/test/validator.test.ts</code></td><td>The five checks, including coverage direction (unexplained versus dangling) and redaction hits.</td></tr>
+      <tr><td><code>validator/test/hunks.test.ts</code></td><td>Diff parsing, hunk indexing and the substantive flag.</td></tr>
+      <tr><td><code>validator/test/page.test.ts</code></td><td>Cursor paging and boundary cuts.</td></tr>
+      <tr><td><code>mcp-server/test/runs.test.ts</code></td><td>Run id derivation, head movement and history, upsert semantics, batch cap, attestation counts, sweeping.</td></tr>
+      <tr><td><code>mcp-server/test/roles.test.ts</code></td><td>Tool registration per role, template rendering from a single prose source, and the sweep's marker gate.</td></tr>
+      <tr><td><code>mcp-server/test/spine.test.ts</code></td><td>Spine assembly, what is kept and what is marked, and paging.</td></tr>
+      <tr><td><code>mcp-server/test/sources.test.ts</code>, <code>transcript.test.ts</code></td><td>Session discovery per environment and per-agent parsing into a common shape.</td></tr>
+      <tr><td><code>mcp-server/test/git.test.ts</code></td><td>Three-dot diff behaviour and the <code>.intent/</code> exclusion.</td></tr>
+      <tr><td><code>mcp-server/test/reviewer-instructions.test.ts</code></td><td>Folder discovery, limits, truncation reporting, and the absent-folder case.</td></tr>
+      <tr><td>CI, beyond unit tests</td><td>The example document is validated with the built CLI on every push, which means the schema, the validator and a real document are checked against each other continuously.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>
+    <code>scripts/mockserver.mjs</code> serves the viewer against a fixture document and diff at
+    <code>http://localhost:8787/#acme/checkout-service/pull/42</code>, so the guided experience can be
+    exercised end to end without a GitHub App, an installation or a real pull request.
+  </p>
+</section>
+
+<footer>
+  Review Assist low-level design · companion to the
+  <a href="review-assist-design.html" data-artifact="https://claude.ai/artifact/XzsrWSLTzzHNZCWLuQynMj">design document</a> ·
+  sources of truth: <a href="../SPEC.md">SPEC.md</a>,
+  <a href="../docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>, and the code itself.
+  Where this document and the code disagree, the code is right.
+</footer>
+
+</main>
+</div>
+<script>
+// The repo copies cross-link by filename, which is right next to each other on disk.
+// The published copies are two separate artifacts, so swap in their URLs there.
+if (location.hostname.endsWith("claude.ai")) {
+  for (const a of document.querySelectorAll("a[data-artifact]")) a.href = a.dataset.artifact;
+}
+</script>
+</body>
+</html>
