@@ -139,6 +139,16 @@ export interface InterviewRound {
   at: string;
 }
 
+/** What the reviewer saw in one hunk, recorded as it read. */
+export interface HunkNote {
+  /** The hunk's `what`: one line, in the reviewer's own words. */
+  note: string;
+  /** The id it had when noted, so drift is visible rather than silent. */
+  id_when_noted: string;
+  path: string;
+  at: string;
+}
+
 export interface RunRecord {
   version: 1;
   run_id: string;
@@ -158,6 +168,24 @@ export interface RunRecord {
   updated_at?: string;
   /** Keyed by question hash, so re-recording a question replaces it. */
   rounds: Record<string, InterviewRound>;
+  /**
+   * One line per hunk, written while the diff is being READ rather than after.
+   *
+   * The largest single cost in a distillation is the reviewer drafting between interview
+   * batches: measured over 15 runs, 303, 330, 544, 592 and 916 seconds, in every
+   * multi-batch run. Almost all of it is the reviewer reconstructing an account of each
+   * hunk it already formed once, because it held that account in context while paging and
+   * emitted `tour[].what` only at the end. Written down as it reads, drafting afterwards is
+   * `why`, rationale, assumptions and verification — the parts that genuinely need the
+   * whole picture.
+   *
+   * KEYED BY HUNK CONTENT, not by hunk id. A hunk id is positional within one diff, so a
+   * single commit renumbers every id from H1 and an id-keyed ledger would be silently
+   * wrong: the note for H5 attached to whatever is H5 now. Content survives — the hunk
+   * moves, renumbers, and its note follows it. Head drift already costs the reviewer its
+   * anchors; it should not also cost the reading.
+   */
+  hunk_notes?: Record<string, HunkNote>;
   /**
    * How many batches of NEW questions the reviewer has recorded. Not the same as the
    * number of `record_interview_round` calls: re-recording a question the run already
@@ -499,6 +527,47 @@ export function summarizeRun(run: RunRecord): InterviewSummary {
     unanswered: rounds.filter((r) => r.answer.length === 0).length,
     standing_unanswered: all.filter((r) => r.seeded && r.answer.length === 0).length,
   };
+}
+
+/**
+ * A hunk's identity for the ledger: its own text, whitespace-normalized.
+ *
+ * The header is deliberately excluded. `@@ -1,2 +1,3 @@` changes whenever anything above
+ * the hunk shifts, so including it would make the key as fragile as the id it replaces:
+ * the same change, one commit later, hashing differently and losing its note.
+ */
+export function hunkKey(hunkText: string): string {
+  const body = hunkText
+    .split("\n")
+    .filter((l) => !l.startsWith("@@"))
+    .join("\n")
+    .replace(/[ \t]+$/gm, "")
+    .trim();
+  return sha256(body).slice(0, 16);
+}
+
+/**
+ * Record what the reviewer saw in a hunk. Re-noting the same hunk replaces the note: a
+ * second look at a hunk is a correction, not a second hunk.
+ */
+export function recordHunkNotes(
+  runId: string,
+  notes: { key: string; note: string; id: string; path: string }[]
+): RunRecord | undefined {
+  const run = readRun(runId);
+  if (!run) return undefined;
+  const at = new Date().toISOString();
+  run.hunk_notes = run.hunk_notes ?? {};
+  for (const n of notes) {
+    run.hunk_notes[n.key] = { note: n.note, id_when_noted: n.id, path: n.path, at };
+  }
+  writeRun(run);
+  return run;
+}
+
+/** The notes on this run, by content key. */
+export function hunkNotes(run: RunRecord): Record<string, HunkNote> {
+  return run.hunk_notes ?? {};
 }
 
 /**

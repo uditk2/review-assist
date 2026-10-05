@@ -831,3 +831,74 @@ describe("unresolvedRounds", () => {
     expect(runs.summarizeRun(runs.getRun(runId)!).standing_unanswered).toBeGreaterThan(0);
   });
 });
+
+/**
+ * Per-hunk notes, written while the diff is read rather than after.
+ *
+ * The largest single cost in a distillation is the reviewer drafting between interview
+ * batches: measured over 15 runs, 303, 330, 544, 592 and 916 seconds, in every multi-batch
+ * run. Nearly all of it was reconstructing an account of each hunk it had already formed
+ * once while paging, because `tour[].what` was emitted only at the end.
+ *
+ * The property that makes the ledger worth having is drift survival. A hunk id is
+ * positional within one diff, so a single commit renumbers every id from H1; a ledger keyed
+ * by id would be silently wrong — the note for H5 attached to whatever is H5 now — which is
+ * worse than having no ledger.
+ */
+describe("hunk notes", () => {
+  const fresh = () => runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD }).run.run_id;
+  const HUNK = "@@ -1,2 +1,3 @@\n const x = 1;\n+const y = 2;\n const z = 3;";
+
+  it("keys a note by the hunk's content, not its id", () => {
+    const runId = fresh();
+    runs.recordHunkNotes(runId, [{ key: runs.hunkKey(HUNK), note: "- adds y", id: "H1", path: "src/a.ts" }]);
+    const stored = runs.hunkNotes(runs.getRun(runId)!);
+    expect(Object.keys(stored)).toEqual([runs.hunkKey(HUNK)]);
+    expect(stored[runs.hunkKey(HUNK)].note).toBe("- adds y");
+  });
+
+  it("finds the same note after the diff renumbers the hunk", () => {
+    // A commit lands above this hunk; it is now H4 and the header changed with it. The
+    // note has to follow the hunk, which is the whole reason content is the key.
+    const runId = fresh();
+    runs.recordHunkNotes(runId, [{ key: runs.hunkKey(HUNK), note: "- adds y", id: "H1", path: "src/a.ts" }]);
+    const drifted = "@@ -40,2 +41,3 @@\n const x = 1;\n+const y = 2;\n const z = 3;";
+    expect(runs.hunkKey(drifted)).toBe(runs.hunkKey(HUNK));
+    expect(runs.hunkNotes(runs.getRun(runId)!)[runs.hunkKey(drifted)].note).toBe("- adds y");
+  });
+
+  it("keeps the id it was noted under, so drift is visible rather than silent", () => {
+    const runId = fresh();
+    runs.recordHunkNotes(runId, [{ key: runs.hunkKey(HUNK), note: "- adds y", id: "H1", path: "src/a.ts" }]);
+    expect(runs.hunkNotes(runs.getRun(runId)!)[runs.hunkKey(HUNK)].id_when_noted).toBe("H1");
+  });
+
+  it("treats a changed hunk as a different hunk", () => {
+    // If the code itself changed, the old note describes behaviour that is no longer there
+    // and must not be reused. Only an unchanged hunk keeps its note.
+    const edited = "@@ -1,2 +1,3 @@\n const x = 1;\n+const y = 99;\n const z = 3;";
+    expect(runs.hunkKey(edited)).not.toBe(runs.hunkKey(HUNK));
+  });
+
+  it("ignores trailing whitespace, which no reviewer meant as a change", () => {
+    expect(runs.hunkKey("@@ -1 +1 @@\n+const y = 2;   ")).toBe(runs.hunkKey("@@ -9 +9 @@\n+const y = 2;"));
+  });
+
+  it("replaces a note on a second look, because that is a correction", () => {
+    const runId = fresh();
+    const key = runs.hunkKey(HUNK);
+    runs.recordHunkNotes(runId, [{ key, note: "- adds y", id: "H1", path: "src/a.ts" }]);
+    runs.recordHunkNotes(runId, [{ key, note: "- adds y, which the cache then reads", id: "H1", path: "src/a.ts" }]);
+    const stored = runs.hunkNotes(runs.getRun(runId)!);
+    expect(Object.keys(stored)).toHaveLength(1);
+    expect(stored[key].note).toContain("which the cache then reads");
+  });
+
+  it("reports no notes on a run nobody has read yet", () => {
+    expect(runs.hunkNotes(runs.getRun(fresh())!)).toEqual({});
+  });
+
+  it("returns undefined for an unknown run rather than inventing one", () => {
+    expect(runs.recordHunkNotes("nosuchrun", [{ key: "k", note: "n", id: "H1", path: "p" }])).toBeUndefined();
+  });
+});

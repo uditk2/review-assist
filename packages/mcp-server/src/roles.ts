@@ -368,6 +368,8 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
     "get_generation_guide",
     "compute_diff",
     "read_diff",
+    "record_hunk_notes",
+    "get_hunk_notes",
     "get_reviewer_instructions",
     "record_interview_round",
     "get_answers",
@@ -389,6 +391,10 @@ const TOOL_BLURB: Record<string, string> = {
   list_transcripts: "candidate sessions for this repo, ranked. Parents only; a subagent is never a session.",
   get_spine: "a session's whole conversation, paged. Follow `next_cursor` to the end; each item is indexed into the full transcript.",
   read_transcript: "a window of the full transcript around an index, for the tool output behind a claim.",
+  record_hunk_notes:
+    "what a hunk does, one line, written AS YOU READ IT. These become your tour `what` bullets; writing them at the end is the largest cost in a distillation.",
+  get_hunk_notes:
+    "your own notes, mapped onto the diff's current hunk ids. Kept through head drift, because they are keyed by content rather than id.",
   get_contexts:
     "what the session was about, one labelled context per subject, scored against this diff. Call it before get_spine.",
   record_contexts:

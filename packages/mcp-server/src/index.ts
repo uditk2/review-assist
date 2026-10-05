@@ -60,6 +60,9 @@ import {
   recordAnswers,
   runRounds,
   summarizeRun,
+  hunkKey,
+  recordHunkNotes,
+  hunkNotes,
   evaluatedRounds,
   unresolvedRounds,
   attestedInterview,
@@ -334,6 +337,122 @@ registerTool(
       );
     } catch (e) {
       return textResult(`read_diff failed: ${(e as Error).message}`, true);
+    }
+  }
+);
+
+registerTool(
+  "record_hunk_notes",
+  "Reviewer role: write down what a hunk does AS YOU READ IT, one line each. Call this on every page of " +
+    "read_diff, before moving to the next — not at the end. This is the single biggest cost in a " +
+    "distillation: measured over 15 runs, drafting between interview batches took 303, 330, 544, 592 and " +
+    "916 seconds, and nearly all of it was reconstructing an account of each hunk you had already formed " +
+    "once while paging. Written down, the drafting left is `why`, rationale, assumptions and verification, " +
+    "which genuinely need the whole picture. These become your `tour[].what` bullets, so write them as " +
+    "behaviour changes starting with a verb and naming the symbol, not as 'this hunk adds a function'. " +
+    "Notes are stored by hunk CONTENT, so a commit that renumbers every id does not lose them.",
+  {
+    run_id: z.string().describe("Run handle from compute_diff."),
+    notes: z
+      .array(
+        z.object({
+          hunk: z.string().describe('Hunk id from the index, e.g. "H7".'),
+          note: z.string().min(1).describe("What this hunk changes, one line, starting with a verb. Your own words — it becomes a tour bullet."),
+        })
+      )
+      .min(1)
+      .describe("Every hunk on the page you just read."),
+  },
+  async ({ run_id, notes }) => {
+    const run = getRun(run_id);
+    if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    try {
+      const { diff } = await computeDiff(run.repo, run.base_sha, run.head_sha);
+      const page = pageDiff(diff, { ids: notes.map((n) => n.hunk), maxBytes: Number.MAX_SAFE_INTEGER });
+      const byId = new Map(page.hunks.map((h) => [h.id.toUpperCase(), h]));
+      const resolved: { key: string; note: string; id: string; path: string }[] = [];
+      const unknown: string[] = [];
+      for (const n of notes) {
+        const h = byId.get(n.hunk.trim().toUpperCase());
+        if (!h) {
+          unknown.push(n.hunk);
+          continue;
+        }
+        resolved.push({ key: hunkKey(h.text), note: n.note, id: h.id, path: h.path });
+      }
+      if (!resolved.length) {
+        return textResult(JSON.stringify({ ok: false, unknown_hunk_ids: unknown, hint: "Take ids from compute_diff's index." }, null, 2), true);
+      }
+      const updated = recordHunkNotes(run_id, resolved)!;
+      const total = indexHunks(diff).filter((h) => h.coverage_required).length;
+      const noted = Object.keys(hunkNotes(updated)).length;
+      return textResult(
+        JSON.stringify(
+          {
+            recorded: resolved.length,
+            noted_total: noted,
+            coverage_required: total,
+            unknown_hunk_ids: unknown.length ? unknown : undefined,
+            next:
+              noted >= total
+                ? "Every hunk that needs covering has a note. Read them back with get_hunk_notes when you draft the tour."
+                : "Keep going — note each page as you read it, not at the end.",
+          },
+          null,
+          2
+        )
+      );
+    } catch (e) {
+      return textResult(`record_hunk_notes failed: ${(e as Error).message}`, true);
+    }
+  }
+);
+
+registerTool(
+  "get_hunk_notes",
+  "Reviewer role: your own per-hunk notes, mapped onto the hunk ids of the diff AS IT IS NOW. Call it " +
+    "when you draft the tour: the `what` bullets are already written, so grouping them by the author's plan " +
+    "is what is left. Also call it after head drift. Notes are keyed by hunk content rather than by id, so " +
+    "a commit that renumbers the diff keeps every note and this tells you the new id for each — `moved` " +
+    "lists the ones whose id changed, and `missing` the hunks still unnoted.",
+  {
+    run_id: z.string().describe("Run handle from compute_diff."),
+  },
+  async ({ run_id }) => {
+    const run = getRun(run_id);
+    if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    try {
+      const { diff } = await computeDiff(run.repo, run.base_sha, run.head_sha);
+      const hunks = indexHunks(diff);
+      const page = pageDiff(diff, { maxBytes: Number.MAX_SAFE_INTEGER });
+      const stored = hunkNotes(run);
+      const notes: { hunk: string; path: string; note: string; was?: string }[] = [];
+      const moved: string[] = [];
+      for (const h of page.hunks) {
+        const n = stored[hunkKey(h.text)];
+        if (!n) continue;
+        const entry = { hunk: h.id, path: h.path, note: n.note, ...(n.id_when_noted !== h.id ? { was: n.id_when_noted } : {}) };
+        if (entry.was) moved.push(`${n.id_when_noted} -> ${h.id}`);
+        notes.push(entry);
+      }
+      const notedIds = new Set(notes.map((n) => n.hunk));
+      const missing = hunks.filter((h) => h.coverage_required && !notedIds.has(h.id)).map((h) => h.id);
+      return textResult(
+        JSON.stringify(
+          {
+            notes,
+            moved: moved.length ? moved : undefined,
+            missing: missing.length ? missing : undefined,
+            next: missing.length
+              ? `${missing.length} hunk(s) needing coverage have no note. read_diff them and record_hunk_notes before drafting.`
+              : "Every hunk that needs covering has a note. Group them by the author's plan to make the tour.",
+          },
+          null,
+          2
+        )
+      );
+    } catch (e) {
+      return textResult(`get_hunk_notes failed: ${(e as Error).message}`, true);
     }
   }
 );

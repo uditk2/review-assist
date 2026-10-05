@@ -43,6 +43,15 @@ two points or a restatement. Split it or cut it.
 - `compute_diff` returns no diff text: only the handle, the numbered hunk index and the SHAs.
 - Read the change with `read_diff`. Keep passing back `next_cursor` until there is none;
   that, and nothing else, is how you know you have seen all of it.
+- **Write down what each hunk does as you read it, with `record_hunk_notes`, page by page.**
+  One line per hunk, starting with a verb and naming the symbol — these ARE your
+  `tour[].what` bullets, so write them as behaviour changes rather than as "this hunk adds
+  a function". Not at the end: at the end is the problem. Measured over 15 runs, drafting
+  between interview batches took 303, 330, 544, 592 and 916 seconds, in every multi-batch
+  run, and nearly all of it was reconstructing an account of each hunk you had already
+  formed once while paging. Written down, what is left to draft is `why`, rationale,
+  assumptions and verification, which genuinely need the whole picture.
+  Notes are stored by hunk CONTENT, so a commit that renumbers every id keeps them.
 - For one specific thing, ask directly: `hunks: ["H7"]` or `paths: ["src/foo.ts"]`.
 - A walk skips hunks marked `coverage_required: false` — whitespace churn, and the intent
   document's own file. Naming one by id serves it anyway.
@@ -108,7 +117,11 @@ two points or a restatement. Split it or cut it.
      answered yet.
    - Never record an answer you have not received. `meta.interview` is what tells a reader
      the interview happened; an invented answer there is a forged one.
-4. **Draft the whole document, then read your own reasoning.** Fill every field before you
+4. **Draft the whole document, then read your own reasoning.** Start with `get_hunk_notes`:
+   your `what` bullets are already written, mapped onto the diff's current ids, so what is
+   left is grouping them by the author's plan and writing the fields that need the whole
+   change. `missing` names any hunk needing coverage that you never noted — read those
+   before drafting rather than discovering them at submit. Fill every field before you
    ask anything else. This is the step that finds the real gaps: an answer reads fine until
    you try to write `approach.adopted.rationale` out of it and discover there is nothing
    there. Go back over the draft and mark every place you asserted rather than sourced —
@@ -227,7 +240,9 @@ If the branch has moved under you — a commit, or the document itself being com
 submit says so and the fix is cheap: the `run_id` is unchanged and your interview is still
 on it, so call `compute_diff` again and resubmit. Nothing is re-asked. The one thing that
 does not survive is your anchors: the diff is renumbered from H1, so take the hunk ids from
-that response rather than the ones you were holding.
+that response rather than the ones you were holding. Your per-hunk notes DO survive, being
+keyed by content rather than id — `get_hunk_notes` gives each one its new id and lists
+under `moved` the ones that shifted, so re-anchoring is a remap and not a re-read.
 
 ## Hard rules
 - Never call `read_transcript` or `list_transcripts`. If you want the transcript, that is
