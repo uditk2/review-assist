@@ -92,7 +92,7 @@ export interface InterviewRound {
    * wrote itself. Only `author` is attestation — everything else is one role's account
    * of a conversation the server never witnessed.
    */
-  answered_by?: "author" | "reviewer";
+  answered_by?: "author" | "reviewer" | "user";
   /**
    * Put on the run by `openRun` rather than by the reviewer. The standing questions do
    * not depend on the diff, so seeding them is what lets the author answer before the
@@ -112,6 +112,30 @@ export interface InterviewRound {
    * question lands on the code that settles it instead of a paragraph about it.
    */
   anchors?: string[];
+  /**
+   * How this question ENDED, when the developer themselves closed it.
+   *
+   * The interview already had a stopping rule — `MAX_BATCHES` — but it governs the
+   * conversation, not the question. A halt is not a verdict: everything still open fell
+   * into one undifferentiated bucket, so a secret blast radius nobody had considered
+   * rendered exactly like "why did you pick this name".
+   *
+   * Measured across 32 runs, 279 diff-provoked rounds: 183 answered, 67 never answered at
+   * all, 15 declined as not covered, 14 answered but left open. The 67 and the 15 are the
+   * most valuable findings the system produces — an unanswered question about a code risk
+   * means the risk was never considered — and they were the least distinguishable.
+   *
+   * So a question the developer closes says HOW:
+   *
+   * - `accepted_partial` — they know and are shipping anyway. A risk taken knowingly, not
+   *   a gap. The reviewer should read it as a decision.
+   * - `escalated` — they deliberately want a human reviewer's eyes on it. A request for
+   *   attention, which is a different message from the one above.
+   *
+   * Absent means nobody closed it, and `unresolvedRounds` reports that as `unanswered`:
+   * the weakest thing to publish, and the only true silence.
+   */
+  disposition?: "accepted_partial" | "escalated";
   at: string;
 }
 
@@ -176,6 +200,13 @@ export interface InterviewSummary {
   unresolved: number;
   /** Answers the author role wrote itself. The only figure the server can vouch for. */
   author_attested: number;
+  /**
+   * Answers the DEVELOPER gave, when neither the transcript nor the code could settle the
+   * question. Counted apart from `author_attested` because it is a different and stronger
+   * kind of authority, and because a reader deserves to know how much of a document rests
+   * on a human's word rather than on a record of what happened.
+   */
+  developer_attested: number;
   /** Seeded questions the author has not answered yet. What it still owes. */
   standing_unanswered: number;
   /** Questions recorded with no answer from either side yet. */
@@ -412,7 +443,18 @@ export function recordRounds(
  */
 export function recordAnswers(
   runId: string,
-  answers: { q_id: string; answer: string; resolved?: boolean }[]
+  answers: {
+    q_id: string;
+    answer: string;
+    resolved?: boolean;
+    /**
+     * `developer` marks an answer the human gave when neither transcript nor code could
+     * settle the question. It is the strongest attestation the system has: the author
+     * attests what the transcript SAYS, the developer attests what they INTENDED.
+     */
+    from?: "author" | "developer";
+    disposition?: "accepted_partial" | "escalated";
+  }[]
 ): { run: RunRecord; unknown: string[] } | undefined {
   const run = readRun(runId);
   if (!run) return undefined;
@@ -425,8 +467,11 @@ export function recordAnswers(
       continue;
     }
     round.answer = a.answer;
-    round.resolved = a.resolved ?? true;
-    round.answered_by = "author";
+    // A disposition is how a question ENDED without being settled, so it never resolves
+    // one. Treating it as resolved would hide the finding it exists to carry.
+    round.resolved = a.disposition ? false : (a.resolved ?? true);
+    round.answered_by = a.from === "developer" ? "user" : "author";
+    if (a.disposition) round.disposition = a.disposition;
     round.at = at;
   }
   writeRun(run);
@@ -450,6 +495,7 @@ export function summarizeRun(run: RunRecord): InterviewSummary {
     questions_asked: rounds.length,
     unresolved: rounds.filter((r) => !r.resolved).length,
     author_attested: rounds.filter((r) => r.answered_by === "author").length,
+    developer_attested: rounds.filter((r) => r.answered_by === "user").length,
     unanswered: rounds.filter((r) => r.answer.length === 0).length,
     standing_unanswered: all.filter((r) => r.seeded && r.answer.length === 0).length,
   };
@@ -485,6 +531,53 @@ export function evaluatedRounds(run: RunRecord): InterviewRound[] {
   return Object.values(run.rounds)
     .filter((r) => !r.seeded && r.resolved && r.answer.trim().length > 0)
     .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+}
+
+/** How a question ended when it was never settled. */
+export type Disposition = "accepted_partial" | "escalated" | "unanswered";
+
+export interface UnresolvedRound {
+  question: string;
+  disposition: Disposition;
+  /** Whatever was said about it: the developer's reason, or the author's non-answer. */
+  note?: string;
+  anchors?: string[];
+}
+
+/**
+ * The questions that never got settled, each carrying HOW it ended.
+ *
+ * This is the half of the stopping rule that was missing. `MAX_BATCHES` says when to stop
+ * asking; this says what each stopped question means, and the three outcomes are not the
+ * same thing to a human reviewer:
+ *
+ * - `accepted_partial` — the developer knows and is shipping anyway. A decision.
+ * - `escalated` — the developer wants a reviewer's eyes here. A request.
+ * - `unanswered` — nobody engaged with it at all. The weakest, and the most common: 67 of
+ *   279 diff-provoked rounds across 32 runs got no reply of any kind.
+ *
+ * Unanswered does NOT mean unimportant, and this is the inversion the old flat list hid.
+ * The silent questions measured here include "env_file injects the ENTIRE backend env (DB
+ * password, LLM API keys, JWT secret)" and "uses newrelic/infrastructure:latest while two
+ * comments state pinned behaviour". An unanswered question about a code risk means the risk
+ * was never considered, which makes it a STRONGER finding than one that got an answer.
+ *
+ * Seeded questions are excluded for the same reason they are excluded from `evaluated`:
+ * they guard fields, and an unanswered one is reported by `standing_unanswered` already.
+ */
+export function unresolvedRounds(run: RunRecord): UnresolvedRound[] {
+  return Object.values(run.rounds)
+    .filter((r) => !r.seeded && !(r.resolved && r.answer.trim().length > 0))
+    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
+    .map((r) => {
+      const note = r.answer.trim();
+      return {
+        question: r.question,
+        disposition: r.disposition ?? "unanswered",
+        ...(note ? { note } : {}),
+        ...(r.anchors?.length ? { anchors: r.anchors } : {}),
+      };
+    });
 }
 
 /**
@@ -525,6 +618,7 @@ export function attestedInterview(summary: InterviewSummary): AttestedInterview 
     questions_asked: summary.questions_asked,
     unresolved: summary.unresolved,
     author_attested: summary.author_attested,
+    developer_attested: summary.developer_attested,
     unanswered: summary.unanswered,
   };
 }

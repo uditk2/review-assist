@@ -60,6 +60,7 @@ import {
   runRounds,
   summarizeRun,
   evaluatedRounds,
+  unresolvedRounds,
   attestedInterview,
   batchCheck,
   MAX_BATCHES,
@@ -666,6 +667,14 @@ registerTool(
             .boolean()
             .default(true)
             .describe("false when the transcript does not cover it — a real answer, recorded as unresolved."),
+          from: z
+            .enum(["author", "developer"])
+            .optional()
+            .describe('"developer" when you put the question to the human and this is THEIR reply. It is the strongest attestation there is: you attest what the transcript says, they attest what they intended. Never use it for an answer you worked out yourself.'),
+          disposition: z
+            .enum(["accepted_partial", "escalated"])
+            .optional()
+            .describe('How the developer CLOSED a question without answering it. "accepted_partial" = they know and are shipping anyway, a risk taken knowingly. "escalated" = they want a human reviewer to look at it. Either way the question stays unresolved and reaches the document under `unresolved`, which is the point: these are findings, not gaps. Omit it for a real answer.'),
         })
       )
       .min(1)
@@ -1221,6 +1230,10 @@ registerTool(
       }));
       if (evaluated.length) d.evaluated = evaluated;
       else delete d.evaluated;
+      // The other half of the same rule: what did NOT settle, and how it ended.
+      const unresolved = unresolvedRounds(run);
+      if (unresolved.length) d.unresolved = unresolved;
+      else delete d.unresolved;
     }
 
     let diff = "";

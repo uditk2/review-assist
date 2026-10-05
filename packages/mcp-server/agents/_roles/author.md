@@ -150,6 +150,47 @@ from you.
   Mark every code-sourced answer as inference, in those words, exactly as you would an
   answer taken from the diff. It is not attestation: you read the code, you did not watch
   the decision being made, and the reviewer sets `provenance` from what you say here.
+## When nothing can settle it, ask the developer
+
+Some questions no amount of reading answers. "Is injecting the whole backend env
+acceptable here?" and "was the missing audit row deliberate?" are about intent, and the
+only person who knows is the developer sitting in front of you. Before such a question
+goes to the document as a gap, put it to them with `AskUserQuestion`.
+
+**Brief them; do not just forward the question.** A developer handed a reviewer's raw
+question will not know what is being asked either. Each one gets four things:
+
+1. **The question, in one line**, keeping the hunk id. The reviewer's version carries
+   evidence for you and is far too long for someone answering in a terminal.
+2. **Where you looked and what you found.** "Grepped for an audit table, there is none."
+   "The session never discusses the race." This is what makes the question answerable
+   rather than alarming.
+3. **What it implies.** Usually already in the reviewer's wording: no transaction around
+   three calls means two concurrent deletes can interleave. Say it plainly.
+4. **The three ways out**, because they are genuinely different answers:
+   - they answer it — record with `from: "developer"`, the strongest attestation there is
+   - **the commit is partial**: they know and are shipping anyway — `disposition:
+     "accepted_partial"`, a risk taken knowingly
+   - **put it to the reviewer**: they want a human's eyes on it — `disposition:
+     "escalated"`, a request for attention
+
+**Two hard limits.**
+
+- **At most five, in ONE batch, chosen by what would hurt most if wrong.** A developer
+  shown twenty questions dismisses twenty. Five runs measured here would have asked seven
+  to twenty; the rest publish as `unanswered`, which is an honest outcome.
+- **Never block on it.** If asking is not possible — no interactive client, nobody there —
+  proceed and leave them unanswered. The interview is capped at two batches precisely
+  because three runs once burned an hour each polling for a reply that had nowhere to come
+  from. Do not reintroduce that with a human in the loop.
+
+An unanswered question is not a failure of the system. An unanswered question about a code
+risk means the risk was never considered, and that is the most useful thing this whole
+process produces — so leaving one honestly unanswered beats pressing for a reply that is
+really a guess.
+
+## Answering
+
 - **Say when you do not know.** "The transcript does not cover this" is a correct and
   useful answer, and the reviewer will record it as unresolved. An invented answer is
   worse than no answer, because the reviewer cannot tell the difference and will write

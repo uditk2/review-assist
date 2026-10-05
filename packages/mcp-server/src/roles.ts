@@ -129,7 +129,12 @@ const REGISTRY: Record<RoleEnv, EnvEntry> = {
  * file tools, and a generic client gets whatever it already had.
  */
 const ROLE_CLIENT_TOOLS: Record<RoleName, readonly string[]> = {
-  author: ["Read", "Grep", "Glob"],
+  // AskUserQuestion is how the author reaches the developer for a question neither the
+  // transcript nor the code can settle — "is injecting the whole backend env acceptable
+  // here?" is not a fact anyone can look up. The author is the right role to ask: it is
+  // already the developer's proxy, and a reviewer that talked to the developer would be
+  // taking session context first-hand, which is the thing the split exists to prevent.
+  author: ["Read", "Grep", "Glob", "AskUserQuestion"],
   // The reviewer is unchanged, deliberately. Its independence is from the AUTHOR's
   // framing, not from the repository, so widening it is defensible — but it is a separate
   // decision with its own consequences for the interview, and it is not this change.
@@ -359,6 +364,8 @@ const TOOL_BLURB: Record<string, string> = {
   Read: "a file in the repository, read-only. For a question the transcript cannot answer but the code can.",
   Grep: "search the repository, read-only. Where to look when a question is about code outside the diff.",
   Glob: "find files by pattern, read-only.",
+  AskUserQuestion:
+    "put a question to the DEVELOPER, for what neither the transcript nor the code can settle. One batch, at most five, never blocking.",
   find_sessions_touching:
     "which OTHER session wrote a hunk yours cannot explain. Narrows by file, then matches the hunk's added lines: `authored` wrote them, `observed` only read them.",
   compute_diff:

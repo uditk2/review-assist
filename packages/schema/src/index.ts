@@ -37,6 +37,11 @@ export interface IntentDocument {
    * agent. See `evaluatedRounds` in the MCP server for what qualifies and why.
    */
   evaluated?: EvaluatedQuestion[];
+  /**
+   * Questions the interview could not settle, each with how it ended. Stamped by the
+   * server from the run's recorded rounds, never written by an agent.
+   */
+  unresolved?: UnresolvedQuestion[];
 }
 
 /** One settled question, and the hunks that settle it. */
@@ -44,6 +49,20 @@ export interface EvaluatedQuestion {
   question: string;
   answer: string;
   /** Hunk ids, e.g. ["H4"]. Absent when the reviewer recorded none. */
+  anchors?: string[];
+}
+
+/**
+ * One question the interview could not settle, with HOW it ended.
+ *
+ * `unanswered` is not the same as unimportant: an unanswered question about a code risk
+ * means the risk was never considered, which makes it a stronger finding than one that
+ * got an answer. See `unresolvedRounds` in the MCP server.
+ */
+export interface UnresolvedQuestion {
+  question: string;
+  disposition: "accepted_partial" | "escalated" | "unanswered";
+  note?: string;
   anchors?: string[];
 }
 
@@ -73,6 +92,8 @@ export interface Meta {
     unresolved?: number;
     /** Answers the author role wrote itself, via `answer_questions`. */
     author_attested?: number;
+    /** Answers the developer gave when neither transcript nor code could settle it. */
+    developer_attested?: number;
     unanswered?: number;
   };
 }

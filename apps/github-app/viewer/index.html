@@ -1799,6 +1799,36 @@ function renderOverview(doc){
     right.append(sec);
   }
 
+  // Raised and not settled, open by default and ahead of the lookup.
+  //
+  // `unanswered` leads deliberately. Measured across 32 runs, 67 of 279 diff-provoked
+  // questions got no reply at all, and they include a secret blast radius and an unpinned
+  // image. An unanswered question about a code risk means the risk was never considered,
+  // which makes it the strongest finding here rather than the weakest.
+  if (doc.unresolved?.length){
+    const DISPOSITION = {
+      unanswered: ["Never answered", "tag tag-warn", "Nobody considered this."],
+      escalated: ["Asked for your eyes", "tag tag-warn", "The developer wants a human to look here."],
+      accepted_partial: ["Known and shipped", "tag", "A risk the developer took knowingly."],
+    };
+    const order = { unanswered: 0, escalated: 1, accepted_partial: 2 };
+    const sorted = [...doc.unresolved].sort((a,b) => (order[a.disposition] ?? 9) - (order[b.disposition] ?? 9));
+    const sec = section("Raised and not settled");
+    for (const u of sorted){
+      const [label, cls, gloss] = DISPOSITION[u.disposition] || ["Unsettled", "tag", ""];
+      const anchors = (u.anchors || []).filter(Boolean);
+      sec.append(el("div",{class:"card mb-3"},
+        el("div",{class:"flex items-start justify-between gap-3"},
+          el("span",{class:"font-medium"}, u.question),
+          el("span",{class:"shrink-0"},
+            el("span",{class:cls}, label),
+            ...anchors.map(h => el("span",{class:"id-chip ml-1"}, h)))),
+        gloss ? el("p",{class:"mt-1.5 text-sm text-ink-500"}, gloss) : null,
+        u.note ? points(u.note, "mt-2 text-sm text-ink-700") : null));
+    }
+    right.append(sec);
+  }
+
   // Already evaluated: a lookup, closed by default.
   //
   // An answered, grounded question is no longer a question, so it is not in the reading

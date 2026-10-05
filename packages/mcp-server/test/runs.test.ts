@@ -233,6 +233,7 @@ describe("recordRounds", () => {
       questions_asked: 2,
       unresolved: 1,
       author_attested: 0,
+      developer_attested: 0,
       unanswered: 0,
       standing_unanswered: runs.STANDING_QUESTIONS.length,
     });
@@ -374,6 +375,7 @@ describe("the run as the channel between the roles", () => {
       questions_asked: 2,
       unresolved: 1,
       author_attested: 2,
+      developer_attested: 0,
       unanswered: 0,
       standing_unanswered: runs.STANDING_QUESTIONS.length,
     });
@@ -720,5 +722,112 @@ describe("evaluatedRounds", () => {
     const got = runs.evaluatedRounds(run());
     expect(got).toHaveLength(1);
     expect(got[0].anchors).toEqual(["H2", "H9"]);
+  });
+});
+
+/**
+ * The other half of the stopping rule.
+ *
+ * `MAX_BATCHES` says when to stop asking. It says nothing about what each stopped question
+ * MEANS, so everything still open fell into one undifferentiated bucket and a secret blast
+ * radius nobody had considered rendered exactly like "why did you pick this name".
+ *
+ * Measured across 32 runs, 279 diff-provoked rounds: 183 answered, 67 never answered at
+ * all, 15 declined as not covered, 14 answered but left open. These pin that the three
+ * ways a question can end stay distinguishable, and that `unanswered` is the default —
+ * nobody engaging is the common case, not an exotic one.
+ */
+describe("unresolvedRounds", () => {
+  const fresh = () => runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD }).run.run_id;
+  const idOf = (runId: string, q: string) =>
+    Object.values(runs.getRun(runId)!.rounds).find((r) => r.question === q)!.q_id;
+
+  it("reports a question nobody answered as unanswered, carrying its anchors", () => {
+    const runId = fresh();
+    runs.recordRounds(runId, [{ question: "Does env_file leak the whole backend env?", anchors: ["H3"] }]);
+    expect(runs.unresolvedRounds(runs.getRun(runId)!)).toEqual([
+      { question: "Does env_file leak the whole backend env?", disposition: "unanswered", anchors: ["H3"] },
+    ]);
+  });
+
+  it("keeps the author's non-answer as the note", () => {
+    // "The transcript does not cover this" is a real answer and worth publishing: it says
+    // the risk was never discussed, which is the finding.
+    const runId = fresh();
+    const Q = "Was the missing audit row deliberate?";
+    runs.recordRounds(runId, [{ question: Q }]);
+    runs.recordAnswers(runId, [
+      { q_id: idOf(runId, Q), answer: "- The transcript does not cover this.", resolved: false },
+    ]);
+    const [got] = runs.unresolvedRounds(runs.getRun(runId)!);
+    expect(got.disposition).toBe("unanswered");
+    expect(got.note).toBe("- The transcript does not cover this.");
+  });
+
+  it("records the developer accepting a partial commit", () => {
+    const runId = fresh();
+    const Q = "Is the unpinned image tag intentional?";
+    runs.recordRounds(runId, [{ question: Q }]);
+    runs.recordAnswers(runId, [
+      { q_id: idOf(runId, Q), answer: "- Known. Pinning comes with the registry move.", from: "developer", disposition: "accepted_partial" },
+    ]);
+    const [got] = runs.unresolvedRounds(runs.getRun(runId)!);
+    expect(got.disposition).toBe("accepted_partial");
+    expect(got.note).toContain("registry move");
+  });
+
+  it("records the developer escalating to the human reviewer", () => {
+    const runId = fresh();
+    const Q = "Can two concurrent deletes interleave?";
+    runs.recordRounds(runId, [{ question: Q }]);
+    runs.recordAnswers(runId, [
+      { q_id: idOf(runId, Q), answer: "- I want a second opinion on the locking.", from: "developer", disposition: "escalated" },
+    ]);
+    expect(runs.unresolvedRounds(runs.getRun(runId)!)[0].disposition).toBe("escalated");
+  });
+
+  it("never lets a disposition resolve a question", () => {
+    // A disposition is how a question ended WITHOUT being settled. Marking it resolved
+    // would move it into the `evaluated` lookup and hide the finding it exists to carry.
+    const runId = fresh();
+    const Q = "Is the blast radius acceptable?";
+    runs.recordRounds(runId, [{ question: Q }]);
+    runs.recordAnswers(runId, [
+      { q_id: idOf(runId, Q), answer: "- Accepted.", resolved: true, from: "developer", disposition: "accepted_partial" },
+    ]);
+    expect(runs.evaluatedRounds(runs.getRun(runId)!)).toEqual([]);
+    expect(runs.unresolvedRounds(runs.getRun(runId)!)).toHaveLength(1);
+  });
+
+  it("counts a developer answer apart from an author one", () => {
+    // Different kinds of authority: the author attests what the transcript SAYS, the
+    // developer attests what they INTENDED. A reader deserves to know which a document
+    // rests on, so they are not summed.
+    const runId = fresh();
+    runs.recordRounds(runId, [{ question: "Qa" }, { question: "Qb" }]);
+    runs.recordAnswers(runId, [
+      { q_id: idOf(runId, "Qa"), answer: "- from the transcript" },
+      { q_id: idOf(runId, "Qb"), answer: "- from me", from: "developer" },
+    ]);
+    const sum = runs.summarizeRun(runs.getRun(runId)!);
+    expect(sum.author_attested).toBe(1);
+    expect(sum.developer_attested).toBe(1);
+  });
+
+  it("excludes a settled question, which belongs in the lookup instead", () => {
+    const runId = fresh();
+    const Q = "Is the input restricted to a known list?";
+    runs.recordRounds(runId, [{ question: Q }]);
+    runs.recordAnswers(runId, [{ q_id: idOf(runId, Q), answer: "- Yes, type: choice." }]);
+    expect(runs.unresolvedRounds(runs.getRun(runId)!)).toEqual([]);
+    expect(runs.evaluatedRounds(runs.getRun(runId)!)).toHaveLength(1);
+  });
+
+  it("excludes the standing set, which reports its own gaps", () => {
+    // An unanswered standing question means the author never ran. That is reported by
+    // standing_unanswered, and publishing it as a code finding would be a lie.
+    const runId = fresh();
+    expect(runs.unresolvedRounds(runs.getRun(runId)!)).toEqual([]);
+    expect(runs.summarizeRun(runs.getRun(runId)!).standing_unanswered).toBeGreaterThan(0);
   });
 });

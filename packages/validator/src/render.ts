@@ -25,6 +25,19 @@ function diagramsMarkdown(doc: IntentDocument): string[] {
   return out;
 }
 
+/**
+ * How each disposition is announced.
+ *
+ * Worded so a reader can tell them apart at a glance, because they ask for different
+ * things: nobody engaged with the first, the developer wants eyes on the second, and the
+ * third is a decision already taken rather than an oversight to flag.
+ */
+const DISPOSITION: Record<string, string> = {
+  unanswered: "**Never answered — nobody considered this.**",
+  escalated: "**The developer asked for your eyes here.**",
+  accepted_partial: "**Known and shipped anyway.**",
+};
+
 export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): string {
   const out: string[] = [];
   const p = (s = "") => out.push(s);
@@ -70,6 +83,29 @@ export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): s
     p(`Behaviour nobody exercised. Authors report what passed and go quiet about this half.`);
     p();
     for (const n of doc.verification.not_verified) p(`- ⚠️ ${escape(n)}`);
+    p();
+  }
+
+  // The interview's own residue, and the dispositions are not interchangeable.
+  //
+  // `unanswered` leads, which inverts how this used to read. Measured across 32 runs, 67
+  // of 279 diff-provoked questions got no reply of any kind, and they include "env_file
+  // injects the ENTIRE backend env (DB password, LLM API keys, JWT secret)" and "uses
+  // :latest while two comments state pinned behaviour". An unanswered question about a
+  // code risk means the risk was NEVER CONSIDERED, which makes it the strongest finding
+  // here — not the weakest, which is how a flat list rendered it.
+  if (doc.unresolved?.length) {
+    const order: Record<string, number> = { unanswered: 0, escalated: 1, accepted_partial: 2 };
+    const sorted = [...doc.unresolved].sort(
+      (a, b) => (order[a.disposition] ?? 9) - (order[b.disposition] ?? 9)
+    );
+    p(`### 🚩 Raised and not settled`);
+    p();
+    for (const u of sorted) {
+      const where = u.anchors?.length ? ` _(${u.anchors.join(", ")})_` : "";
+      p(`- ${DISPOSITION[u.disposition] ?? "**Unsettled.**"} ${escape(u.question)}${where}`);
+      if (u.note) p(`  - ${escape(u.note)}`);
+    }
     p();
   }
 

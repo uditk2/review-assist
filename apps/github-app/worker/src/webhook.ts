@@ -233,6 +233,7 @@ function commentBody(doc: IntentDoc | null, cov: { total: number; explained: num
   const problem = (doc.problem?.statement ?? "").trim();
   const assumptions = liveAssumptions(doc).length;
   const unexercised = (doc.verification?.not_verified ?? []).length;
+  const never = unsettled(doc).filter((u) => (u?.disposition ?? "unanswered") === "unanswered").length;
   const covLine =
     cov.total > 0
       ? cov.explained >= cov.total
@@ -248,6 +249,7 @@ function commentBody(doc: IntentDoc | null, cov: { total: number; explained: num
       covLine,
       assumptions ? `${assumptions} assumption${assumptions === 1 ? "" : "s"} to check first` : "",
       unexercised ? `${unexercised} behaviour${unexercised === 1 ? "" : "s"} never exercised` : "",
+      never ? `⚠️ ${never} question${never === 1 ? "" : "s"} nobody answered` : "",
     ]
       .filter(Boolean)
       .join(" · "),
@@ -329,6 +331,24 @@ async function createCheck(
 }
 
 /**
+ * How each disposition is announced. Mirrors the validator's renderer; the worker is a
+ * standalone bundle and cannot import it.
+ */
+const DISPOSITION: Record<string, string> = {
+  unanswered: "**Never answered — nobody considered this.**",
+  escalated: "**The developer asked for your eyes here.**",
+  accepted_partial: "**Known and shipped anyway.**",
+};
+
+/** Unanswered first: a risk nobody considered is the strongest finding, not the weakest. */
+function unsettled(doc: IntentDoc): NonNullable<IntentDoc["unresolved"]> {
+  const order: Record<string, number> = { unanswered: 0, escalated: 1, accepted_partial: 2 };
+  return [...(doc.unresolved ?? [])].sort(
+    (a, b) => (order[a?.disposition ?? ""] ?? 9) - (order[b?.disposition ?? ""] ?? 9)
+  );
+}
+
+/**
  * The live assumptions: the ones a human reviewer still has to check.
  *
  * `grounded_in_code` and `confirmed_by_user` are settled, and across the eleven documents
@@ -361,6 +381,16 @@ function intentSection(doc: IntentDoc, link: string): string {
     for (const a of assumptions) {
       const verify = a?.how_to_verify ? ` _Verify:_ ${a.how_to_verify}` : "";
       out.push(`- **[${a?.id ?? "?"}] ${a?.assumption ?? ""}** — if wrong: ${a?.impact_if_wrong ?? ""}.${verify}`);
+    }
+    out.push("");
+  }
+  const raised = unsettled(doc);
+  if (raised.length) {
+    out.push(`**Raised and not settled**`, "");
+    for (const u of raised) {
+      const where = u?.anchors?.length ? ` _(${u.anchors.join(", ")})_` : "";
+      out.push(`- ${DISPOSITION[u?.disposition ?? ""] ?? "**Unsettled.**"} ${u?.question ?? ""}${where}`);
+      if (u?.note) out.push(`  - ${u.note}`);
     }
     out.push("");
   }
@@ -452,6 +482,7 @@ interface IntentDoc {
   }[];
   verification?: { not_verified?: string[] };
   evaluated?: { question?: string; answer?: string; anchors?: string[] }[];
+  unresolved?: { question?: string; disposition?: string; note?: string; anchors?: string[] }[];
   diagrams?: { title?: string; mermaid?: string; caption?: string }[];
   tour?: { anchors?: { path: string; hunk: { new_start: number; new_lines: number } }[] }[];
 }

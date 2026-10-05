@@ -126,6 +126,10 @@
             "unanswered": {
               "type": "integer",
               "minimum": 0
+            },
+            "developer_attested": {
+              "type": "integer",
+              "minimum": 0
             }
           }
         }
@@ -481,6 +485,42 @@
           },
           "anchors": {
             "description": "Hunk ids this question concerns, e.g. [\"H4\"]. Absent when the reviewer recorded none.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "unresolved": {
+      "description": "Questions the interview could not settle, each with HOW it ended: accepted_partial (the developer knows and is shipping anyway), escalated (the developer wants a reviewer's eyes here), or unanswered (nobody engaged). An unanswered question about a code risk means the risk was never considered, which makes it a stronger finding rather than a weaker one. Stamped by the server from the run's recorded rounds; never written by an agent.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "question",
+          "disposition"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1
+          },
+          "disposition": {
+            "enum": [
+              "accepted_partial",
+              "escalated",
+              "unanswered"
+            ]
+          },
+          "note": {
+            "description": "Whatever was said about it: the developer's reason, or the author's recorded non-answer.",
+            "type": "string"
+          },
+          "anchors": {
             "type": "array",
             "items": {
               "type": "string",

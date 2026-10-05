@@ -397,3 +397,52 @@ describe("anchors into the intent document's own file", () => {
     expect(report.dangling).toEqual([]);
   });
 });
+
+/**
+ * `unanswered` has to read as the STRONGEST finding, which inverts how this used to render.
+ *
+ * Measured across 32 runs, 67 of 279 diff-provoked questions got no reply of any kind, and
+ * they include "env_file injects the ENTIRE backend env (DB password, LLM API keys, JWT
+ * secret)" and "uses :latest while two comments state pinned behaviour". An unanswered
+ * question about a code risk means the risk was never considered. A flat list of open
+ * questions made that indistinguishable from an unanswered "why did you pick this name".
+ */
+describe("renderMarkdown weights the dispositions", () => {
+  const withUnresolved = () => {
+    const doc = structuredClone(example) as IntentDocument;
+    doc.unresolved = [
+      { question: "Is the unpinned image tag intentional?", disposition: "accepted_partial", note: "- Known. Pinning comes with the registry move." },
+      { question: "Does env_file leak the whole backend env?", disposition: "unanswered", anchors: ["H3"] },
+      { question: "Can two concurrent deletes interleave?", disposition: "escalated" },
+    ];
+    return doc;
+  };
+
+  it("puts what nobody answered first, ahead of decisions already taken", () => {
+    const md = renderMarkdown(withUnresolved());
+    const never = md.indexOf("Does env_file leak");
+    const escalated = md.indexOf("Can two concurrent deletes");
+    const accepted = md.indexOf("Is the unpinned image tag");
+    expect(never).toBeLessThan(escalated);
+    expect(escalated).toBeLessThan(accepted);
+  });
+
+  it("says which of the three happened, in words a reader can tell apart", () => {
+    const md = renderMarkdown(withUnresolved());
+    expect(md).toContain("Never answered — nobody considered this.");
+    expect(md).toContain("The developer asked for your eyes here.");
+    expect(md).toContain("Known and shipped anyway.");
+  });
+
+  it("carries the developer's reason and the hunk it concerns", () => {
+    const md = renderMarkdown(withUnresolved());
+    expect(md).toContain("Pinning comes with the registry move");
+    expect(md).toContain("(H3)");
+  });
+
+  it("omits the section when the interview settled everything", () => {
+    const doc = structuredClone(example) as IntentDocument;
+    delete doc.unresolved;
+    expect(renderMarkdown(doc)).not.toContain("Raised and not settled");
+  });
+});
