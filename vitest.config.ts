@@ -22,6 +22,15 @@ const textLoader: Plugin = {
 export default defineConfig({
   plugins: [textLoader],
   test: {
-    include: ["packages/**/test/**/*.test.ts", "apps/github-app/worker/test/**/*.test.ts"],
+    include: [
+      "packages/**/test/**/*.test.ts",
+      "apps/github-app/worker/test/**/*.test.ts",
+      // The viewer's script carries real logic now, not just markup: which of a document's
+      // uncertain items belong to a given stop. It is driven through jsdom the same way
+      // the build's prerender step already drives it.
+      "apps/github-app/viewer/test/**/*.test.ts",
+    ],
+    // jsdom has no layout, so the default 5s is tight for a test that loads the whole page.
+    testTimeout: 20_000,
   },
 });

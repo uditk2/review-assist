@@ -1671,9 +1671,24 @@ function render(){
     cov.unexplained.length ? link("coverage","Uncovered changes", el("span",{class:"ml-auto tag tag-warn"}, cov.unexplained.length)) : null,
     STATE.me ? link("submit","Submit review", STATE.reviewSubmitted ? el("span",{class:"ml-auto tag tag-ok"}, "sent") : null) : null,
     el("p",{class:"eyebrow px-2.5 pb-2 pt-5"},"Walkthrough"),
-    ...STATE.ordered.map((s,i)=>el("button",
-      {class:"nav-link"+(STATE.view==="tour"&&STATE.stopIndex===i?" is-active":""), onclick:()=>goStop(i)},
-      el("span",{class:"id-chip"}, s.id), el("span",{class:"truncate"}, s.title))));
+    // A supporting or incidental stop is dimmed rather than hidden. Every coverage-required
+    // hunk must land in some stop, so hiding one would make a reviewer unable to reach the
+    // code it explains — but a list where churn looks as important as a behaviour change is
+    // how fourteen stops become undifferentiated.
+    //
+    // A core stop with something still uncertain carries a count, because that is where the
+    // walk is worth slowing down.
+    ...STATE.ordered.map((s,i)=>{
+      const core = s.role === "core";
+      const live = liveForStop(doc, stopHunkIds(s));
+      const n = live.assumptions.length + live.unresolved.length + live.questions.length + live.unverified.length;
+      return el("button",
+        {class:"nav-link"+(STATE.view==="tour"&&STATE.stopIndex===i?" is-active":"")+(core?"":" opacity-60"),
+         title: core ? s.title : s.title+" ("+s.role+")", onclick:()=>goStop(i)},
+        el("span",{class:"id-chip"}, s.id),
+        el("span",{class:"truncate"+(core?"":" text-ink-500")}, s.title),
+        n ? el("span",{class:"ml-auto tag tag-warn"}, String(n)) : null);
+    }));
 
   // The same navigation, as a scrolling strip, for the widths where the rail is hidden.
   const chip = (view, label, on) => el("button",
@@ -1778,6 +1793,20 @@ function labeled(label, ...body){
   return el("p",{class:"mt-3"}, el("span",{class:"font-medium text-ink-900"}, label+" "), ...body);
 }
 
+/**
+ * How many anchored items moved to the walkthrough, so the Overview can say so.
+ *
+ * Without this the Overview looks thinner than the document is, and a reader cannot tell
+ * whether something was dropped or relocated. Showing the item in both places instead
+ * would be the duplication this redesign exists to remove.
+ */
+function movedToStops(doc){
+  const anchored = xs => (xs || []).filter(x => (x.anchors || []).length).length;
+  const nv = (doc.verification?.not_verified || []).filter(n => typeof n !== "string" && (n.anchors || []).length).length;
+  return anchored((doc.assumptions || []).filter(a => (a.confidence || "unverified") === "unverified"))
+    + anchored(doc.unresolved) + anchored(doc.open_questions) + nv;
+}
+
 function renderOverview(doc){
   const p = doc.problem;
   const f = document.createDocumentFragment();
@@ -1795,10 +1824,19 @@ function renderOverview(doc){
   // are settled — 40 of the 68 in this repo's own documents, and mostly the agent scoping
   // the document rather than describing the code. A settled assumption is not a thing to
   // review, so it does not take a reviewer's minute. Mirrors the validator's renderer.
-  const liveAssumptions = (doc.assumptions || []).filter(a => (a.confidence || "unverified") === "unverified");
+  //
+  // And only the ones belonging to the WHOLE change stay here. An assumption anchored to a
+  // hunk is shown at that stop instead, where a reviewer is looking at the code it bears
+  // on; repeating it here would say it twice. `movedToStops` reports the count so the page
+  // never looks as though something went missing.
+  const liveAssumptions = (doc.assumptions || []).filter(a =>
+    (a.confidence || "unverified") === "unverified" && !(a.anchors || []).length);
+  const moved = movedToStops(doc);
+  if (moved) left.append(el("p",{class:"mb-6 text-sm text-ink-500"},
+    moved + " more " + (moved===1?"item is":"items are") + " attached to walkthrough stops, shown where the code is."));
   if (liveAssumptions.length){
     const sec = section("Assumptions");
-    sec.append(el("p",{class:"-mt-2 mb-3 text-sm text-ink-500"},"Unverified. If any of these is wrong, the change likely needs rework — check them before reading the diff."));
+    sec.append(el("p",{class:"-mt-2 mb-3 text-sm text-ink-500"},"About the change as a whole, and unverified. If any is wrong, the change likely needs rework."));
     for (const a of liveAssumptions){
       const conf = CONF[a.confidence] || CONF.unverified;
       const state = STATE.acks[a.id];
@@ -1818,9 +1856,10 @@ function renderOverview(doc){
     right.append(sec);
   }
 
-  if (doc.open_questions?.length){
+  const globalQuestions = (doc.open_questions || []).filter(q => !(q.anchors || []).length);
+  if (globalQuestions.length){
     const sec = section("Open questions");
-    for (const q of doc.open_questions) sec.append(el("div",{class:"card mb-3"},
+    for (const q of globalQuestions) sec.append(el("div",{class:"card mb-3"},
       el("div",{class:"flex items-start justify-between gap-3"},
         el("div",{}, el("span",{class:"id-chip mr-2"},q.id), el("span",{class:"font-medium"}, q.question)),
         hunkChips(q.anchors)),
@@ -1834,14 +1873,15 @@ function renderOverview(doc){
   // questions got no reply at all, and they include a secret blast radius and an unpinned
   // image. An unanswered question about a code risk means the risk was never considered,
   // which makes it the strongest finding here rather than the weakest.
-  if (doc.unresolved?.length){
+  const globalUnresolved = (doc.unresolved || []).filter(u => !(u.anchors || []).length);
+  if (globalUnresolved.length){
     const DISPOSITION = {
       unanswered: ["Never answered", "tag tag-warn", "Nobody considered this."],
       escalated: ["Asked for your eyes", "tag tag-warn", "The developer wants a human to look here."],
       accepted_partial: ["Known and shipped", "tag", "A risk the developer took knowingly."],
     };
     const order = { unanswered: 0, escalated: 1, accepted_partial: 2 };
-    const sorted = [...doc.unresolved].sort((a,b) => (order[a.disposition] ?? 9) - (order[b.disposition] ?? 9));
+    const sorted = [...globalUnresolved].sort((a,b) => (order[a.disposition] ?? 9) - (order[b.disposition] ?? 9));
     const sec = section("Raised and not settled");
     for (const u of sorted){
       const [label, cls, gloss] = DISPOSITION[u.disposition] || ["Unsettled", "tag", ""];
@@ -1924,21 +1964,140 @@ function row(k,v){ return el("div",{class:"flex gap-2"}, el("dt",{class:"shrink-
 function subsection(title, body){ return el("div",{class:"mt-3 border-t border-ink-200 pt-3"}, el("h3",{class:"text-sm font-medium text-ink-600"}, title), body); }
 function ackBtn(id,kind,label,state){ return el("button",{class:"btn-ghost"+(state===kind?" is-on":""), onclick:()=>{STATE.acks[id]= state===kind?null:kind; render();}}, label); }
 
+/**
+ * Everything still uncertain that belongs to THIS stop.
+ *
+ * The point of the walk. A reviewer at a stop wants three things — what changed, what to
+ * check, and what is still uncertain HERE — and the third used to live in four separate
+ * lists on another page, leaving the reader to do the join by hand. Measured on this
+ * repo's own documents, 54% of every document was fields with no link to the code.
+ *
+ * Anchored items move here; unanchored ones stay on the Overview, which is the right home
+ * for something about the whole change. Nothing appears in both places: saying it twice is
+ * the waste this whole redesign exists to remove.
+ */
+function liveForStop(doc, ids){
+  const mine = a => (a || []).some(h => ids.has(h));
+  const nv = (doc.verification?.not_verified || []).map(n =>
+    typeof n === "string" ? {text:n, anchors:[]} : {text:n.text, anchors:n.anchors || []});
+  return {
+    assumptions: (doc.assumptions || []).filter(a => (a.confidence || "unverified") === "unverified" && mine(a.anchors)),
+    unresolved: (doc.unresolved || []).filter(u => mine(u.anchors)),
+    questions: (doc.open_questions || []).filter(q => mine(q.anchors)),
+    unverified: nv.filter(n => mine(n.anchors)),
+    evaluated: (doc.evaluated || []).filter(e => mine(e.anchors)),
+  };
+}
+
+/** The hunk ids a stop covers. Empty for a document written before anchors kept their ids. */
+function stopHunkIds(stop){
+  return new Set((stop.anchors || []).map(a => a && a.id).filter(Boolean));
+}
+
+/**
+ * What is still uncertain at this stop, in the order it should be read.
+ *
+ * Unanswered questions lead. Measured across 32 runs, 67 of 279 diff-provoked questions
+ * got no reply at all, and they include a secret blast radius and an unpinned image: an
+ * unanswered question about a code risk means the risk was never considered, which makes
+ * it the strongest thing on the page rather than the weakest.
+ *
+ * Silence is reported, not hidden. A core stop with nothing flagged says so, because "we
+ * looked and found nothing here" is information, and an empty space is not.
+ */
+function renderLiveHere(doc, ids, role){
+  const live = liveForStop(doc, ids);
+  const n = live.assumptions.length + live.unresolved.length + live.questions.length + live.unverified.length;
+  const box = el("section",{class:"mt-6 border-t border-ink-200 pt-5"});
+
+  if (!n){
+    // Not shown for a supporting or incidental stop: nobody expects a finding there, so
+    // the reassurance would be noise.
+    if (role !== "core" || !ids.size) return box;
+    box.append(el("p",{class:"text-sm text-ink-500"},"Nothing flagged at this stop — no unverified assumption, unsettled question or unexercised path anchors here."));
+    return box;
+  }
+
+  box.append(el("h2",{class:"section-h"},"Still uncertain here"));
+
+  const DISP = {
+    unanswered: ["Never answered", "tag tag-warn"],
+    escalated: ["Asked for your eyes", "tag tag-warn"],
+    accepted_partial: ["Known and shipped", "tag"],
+  };
+  for (const u of live.unresolved){
+    const [label, cls] = DISP[u.disposition] || ["Unsettled","tag"];
+    box.append(el("div",{class:"card mb-3"},
+      el("div",{class:"flex items-start justify-between gap-3"},
+        el("span",{class:"font-medium"}, u.question),
+        el("span",{class:cls}, label)),
+      u.note ? points(u.note, "mt-2 text-sm text-ink-700") : null));
+  }
+
+  for (const a of live.assumptions){
+    const state = STATE.acks[a.id];
+    box.append(el("div",{class:"card mb-3"},
+      el("div",{class:"flex items-start justify-between gap-3"},
+        el("div",{}, el("span",{class:"id-chip mr-2"}, a.id), el("span",{class:"font-medium"}, a.assumption)),
+        el("span",{class:"tag tag-warn"},"unverified")),
+      el("dl",{class:"mt-2 space-y-1 text-sm text-ink-600"},
+        row("If wrong", a.impact_if_wrong),
+        a.how_to_verify ? row("How to verify", a.how_to_verify) : null),
+      el("div",{class:"mt-3 flex gap-2"},
+        ackBtn(a.id,"accept","Accept",state),
+        ackBtn(a.id,"flag","Flag for discussion",state)),
+      STATE.composer==="assume:"+a.id ? renderGlobalComposer("assume:"+a.id, STATE.composerSeed) : null,
+      STATE.posted["assume:"+a.id] ? el("p",{class:"mt-2 text-sm text-ink-500"},"\u2713 Posted to the PR discussion.") : null));
+  }
+
+  for (const q of live.questions){
+    box.append(el("div",{class:"card mb-3"},
+      el("div",{}, el("span",{class:"id-chip mr-2"}, q.id), el("span",{class:"font-medium"}, q.question)),
+      q.context ? el("p",{class:"mt-1.5 text-sm text-ink-600"}, q.context) : null));
+  }
+
+  if (live.unverified.length){
+    box.append(subsection("Never exercised",
+      el("ul",{class:"mt-1 space-y-1.5 text-sm"}, ...live.unverified.map(x=>el("li",{class:"flex items-start gap-2 text-ink-700"},
+        el("span",{class:"select-none text-warn-fg"},"\u2014"), el("span",{}, x.text))))));
+  }
+
+  // Closed by default and last: these are settled, so they are a lookup for a reviewer who
+  // arrives holding the same question, not something to read through.
+  if (live.evaluated.length){
+    const d = el("details",{class:"mt-4"});
+    d.append(el("summary",{class:"cursor-pointer text-sm text-ink-600"},
+      live.evaluated.length + " question" + (live.evaluated.length===1?"":"s") + " about this hunk already asked and answered"));
+    for (const e of live.evaluated) d.append(el("div",{class:"card mt-2"},
+      el("p",{class:"font-medium"}, e.question), points(e.answer, "mt-2 text-sm text-ink-700")));
+    box.append(d);
+  }
+  return box;
+}
+
 function renderStop(){
   const s = STATE.ordered[STATE.stopIndex];
   const total = STATE.ordered.length;
   const f = document.createDocumentFragment();
   const prose = el("div",{class:"stop-prose"});
   prose.append(el("section",{},
-    el("div",{class:"mb-2 flex items-center gap-2 text-sm text-ink-500"},
+    el("div",{class:"mb-2 flex flex-wrap items-center gap-2 text-sm text-ink-500"},
       el("span",{}, `Stop ${STATE.stopIndex+1} of ${total}`),
-      el("span",{class:"tag"}, s.role),
+      // Core count, because `supporting` and `incidental` stops are not the ones a reviewer
+      // has to weigh and knowing how many really matter changes how the walk is paced.
+      el("span",{}, `${STATE.ordered.filter(x=>x.role==="core").length} core`),
+      el("span",{class: s.role==="core" ? "tag tag-warn" : "tag"}, s.role),
       s.parent ? el("span",{}, `follows ${s.parent}`) : null,
       el("span",{class:"ml-auto"}, titleCase(s.provenance))),
     el("h1",{class:"mb-4"}, el("span",{class:"id-chip mr-2 text-ink-400"}, s.id), s.title),
+    // `attention` leads. It is the one line a reviewer with a minute actually reads — "the
+    // thing you would check with only a minute" — and it sat below What and Why, which are
+    // the longest fields on the page.
+    s.attention ? el("div",{class:"note mb-4"}, el("p",{class:"mb-0.5 text-sm font-semibold text-warn-fg"},"Check first"), el("p",{class:"text-ink-800"}, s.attention)) : null,
     labeled("What.", points(s.what, "text-ink-800")),
-    labeled("Why.", points(s.why, "text-ink-800")),
-    s.attention ? el("div",{class:"note mt-4"}, el("p",{class:"mb-0.5 text-sm font-semibold text-warn-fg"},"Reviewer note"), el("p",{class:"text-ink-800"}, s.attention)) : null));
+    labeled("Why.", points(s.why, "text-ink-800"))));
+
+  prose.append(renderLiveHere(STATE.data.document, stopHunkIds(s), s.role));
 
   const code = el("div",{class:"stop-code"});
   for (const hp of hunksForStop(s, STATE.files)){
