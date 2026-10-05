@@ -180,47 +180,89 @@ describe("installRoles", () => {
 });
 
 /**
- * The author can read the repository, and that grant was previously missing by accident.
+ * The author may read the repository, and may ask the developer — expressed per CLIENT.
  *
- * `tools:` in a Claude Code subagent is an ALLOWLIST, and it was generated from ROLE_TOOLS
- * — a list of this server's MCP tools and nothing else. So the author shipped with no Read,
- * Grep or Glob, not as a decision about code access but as a side effect of expressing a
- * different one ("the author must not reach submit_document"). Codex scopes MCP per server
- * and keeps its own file tools, so the same intent left the author able to read code there
- * and unable to read it here.
+ * Two separate failures live here, and only the first was fixed when this was written.
  *
- * It matters because many of the reviewer's questions are not about the session at all:
- * "deleteWorkflow has no transaction around its three calls" is answered by the surrounding
- * function, outside the diff. Unable to look, the author reported the transcript silent and
- * the question reached the document as a gap that was never really a gap.
+ * ONE: `tools:` in a Claude Code subagent is an allowlist, and it was generated from
+ * ROLE_TOOLS — this server's MCP tools and nothing else — so the author shipped with no
+ * file access at all, not as a decision but as a side effect of expressing a different one
+ * ("the author must not reach submit_document").
+ *
+ * TWO, and the reason these tests are per client: the fix listed `Read`, `Grep`, `Glob` and
+ * `AskUserQuestion` for every client. Claude Code got a correct allowlist. Codex has no
+ * per-tool allowlist at all — it scopes MCP access per server, which is why the role lock
+ * lives in REVIEW_ASSIST_ROLE — and arrives with its own file tools under its own names, so
+ * its author was handed an access list naming four tools it does not have, one of which
+ * (asking the user) has no Codex equivalent whatsoever. The earlier tests were Claude-only,
+ * which is exactly why that shipped.
  */
-describe("the author's repository access", () => {
-  const authorDef = () => getRoles({ env: "claude" }).roles.author!.definition;
-  const toolsLine = (def: string) => def.split("\n").find((l) => l.startsWith("tools:")) ?? "";
+describe("what the author may do beyond this server's tools", () => {
+  const def = (env: string) => getRoles({ env }).roles.author!.definition;
+  const toolsLine = (d: string) => d.split("\n").find((l) => l.startsWith("tools:")) ?? "";
+  const CLAUDE_ONLY = ["Read", "Grep", "Glob", "AskUserQuestion"];
 
-  it("grants read-only file tools on the allowlist, beside the MCP tools", () => {
-    const line = toolsLine(authorDef());
-    for (const t of ["Read", "Grep", "Glob"]) expect(line).toContain(t);
-    expect(line).toContain("mcp__review-assist__get_spine");
+  describe("on Claude Code, which takes an allowlist", () => {
+    it("names the read-only file tools and the way to ask the developer", () => {
+      const line = toolsLine(def("claude"));
+      for (const t of CLAUDE_ONLY) expect(line).toContain(t);
+      expect(line).toContain("mcp__review-assist__get_spine");
+    });
+
+    it("grants nothing that can write or execute", () => {
+      // The author answers questions, and a role that can edit the repository it is
+      // describing can make its own answers true.
+      const line = toolsLine(def("claude"));
+      for (const t of ["Bash", "Edit", "Write", "NotebookEdit"]) expect(line).not.toContain(t);
+    });
+
+    it("documents them, so the prose cannot drift from the allowlist", () => {
+      for (const t of CLAUDE_ONLY) expect(def("claude")).toContain(`- \`${t}\``);
+    });
   });
 
-  it("grants nothing that can write or execute", () => {
-    // A role that can edit the repository it is describing can make its own answers true.
-    const line = toolsLine(authorDef());
-    for (const t of ["Bash", "Edit", "Write", "NotebookEdit"]) expect(line).not.toContain(t);
-  });
+  for (const env of ["codex", "generic"]) {
+    describe(`on ${env}, which has no per-tool allowlist`, () => {
+      it("never names a tool this client does not have", () => {
+        // The bug this file exists to prevent: an access list promising `Grep` to a client
+        // whose search tool is not called that, and `AskUserQuestion` to one with no
+        // equivalent at all.
+        const d = def(env);
+        for (const t of CLAUDE_ONLY) expect(d).not.toContain(`\`${t}\``);
+      });
 
-  it("documents them in the access list, so the prose cannot drift from the allowlist", () => {
-    // The same failure this file already guards for MCP tools: the grant and the prose
-    // describing it are generated from one constant precisely because they drifted before.
-    const def = authorDef();
-    for (const t of ["Read", "Grep", "Glob"]) expect(def).toContain(`- \`${t}\``);
-  });
+      it("states the capability instead, so the author still knows it may look", () => {
+        // Silence would be worse than a wrong name: the author would not know it may read
+        // the code, and would report the transcript silent on a question the code answers.
+        const d = def(env);
+        expect(d).toContain("reading the repository, read-only");
+        expect(d).toContain("putting a question to the DEVELOPER");
+      });
 
-  it("leaves the reviewer without them", () => {
+      it("says the developer question may be impossible, and must never block", () => {
+        expect(def(env)).toContain("NEVER blocking");
+      });
+
+      it("still carries the MCP tools, which are granted by the server not the client", () => {
+        expect(def(env)).toContain("get_spine");
+      });
+    });
+  }
+
+  it("leaves the reviewer with no client grant on any client", () => {
     // Its independence is from the AUTHOR's framing rather than from the repository, so
     // widening it is defensible — but it is a separate decision, not this one.
-    const line = toolsLine(getRoles({ env: "claude" }).roles.reviewer!.definition);
-    for (const t of ["Read", "Grep", "Glob"]) expect(line).not.toContain(t);
+    for (const env of ["claude", "codex", "generic"]) {
+      const d = getRoles({ env }).roles.reviewer!.definition;
+      for (const t of CLAUDE_ONLY) expect(d).not.toContain(`\`${t}\``);
+    }
+  });
+
+  it("leaves no placeholder unsubstituted in any client's definition", () => {
+    for (const env of ["claude", "codex", "generic"]) {
+      for (const role of ["author", "reviewer"] as const) {
+        expect(getRoles({ env }).roles[role]!.definition).not.toMatch(/\{\{[A-Z]+\}\}/);
+      }
+    }
   });
 });

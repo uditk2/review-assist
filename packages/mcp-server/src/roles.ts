@@ -112,33 +112,57 @@ const REGISTRY: Record<RoleEnv, EnvEntry> = {
 };
 
 /**
- * Read-only tools of the CLIENT, not of this server, so they carry no `mcp__` prefix.
+ * What the author may do beyond this server's own tools, per CLIENT.
  *
- * The author needs these to answer a question the transcript does not cover. Many such
- * questions are not about the session at all — "deleteWorkflow has no transaction around
- * its three calls" is answered by the surrounding function, which lies OUTSIDE the diff,
- * and before this the author could see a diff and a transcript and nothing else. It had no
- * way to look, so it reported that the transcript was silent and the question travelled to
- * the document as a gap that was never really a gap.
+ * Per client because the clients differ in kind, not only in syntax. Claude Code takes a
+ * `tools:` allowlist, so a capability omitted there is a real lockout and one named there
+ * is really granted. Codex has no per-tool allowlist at all — it scopes MCP access per
+ * server, which is why the role lock lives in REVIEW_ASSIST_ROLE — and it arrives with its
+ * own shell and file tools under its own names. A generic client gets whatever it already
+ * had.
  *
- * Read-only on purpose. No Bash and no write tool: the author answers questions, and a
- * role that can edit the repository it is describing can make its own answers true.
+ * `tools` are names the client understands and go in the allowlist AND the access list.
+ * `notes` are capabilities with no name to grant, and go in the access list only. The
+ * distinction exists because the first version of this listed `Read`, `Grep`, `Glob` and
+ * `AskUserQuestion` for every client: Claude got a correct allowlist, while the Codex and
+ * generic authors were handed an access list naming four tools they do not have, one of
+ * which (asking the user) has no Codex equivalent whatsoever.
  *
- * Claude Code is the only client this changes. It takes a `tools:` allowlist, so an
- * omission here is a real lockout; Codex scopes MCP access per server and keeps its own
- * file tools, and a generic client gets whatever it already had.
+ * Read-only throughout. No shell and no write tool is ever granted here: the author
+ * answers questions, and a role that can edit the repository it is describing can make its
+ * own answers true.
  */
-const ROLE_CLIENT_TOOLS: Record<RoleName, readonly string[]> = {
-  // AskUserQuestion is how the author reaches the developer for a question neither the
-  // transcript nor the code can settle — "is injecting the whole backend env acceptable
-  // here?" is not a fact anyone can look up. The author is the right role to ask: it is
-  // already the developer's proxy, and a reviewer that talked to the developer would be
-  // taking session context first-hand, which is the thing the split exists to prevent.
-  author: ["Read", "Grep", "Glob", "AskUserQuestion"],
-  // The reviewer is unchanged, deliberately. Its independence is from the AUTHOR's
-  // framing, not from the repository, so widening it is defensible — but it is a separate
-  // decision with its own consequences for the interview, and it is not this change.
-  reviewer: [],
+interface ClientGrant {
+  tools: readonly string[];
+  notes: readonly string[];
+}
+
+const NO_GRANT: ClientGrant = { tools: [], notes: [] };
+
+/** Capabilities the author needs, in whatever form each client can express them. */
+const READ_REPO =
+  "reading the repository, read-only — for a question the transcript cannot answer but the code can. Use your client's own file tools; never write.";
+const ASK_DEVELOPER =
+  "putting a question to the DEVELOPER, if your client can. For what neither the transcript nor the code settles. One batch, at most five, and NEVER blocking: if there is no way to ask, carry on and leave them unanswered.";
+
+const ROLE_CLIENT_TOOLS: Record<RoleEnv, Record<RoleName, ClientGrant>> = {
+  claude: {
+    author: { tools: ["Read", "Grep", "Glob", "AskUserQuestion"], notes: [] },
+    // The reviewer is unchanged, deliberately. Its independence is from the AUTHOR's
+    // framing, not from the repository, so widening it is defensible — but it is a
+    // separate decision with its own consequences for the interview.
+    reviewer: NO_GRANT,
+  },
+  codex: {
+    // Nothing to allowlist: Codex brings its own file tools. Stated as capabilities so the
+    // author knows it may look, without being told to call a tool that does not exist.
+    author: { tools: [], notes: [READ_REPO, ASK_DEVELOPER] },
+    reviewer: NO_GRANT,
+  },
+  generic: {
+    author: { tools: [], notes: [READ_REPO, ASK_DEVELOPER] },
+    reviewer: NO_GRANT,
+  },
 };
 
 /**
@@ -146,14 +170,15 @@ const ROLE_CLIENT_TOOLS: Record<RoleName, readonly string[]> = {
  * the two drifted the moment search_transcript was added, leaving the Claude author
  * unable to call the one tool the interview depends on.
  */
-function render(tpl: string, role: RoleName): string {
+function render(tpl: string, role: RoleName, env: RoleEnv): string {
+  const grant = ROLE_CLIENT_TOOLS[env][role];
   const allowlist = [
     ...ROLE_TOOLS[role].map((t) => `mcp__review-assist__${t}`),
-    ...ROLE_CLIENT_TOOLS[role],
+    ...grant.tools,
   ].join(", ");
   return tpl
     .replace("{{BODY}}", BODY[role].trim())
-    .replace("{{ACCESS}}", accessList(role))
+    .replace("{{ACCESS}}", accessList(role, env))
     .replace("{{TOOLS}}", allowlist)
     .replace("{{MARKER}}", MARKER);
 }
@@ -189,7 +214,7 @@ export function getRoles(opts: { env?: string; role?: RoleName; clientName?: str
 
   const roles: RoleBundle["roles"] = {};
   for (const r of wanted) {
-    roles[r] = { filename: entry.filename(r), definition: render(entry.templates[r], r) };
+    roles[r] = { filename: entry.filename(r), definition: render(entry.templates[r], r, env) };
   }
 
   return {
@@ -370,6 +395,8 @@ const TOOL_BLURB: Record<string, string> = {
     "record what the session was about as you read it: blocks of exchanges on one subject, each with a one-sentence label.",
   read_context:
     "the conversation of ONE context, by id. Match a question against the labels, then read the two or three that fit.",
+  // Client tools, named only where a client has them under these names. The capability
+  // form for a client that does not is in ROLE_CLIENT_TOOLS as a note.
   Read: "a file in the repository, read-only. For a question the transcript cannot answer but the code can.",
   Grep: "search the repository, read-only. Where to look when a question is about code outside the diff.",
   Glob: "find files by pattern, read-only.",
@@ -390,10 +417,14 @@ const TOOL_BLURB: Record<string, string> = {
   set_consent: "record the user's decision about operating in this repository.",
 };
 
-function accessList(role: RoleName): string {
-  return [...ROLE_TOOLS[role], ...ROLE_CLIENT_TOOLS[role]]
-    .map((t) => `- \`${t}\` — ${TOOL_BLURB[t] ?? "see the tool description."}`)
-    .join("\n");
+function accessList(role: RoleName, env: RoleEnv): string {
+  const grant = ROLE_CLIENT_TOOLS[env][role];
+  return [
+    ...[...ROLE_TOOLS[role], ...grant.tools].map(
+      (t) => `- \`${t}\` — ${TOOL_BLURB[t] ?? "see the tool description."}`
+    ),
+    ...grant.notes.map((n) => `- ${n}`),
+  ].join("\n");
 }
 
 export function activeRole(): RoleName | undefined {
