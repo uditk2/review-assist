@@ -70,7 +70,7 @@
     },
     {
       "name": "find_sessions_touching",
-      "description": "Name the other sessions on this machine that touched given files, for a hunk the current session cannot explain."
+      "description": "Find which other session on this machine wrote a hunk the current session cannot explain: narrows by file, then attributes the hunk's added lines."
     },
     {
       "name": "record_interview_round",

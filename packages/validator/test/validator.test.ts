@@ -225,10 +225,93 @@ describe("render", () => {
     const md = renderMarkdown(example, { viewerUrl: "https://viewer.example/#x" });
     expect(md).toContain("Intent Document");
     expect(md).toContain("Assumptions");
-    expect(md).toContain("A1");
     expect(md).toContain("Guided tour");
     expect(md).toContain("Open guided review");
     expect(md).toContain("Not verified");
+  });
+});
+
+/**
+ * The front page is the LIVE set.
+ *
+ * Measured across the eleven documents in `.intent/`: 68 assumptions, of which 30 are
+ * `grounded_in_code` and 10 `confirmed_by_user`. Those 40 are settled, and they are mostly
+ * the agent scoping the DOCUMENT rather than describing the code — "Cloudflare is a
+ * deployment detail and should not appear in this view" is not something anyone reviews.
+ * Rendering them cost the reader time to conclude there was nothing to do, and `confidence`
+ * as an italic aside was not enough to tell them apart.
+ */
+describe("renderMarkdown shows only what is still live", () => {
+  const settled = example.assumptions.find((a) => a.confidence !== "unverified")!;
+  const live = example.assumptions.find((a) => a.confidence === "unverified")!;
+
+  it("keeps an unverified assumption and drops a settled one", () => {
+    const md = renderMarkdown(example);
+    expect(md).toContain(live.assumption);
+    expect(md).not.toContain(settled.assumption);
+  });
+
+  it("drops the whole assumptions section when every one is settled", () => {
+    const doc = structuredClone(example);
+    for (const a of doc.assumptions) a.confidence = "grounded_in_code";
+    const md = renderMarkdown(doc);
+    expect(md).not.toContain("review these first");
+  });
+
+  it("stops labelling confidence, because everything shown is unverified", () => {
+    // The label existed to tell settled from unsettled in one list. With one list there is
+    // nothing to tell apart, and the label was how the settled ones justified being there.
+    expect(renderMarkdown(example)).not.toContain("grounded in code");
+  });
+
+  it("gives what was never exercised its own section near the top", () => {
+    // It used to be the last thing before the footer while settled assumptions led the
+    // document. Authors report what passed and go quiet about this half, so it leads now.
+    const md = renderMarkdown(example);
+    const notVerified = md.indexOf("Not verified");
+    const tour = md.indexOf("Guided tour");
+    expect(notVerified).toBeGreaterThan(-1);
+    expect(notVerified).toBeLessThan(tour);
+  });
+});
+
+/**
+ * `evaluated` is a lookup, not reading: an answered, grounded question is no longer a
+ * question, so it must not spend the reader's minute — but discarded it is worse than
+ * useless, because a reviewer will re-derive an answer somebody already has.
+ */
+describe("renderMarkdown renders the evaluated lookup", () => {
+  const withEvaluated = () => {
+    const doc = structuredClone(example);
+    (doc as IntentDocument).evaluated = [
+      { question: "Can a service outside DEPLOY_ORDER be dispatched?", answer: "- No, the input is type: choice.", anchors: ["H4"] },
+      { question: "Was the Compose version on the VM checked?", answer: "- Yes, v5.1 supports --wait." },
+    ];
+    return doc;
+  };
+
+  it("collapses it behind a disclosure rather than putting it in the reading path", () => {
+    const md = renderMarkdown(withEvaluated());
+    expect(md).toContain("<details>");
+    expect(md).toContain("Already evaluated (2)");
+  });
+
+  it("carries the question, the answer and the hunk that settles it", () => {
+    const md = renderMarkdown(withEvaluated());
+    expect(md).toContain("Can a service outside DEPLOY_ORDER be dispatched?");
+    expect(md).toContain("No, the input is type: choice.");
+    expect(md).toContain("(H4)");
+  });
+
+  it("omits the section entirely when the interview settled nothing", () => {
+    const doc = structuredClone(example);
+    delete (doc as IntentDocument).evaluated;
+    expect(renderMarkdown(doc)).not.toContain("Already evaluated");
+  });
+
+  it("accepts an entry with no anchors, since old runs recorded none", () => {
+    const md = renderMarkdown(withEvaluated());
+    expect(md).toContain("Was the Compose version on the VM checked?");
   });
 });
 

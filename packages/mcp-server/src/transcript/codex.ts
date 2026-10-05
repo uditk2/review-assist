@@ -14,7 +14,7 @@
 
 import { basename } from "node:path";
 import { FAILURE_SIGNAL, oneLine, stripInjected, extractPaths } from "./text.js";
-import type { ParsedEntry, ParsedEvent, TranscriptParser } from "./types.js";
+import type { EntryAttribution, ParsedEntry, ParsedEvent, TranscriptParser } from "./types.js";
 import { nothing } from "./types.js";
 
 /**
@@ -44,6 +44,25 @@ export class CodexParser implements TranscriptParser {
 
   handles(entry: Record<string, unknown>): boolean {
     return entry.payload !== undefined && entry.message === undefined;
+  }
+
+  /**
+   * Codex keeps the two directions in different payload fields rather than in block
+   * types: a call carries `input`/`arguments`, its result carries `stdout`/`output`, and a
+   * landed patch carries its body on the apply call.
+   */
+  attribution(entry: Record<string, unknown>): EntryAttribution {
+    const payload = (entry.payload ?? {}) as Record<string, unknown>;
+    const pick = (...keys: string[]) =>
+      keys
+        .map((k) => payload[k])
+        .filter((v) => v !== undefined && v !== null)
+        .map((v) => (typeof v === "string" ? v : JSON.stringify(v)))
+        .join("\n");
+    return {
+      authored: pick("input", "arguments", "changes", "patch"),
+      observed: pick("stdout", "stderr", "output", "result"),
+    };
   }
 
   parse(entry: Record<string, unknown>): ParsedEntry {

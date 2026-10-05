@@ -231,7 +231,8 @@ function commentBody(doc: IntentDoc | null, cov: { total: number; explained: num
     return `${MARKER}\n### 📋 Review Assist\nNo Intent Document was found for this PR (\`.intent/<branch>.json\`). Generate one from your coding session and commit it, and this comment will turn into a guided review.\n`;
   }
   const problem = (doc.problem?.statement ?? "").trim();
-  const assumptions = (doc.assumptions ?? []).length;
+  const assumptions = liveAssumptions(doc).length;
+  const unexercised = (doc.verification?.not_verified ?? []).length;
   const covLine =
     cov.total > 0
       ? cov.explained >= cov.total
@@ -243,7 +244,13 @@ function commentBody(doc: IntentDoc | null, cov: { total: number; explained: num
     `### 📋 Review Assist — guided review ready`,
     problem ? `> ${problem}` : "",
     "",
-    [covLine, assumptions ? `${assumptions} assumption${assumptions === 1 ? "" : "s"} to check first` : ""].filter(Boolean).join(" · "),
+    [
+      covLine,
+      assumptions ? `${assumptions} assumption${assumptions === 1 ? "" : "s"} to check first` : "",
+      unexercised ? `${unexercised} behaviour${unexercised === 1 ? "" : "s"} never exercised` : "",
+    ]
+      .filter(Boolean)
+      .join(" · "),
     "",
     `**[Open guided review →](${link})**`,
     "",
@@ -321,6 +328,19 @@ async function createCheck(
   });
 }
 
+/**
+ * The live assumptions: the ones a human reviewer still has to check.
+ *
+ * `grounded_in_code` and `confirmed_by_user` are settled, and across the eleven documents
+ * in this repo they are 40 of 68 — mostly the agent scoping the document rather than
+ * describing the code. Showing them costs a reader time to conclude there is nothing to
+ * do. This mirrors the same filter in the validator's renderer; the worker is a standalone
+ * bundle and cannot import it.
+ */
+function liveAssumptions(doc: IntentDoc): NonNullable<IntentDoc["assumptions"]> {
+  return (doc.assumptions ?? []).filter((a) => (a?.confidence ?? "unverified") === "unverified");
+}
+
 /** Render the PR-description block from the committed doc (self-contained, mirrors renderPrDescription). */
 function intentSection(doc: IntentDoc, link: string): string {
   const out: string[] = [BODY_START, `### 🧭 Review Assist — intent`];
@@ -335,7 +355,7 @@ function intentSection(doc: IntentDoc, link: string): string {
     out.push("```mermaid", d.mermaid.trim(), "```", "");
     if (d.caption) out.push(`_${d.caption}_`, "");
   }
-  const assumptions = doc.assumptions ?? [];
+  const assumptions = liveAssumptions(doc);
   if (assumptions.length) {
     out.push(`**Assumptions to check first**`, "");
     for (const a of assumptions) {
@@ -343,6 +363,28 @@ function intentSection(doc: IntentDoc, link: string): string {
       out.push(`- **[${a?.id ?? "?"}] ${a?.assumption ?? ""}** — if wrong: ${a?.impact_if_wrong ?? ""}.${verify}`);
     }
     out.push("");
+  }
+  const unexercised = doc.verification?.not_verified ?? [];
+  if (unexercised.length) {
+    out.push(`**Not verified**`, "");
+    for (const n of unexercised) out.push(`- ⚠️ ${n}`);
+    out.push("");
+  }
+  // A lookup, collapsed: answered questions are not reading, but a reviewer who arrives
+  // holding one should find it settled rather than re-derive the answer.
+  const evaluated = doc.evaluated ?? [];
+  if (evaluated.length) {
+    out.push(
+      `<details>`,
+      `<summary><b>🔎 Already evaluated (${evaluated.length})</b> — asked during the session and answered. Check here before raising one of your own.</summary>`,
+      ""
+    );
+    for (const e of evaluated) {
+      const where = e?.anchors?.length ? ` _(${e.anchors.join(", ")})_` : "";
+      out.push(`- **${e?.question ?? ""}**${where}`);
+      for (const line of String(e?.answer ?? "").split("\n")) if (line.trim()) out.push(`  ${line.trim()}`);
+    }
+    out.push("", `</details>`, "");
   }
   out.push(`**[Open guided review →](${link})**`, BODY_END);
   return out.join("\n");
@@ -401,7 +443,15 @@ interface PrEvent {
 interface IntentDoc {
   problem?: { statement?: string };
   approach?: { adopted?: { summary?: string; rationale?: string } };
-  assumptions?: { id?: string; assumption?: string; impact_if_wrong?: string; how_to_verify?: string }[];
+  assumptions?: {
+    id?: string;
+    assumption?: string;
+    impact_if_wrong?: string;
+    how_to_verify?: string;
+    confidence?: string;
+  }[];
+  verification?: { not_verified?: string[] };
+  evaluated?: { question?: string; answer?: string; anchors?: string[] }[];
   diagrams?: { title?: string; mermaid?: string; caption?: string }[];
   tour?: { anchors?: { path: string; hunk: { new_start: number; new_lines: number } }[] }[];
 }

@@ -18,7 +18,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { findSessionsTouching } from "./footprint.js";
+import { findAuthoringSessions } from "./footprint.js";
 import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -59,6 +59,7 @@ import {
   recordAnswers,
   runRounds,
   summarizeRun,
+  evaluatedRounds,
   attestedInterview,
   batchCheck,
   MAX_BATCHES,
@@ -556,6 +557,10 @@ registerTool(
             .optional()
             .describe("Optional. Only to transcribe an answer you already have; recorded as reviewer-sourced. Leave empty and let the author answer by q_id."),
           resolved: z.boolean().optional().describe("false -> the question stands unresolved"),
+          anchors: z
+            .array(z.string())
+            .optional()
+            .describe('Hunk ids this question is about, e.g. ["H4"]. Record them for every question the diff provoked: once answered, the question moves to the document\'s `evaluated` lookup, and the anchors are what let a human reviewer holding the same question jump to the code that settles it. Nobody can supply them later — you are the only one who knows which hunk raised the question.'),
         })
       )
       .optional()
@@ -695,47 +700,78 @@ registerTool(
 
 registerTool(
   "find_sessions_touching",
-  "Author role: name the OTHER sessions on this machine that touched given files. Call this " +
-    "before you answer \"the transcript does not cover this\" about a hunk — work begun one day and " +
-    "finished the next leaves the reason in a different session, and that is recoverable. Pass the " +
-    "`run_id` and the hunk's `paths` (the hunk index from compute_diff has them; you do not need to page " +
-    "the diff). Pass `exclude` with the transcript you already read, so the answer is who ELSE wrote it. " +
-    "Then get_spine that session and answer the SAME q_id again with answer_questions — an answer is " +
-    "replaced in place, so this costs the interview no extra round. A session is ranked first by how many " +
-    "of the files it touched, because the session that made a change touched the whole set; `edited` is a " +
-    "recorded file write, `mentioned` is a shell command naming the file, which may be a read. Empty is a " +
-    "real answer: say the transcript does not cover it.",
+  "Author role: find which OTHER session wrote a hunk you cannot explain. Call this BEFORE you " +
+    "answer \"the transcript does not cover this\" — work begun one day and finished the next leaves the " +
+    "reason in a different session, and that is recoverable. Pass the `run_id` and the hunk ids " +
+    "(`hunks: [\"H7\"]`); pass `exclude` with the transcript you already read, so the answer is who ELSE " +
+    "wrote it. It runs two steps. STEP 1 narrows to the sessions that touched the hunk's files. STEP 2 " +
+    "matches the hunk's own added lines against each one, and that is the step that answers: `authored` " +
+    "counts lines the session WROTE (they appear in a tool input), `observed` counts lines it only read " +
+    "back (they appear in tool output). High `authored` is your session. High `observed` with zero " +
+    "`authored` only READ the file and holds no reason — do not read it. All zero `authored` is a real " +
+    "answer: nobody on this machine wrote these lines, so answer that the transcript does not cover it " +
+    "rather than inferring a reason from the diff. When one does look right, get_spine it and answer the " +
+    "SAME q_id again with answer_questions — an answer is replaced in place, so this costs no extra round.",
   {
     run_id: z.string().describe("Run handle from compute_diff."),
+    hunks: z
+      .array(z.string())
+      .optional()
+      .describe('Hunk ids you could not explain, e.g. ["H7"]. Preferred: their added lines are what step 2 matches on.'),
     paths: z
       .array(z.string())
-      .min(1)
-      .describe("Repo-relative paths behind the hunk you could not explain, from the hunk index."),
+      .optional()
+      .describe("Repo-relative paths, when you want step 1 only. Step 2 cannot run without hunks to take lines from."),
     exclude: z
       .array(z.string())
       .optional()
       .describe("Transcript paths you have already read — normally the session you hydrated from."),
   },
-  async ({ run_id, paths, exclude }) => {
+  async ({ run_id, hunks, paths, exclude }) => {
     const run = getRun(run_id);
     if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    if (!hunks?.length && !paths?.length) {
+      return textResult("Pass `hunks` (preferred) or `paths`. With neither there is nothing to look up.", true);
+    }
     try {
-      const matches = findSessionsTouching(run.repo, paths, { exclude });
+      // Recomputed from the run's own SHAs, exactly as read_diff does, so the hunk ids
+      // mean the same thing here as they did when the reviewer anchored them.
+      let selected: { path: string; text: string }[] = [];
+      let unknown: string[] = [];
+      if (hunks?.length) {
+        const { diff } = await computeDiff(run.repo, run.base_sha, run.head_sha);
+        const page = pageDiff(diff, { ids: hunks, maxBytes: Number.MAX_SAFE_INTEGER });
+        selected = page.hunks.map((h) => ({ path: h.path, text: h.text }));
+        unknown = page.unknown_ids ?? [];
+      }
+      for (const p of paths ?? []) if (!selected.some((h) => h.path === p)) selected.push({ path: p, text: "" });
+
+      const { lines, attributed } = findAuthoringSessions(run.repo, selected, { exclude });
+      const authors = attributed.filter((a) => a.authored > 0);
       return textResult(
         JSON.stringify(
           {
-            asked_about: paths,
-            candidates: matches.map((m) => ({
-              path: m.path,
-              covered: `${m.covered}/${paths.length}`,
-              edited: m.edited,
-              mentioned: m.mentioned,
-              last_active: new Date(m.mtime).toISOString(),
+            step1_files: Array.from(new Set(selected.map((h) => h.path))),
+            step1_candidates: attributed.length,
+            step2_lines_matched: lines.length,
+            unknown_hunk_ids: unknown.length ? unknown : undefined,
+            sessions: attributed.map((a) => ({
+              path: a.path,
+              authored: `${a.authored}/${lines.length}`,
+              observed: a.observed,
+              files_touched: a.covered,
+              last_active: new Date(a.mtime).toISOString(),
+              verdict:
+                a.authored > 0
+                  ? "wrote some of these lines — read this one"
+                  : "only read the file — holds no reason, skip it",
             })),
             next:
-              matches.length === 0
-                ? "No other session on this machine touched these files. The transcript genuinely does not cover this — answer that, and say so rather than inferring a reason from the diff."
-                : "Read the top candidate with get_spine, then answer the SAME q_id with answer_questions. Check `last_active` against when the change was made: a session that ended before the work cannot have produced it.",
+              lines.length === 0
+                ? "No line in these hunks was distinctive enough to attribute (too short, or the hunk only removes lines). Step 1's `files_touched` ordering is all you have — treat it as a hint, not an answer."
+                : authors.length === 0
+                  ? "No session on this machine wrote these lines. The transcript genuinely does not cover this: answer that, and do not infer a reason from the diff."
+                  : "Read the top session with get_spine, then answer the SAME q_id with answer_questions. Check `last_active` against when the change was made.",
           },
           null,
           2
@@ -1176,6 +1212,15 @@ registerTool(
       d.meta = d.meta && typeof d.meta === "object" ? d.meta : {};
       // Narrowed, not spread: the summary carries counters the schema does not declare.
       (d.meta as Record<string, unknown>).interview = attestedInterview(interview);
+      // Server-attested too, and for the same reason: a section a reviewer could write by
+      // hand is a section it could invent. These are the run's own recorded rounds.
+      const evaluated = evaluatedRounds(run).map((r) => ({
+        question: r.question,
+        answer: r.answer,
+        ...(r.anchors?.length ? { anchors: r.anchors } : {}),
+      }));
+      if (evaluated.length) d.evaluated = evaluated;
+      else delete d.evaluated;
     }
 
     let diff = "";

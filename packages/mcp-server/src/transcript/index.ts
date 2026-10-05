@@ -5,8 +5,8 @@
 
 import { ClaudeCodeParser } from "./claude-code.js";
 import { CodexParser } from "./codex.js";
-import type { ParsedEntry, TranscriptParser } from "./types.js";
-import { nothing } from "./types.js";
+import type { EntryAttribution, ParsedEntry, TranscriptParser } from "./types.js";
+import { nothing, NO_ATTRIBUTION } from "./types.js";
 
 export const PARSERS: readonly TranscriptParser[] = [new ClaudeCodeParser(), new CodexParser()];
 
@@ -20,7 +20,12 @@ export function parseEntry(entry: Record<string, unknown>): ParsedEntry {
   return parserFor(entry)?.parse(entry) ?? nothing();
 }
 
+/** What this entry wrote vs read back, for attributing a hunk's lines to a session. */
+export function attributionOf(entry: Record<string, unknown>): EntryAttribution {
+  return parserFor(entry)?.attribution(entry) ?? NO_ATTRIBUTION;
+}
+
 export { ClaudeCodeParser } from "./claude-code.js";
 export { CodexParser } from "./codex.js";
 export { stripInjected, oneLine, FAILURE_SIGNAL } from "./text.js";
-export type { ParsedEntry, ParsedEvent, ParsedTurn, TranscriptParser } from "./types.js";
+export type { EntryAttribution, ParsedEntry, ParsedEvent, ParsedTurn, TranscriptParser } from "./types.js";

@@ -1764,10 +1764,15 @@ function renderOverview(doc){
   if (p.out_of_scope?.length) left.append(section("Out of scope",
     el("ul",{class:"list-disc space-y-1 pl-5 text-ink-700"}, ...p.out_of_scope.map(x=>el("li",{},x)))));
 
-  if (doc.assumptions?.length){
+  // Only the UNVERIFIED assumptions are reading. `grounded_in_code` and `confirmed_by_user`
+  // are settled — 40 of the 68 in this repo's own documents, and mostly the agent scoping
+  // the document rather than describing the code. A settled assumption is not a thing to
+  // review, so it does not take a reviewer's minute. Mirrors the validator's renderer.
+  const liveAssumptions = (doc.assumptions || []).filter(a => (a.confidence || "unverified") === "unverified");
+  if (liveAssumptions.length){
     const sec = section("Assumptions");
-    sec.append(el("p",{class:"-mt-2 mb-3 text-sm text-ink-500"},"If any of these is wrong, the change likely needs rework — check them before reading the diff."));
-    for (const a of doc.assumptions){
+    sec.append(el("p",{class:"-mt-2 mb-3 text-sm text-ink-500"},"Unverified. If any of these is wrong, the change likely needs rework — check them before reading the diff."));
+    for (const a of liveAssumptions){
       const conf = CONF[a.confidence] || CONF.unverified;
       const state = STATE.acks[a.id];
       sec.append(el("div",{class:"card mb-3"},
@@ -1791,6 +1796,35 @@ function renderOverview(doc){
     for (const q of doc.open_questions) sec.append(el("div",{class:"card mb-3"},
       el("div",{}, el("span",{class:"id-chip mr-2"},q.id), el("span",{class:"font-medium"}, q.question)),
       q.context ? el("p",{class:"mt-1.5 text-sm text-ink-600"}, q.context) : null));
+    right.append(sec);
+  }
+
+  // Already evaluated: a lookup, closed by default.
+  //
+  // An answered, grounded question is no longer a question, so it is not in the reading
+  // path. But a reviewer who arrives holding the same question should find it settled
+  // instead of spending minutes re-deriving the answer — and the anchors take them to the
+  // hunk that settles it rather than to a paragraph about it.
+  if (doc.evaluated?.length){
+    const sec = section("Already evaluated");
+    const body = el("div",{});
+    for (const e of doc.evaluated){
+      const anchors = (e.anchors || []).filter(Boolean);
+      body.append(el("div",{class:"card mb-3"},
+        el("div",{class:"flex items-start justify-between gap-3"},
+          el("span",{class:"font-medium"}, e.question),
+          // Plain labels, not links. `evaluated.anchors` are hunk ids from the diff the
+          // interview ran against, while a stored tour stop's anchors are path plus line
+          // ranges — so there is nothing here to match them to. A clickable chip that
+          // could not navigate would be worse than a label that does not pretend to.
+          anchors.length ? el("span",{class:"shrink-0"}, ...anchors.map(h => el("span",{class:"id-chip ml-1"}, h))) : null),
+        points(e.answer, "mt-2 text-sm text-ink-700")));
+    }
+    const d = el("details",{class:"mt-1"});
+    d.append(el("summary",{class:"cursor-pointer text-sm text-ink-600"},
+      doc.evaluated.length + " question" + (doc.evaluated.length===1?"":"s") + " asked during the session and answered — check here before raising one of your own"));
+    d.append(body);
+    sec.append(d);
     right.append(sec);
   }
 

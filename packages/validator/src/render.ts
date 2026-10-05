@@ -39,17 +39,37 @@ export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): s
     p();
   }
 
-  // Assumptions — the front page.
-  if (doc.assumptions.length) {
+  // The front page is the LIVE set, and nothing else.
+  //
+  // It used to be every assumption, with `confidence` as an italic aside. Measured across
+  // the eleven documents in `.intent/`: 68 assumptions, of which 30 are `grounded_in_code`
+  // and 10 `confirmed_by_user`. Those 40 are settled, and reading them costs a reviewer
+  // time to work out there is nothing to do. Worse, they are mostly the agent scoping the
+  // DOCUMENT rather than describing the code — "Cloudflare is a deployment detail and
+  // should not appear in this view" is not a thing anyone reviews.
+  //
+  // So the front page carries the 28 that are still unverified, plus what was never
+  // exercised, which was previously the last thing before the footer.
+  const live = doc.assumptions.filter((a) => a.confidence === "unverified");
+  if (live.length) {
     p(`### ⚠️ Assumptions — review these first`);
     p();
-    p(`If any of these is wrong, the change likely needs rework regardless of line-by-line review.`);
+    p(`Unverified. If any of these is wrong, the change likely needs rework regardless of line-by-line review.`);
     p();
-    for (const a of doc.assumptions) {
-      p(`- **[${a.id}] ${escape(a.assumption)}** _(${labelConfidence(a.confidence)})_`);
+    for (const a of live) {
+      p(`- **[${a.id}] ${escape(a.assumption)}**`);
       p(`  - If wrong: ${escape(a.impact_if_wrong)}`);
       if (a.how_to_verify) p(`  - Verify by: ${escape(a.how_to_verify)}`);
     }
+    p();
+  }
+
+  if (doc.verification.not_verified?.length) {
+    p(`### 🔭 Not verified`);
+    p();
+    p(`Behaviour nobody exercised. Authors report what passed and go quiet about this half.`);
+    p();
+    for (const n of doc.verification.not_verified) p(`- ⚠️ ${escape(n)}`);
     p();
   }
 
@@ -109,16 +129,36 @@ export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): s
     p();
   }
 
+  // Already evaluated: a lookup, not reading.
+  //
+  // Collapsed on purpose. A question that has been answered and grounded is no longer a
+  // question, and there is no limit to how many an interview can produce — so it does not
+  // belong in the reading path. But discarded it is worse than useless: a reviewer spends
+  // minutes re-deriving an answer somebody already has. Across 32 runs on disk there are
+  // 188 of these, 5.9 per document, and they read like a reviewer's own questions.
+  if (doc.evaluated?.length) {
+    p(`<details>`);
+    p(
+      `<summary><b>🔎 Already evaluated (${doc.evaluated.length})</b> — questions asked during the session and answered. Check here before raising one of your own.</summary>`
+    );
+    p();
+    for (const e of doc.evaluated) {
+      const where = e.anchors?.length ? ` _(${e.anchors.join(", ")})_` : "";
+      p(`- **${escape(e.question)}**${where}`);
+      for (const line of String(e.answer).split("\n")) {
+        if (line.trim()) p(`  ${escape(line.trim())}`);
+      }
+    }
+    p();
+    p(`</details>`);
+    p();
+  }
+
   // Verification.
   p(`### ✅ Verification`);
   p();
   for (const v of doc.verification.performed) {
     p(`- ${resultIcon(v.result)} **${v.kind}:** ${escape(v.description)} — ${escape(v.result)}`);
-  }
-  if (doc.verification.not_verified?.length) {
-    p();
-    p(`**Not verified:**`);
-    for (const n of doc.verification.not_verified) p(`- ⚠️ ${escape(n)}`);
   }
   p();
 

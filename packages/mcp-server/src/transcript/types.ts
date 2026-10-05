@@ -62,12 +62,39 @@ export interface ParsedEntry {
   failure: boolean;
 }
 
+/**
+ * One entry's text, split by direction.
+ *
+ * The distinction is the whole basis of attributing a hunk to a session: a session that
+ * WROTE a line put it in a tool's input, and a session that merely read the file got the
+ * same line back in a tool's output. Measured on commit 05c90a4, the session that made it
+ * matched 16 of 25 added lines on the authored side and 0 on the observed side, while
+ * three other sessions matched 19 to 23 lines on the observed side and 0 authored. Without
+ * the split they are indistinguishable.
+ */
+export interface EntryAttribution {
+  /** Text this entry wrote: tool inputs, patch bodies, heredocs. */
+  authored: string;
+  /** Text this entry read back: tool output, file contents, command stdout. */
+  observed: string;
+}
+
 export interface TranscriptParser {
   readonly agent: "claude-code" | "codex";
   /** Does this parser recognise the entry's shape? */
   handles(entry: Record<string, unknown>): boolean;
   parse(entry: Record<string, unknown>): ParsedEntry;
+  /**
+   * Which text this entry wrote and which it read back.
+   *
+   * Separate from `parse` rather than a field on `ParsedEntry`, because only attribution
+   * needs it and the text is large: the spine parses every entry in a session and would
+   * otherwise carry a copy of every tool result it exists to elide.
+   */
+  attribution(entry: Record<string, unknown>): EntryAttribution;
 }
+
+export const NO_ATTRIBUTION: EntryAttribution = Object.freeze({ authored: "", observed: "" });
 
 export const EMPTY: ParsedEntry = Object.freeze({ events: [], failure: false });
 

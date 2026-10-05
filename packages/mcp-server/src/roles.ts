@@ -329,7 +329,7 @@ const TOOL_BLURB: Record<string, string> = {
   get_spine: "a session's whole conversation, paged. Follow `next_cursor` to the end; each item is indexed into the full transcript.",
   read_transcript: "a window of the full transcript around an index, for the tool output behind a claim.",
   find_sessions_touching:
-    "other sessions that touched given files. For a hunk your own session cannot explain — the work may have been done in another one.",
+    "which OTHER session wrote a hunk yours cannot explain. Narrows by file, then matches the hunk's added lines: `authored` wrote them, `observed` only read them.",
   compute_diff:
     "the run handle, the numbered hunk index and the SHAs. Opens the run. Returns no diff text.",
   read_diff: "the diff itself, paged by hunk. Follow `next_cursor` to the end, or ask for hunks/paths.",

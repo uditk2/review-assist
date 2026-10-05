@@ -31,6 +31,20 @@ export interface IntentDocument {
   tour: TourStop[];
   verification: Verification;
   diagrams?: Diagram[];
+  /**
+   * Questions already asked and answered during distillation, kept as a LOOKUP rather than
+   * as reading. Stamped by the server from the run's recorded rounds, never written by an
+   * agent. See `evaluatedRounds` in the MCP server for what qualifies and why.
+   */
+  evaluated?: EvaluatedQuestion[];
+}
+
+/** One settled question, and the hunks that settle it. */
+export interface EvaluatedQuestion {
+  question: string;
+  answer: string;
+  /** Hunk ids, e.g. ["H4"]. Absent when the reviewer recorded none. */
+  anchors?: string[];
 }
 
 export interface Diagram {

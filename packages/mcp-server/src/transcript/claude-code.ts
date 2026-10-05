@@ -9,7 +9,7 @@
 
 import { basename } from "node:path";
 import { FAILURE_SIGNAL, oneLine, stripInjected, extractPaths } from "./text.js";
-import type { ParsedEntry, ParsedEvent, TranscriptParser } from "./types.js";
+import type { EntryAttribution, ParsedEntry, ParsedEvent, TranscriptParser } from "./types.js";
 import { nothing } from "./types.js";
 
 type Block = Record<string, unknown>;
@@ -80,6 +80,24 @@ export class ClaudeCodeParser implements TranscriptParser {
 
   handles(entry: Record<string, unknown>): boolean {
     return entry.message !== undefined;
+  }
+
+  /**
+   * Tool INPUTS are what this entry wrote; tool_result blocks are what it read back.
+   *
+   * A heredoc's body, an Edit's `new_string` and a Write's `content` all live in the
+   * input, so this catches a file written through the shell as readily as one written
+   * through the Edit tool.
+   */
+  attribution(entry: Record<string, unknown>): EntryAttribution {
+    const message = entry.message as Record<string, unknown> | undefined;
+    const authored: string[] = [];
+    const observed: string[] = [];
+    for (const b of blocksOf(message)) {
+      if (b.type === "tool_use") authored.push(JSON.stringify(b.input ?? ""));
+      else if (b.type === "tool_result") observed.push(JSON.stringify(b.content ?? ""));
+    }
+    return { authored: authored.join("\n"), observed: observed.join("\n") };
   }
 
   parse(entry: Record<string, unknown>): ParsedEntry {

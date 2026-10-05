@@ -100,6 +100,18 @@ export interface InterviewRound {
    * interview and `summarizeRun` does not count it.
    */
   seeded?: boolean;
+  /**
+   * Hunk ids this question is about, e.g. `["H4"]`.
+   *
+   * Recorded by the reviewer when it composes the question, because that is the only
+   * moment anyone knows: the reviewer found the thin spot by reading a hunk. It cannot be
+   * recovered afterwards — of 188 diff-provoked questions already on disk, 73 name a hunk
+   * in their prose and the rest name none at all.
+   *
+   * What it buys is the link in `evaluated`: a reviewer who arrives holding the same
+   * question lands on the code that settles it instead of a paragraph about it.
+   */
+  anchors?: string[];
   at: string;
 }
 
@@ -356,7 +368,7 @@ export function getRun(runId: string): RunRecord | undefined {
  */
 export function recordRounds(
   runId: string,
-  rounds: { question: string; answer?: string; resolved?: boolean }[]
+  rounds: { question: string; answer?: string; resolved?: boolean; anchors?: string[] }[]
 ): RunRecord | undefined {
   const run = readRun(runId);
   if (!run) return undefined;
@@ -379,6 +391,9 @@ export function recordRounds(
       // A standing question the reviewer re-posts is still standing. Dropping the flag
       // here would let an unanswered one count as an interview round it never was.
       ...(prior?.seeded ? { seeded: true } : {}),
+      ...(r.anchors?.length || prior?.anchors?.length
+        ? { anchors: r.anchors?.length ? r.anchors : prior?.anchors }
+        : {}),
       at,
     };
   }
@@ -438,6 +453,38 @@ export function summarizeRun(run: RunRecord): InterviewSummary {
     unanswered: rounds.filter((r) => r.answer.length === 0).length,
     standing_unanswered: all.filter((r) => r.seeded && r.answer.length === 0).length,
   };
+}
+
+/**
+ * The questions a human reviewer might arrive holding, already answered.
+ *
+ * This is the lookup table behind the document's `evaluated` section, and the selection is
+ * the whole idea. A question that has been answered and grounded is no longer a question:
+ * putting it on the front page costs a reader time to conclude there is nothing to do,
+ * and there is no limit to how many such questions an interview can produce. But thrown
+ * away it is worse than useless, because a reviewer will spend minutes re-deriving an
+ * answer somebody already has.
+ *
+ * So it is kept, out of the reading path, to be consulted on arrival at the same question.
+ *
+ * Two filters, both structural:
+ *
+ * - `seeded` is OUT. The standing six ask for the plan, the verbatim asks, the trials, the
+ *   assumptions, the incidental files and what was run — and their answers already ARE the
+ *   document's own fields. Measured across 32 runs on disk: 84 resolved standing answers,
+ *   not one of which names a hunk. Including them would say everything twice.
+ * - Unanswered and unresolved are OUT. An open question belongs on the front page as a
+ *   live finding, which is the opposite of this section's purpose.
+ *
+ * What is left is the diff-provoked set: 188 across those 32 runs, 5.9 per document, and
+ * they read exactly like a reviewer's own questions — whether a dispatch input is
+ * restricted to a known list, whether the deployed Compose version supports a flag that
+ * was used, whether a duplicated pinned SHA was meant to have a single source.
+ */
+export function evaluatedRounds(run: RunRecord): InterviewRound[] {
+  return Object.values(run.rounds)
+    .filter((r) => !r.seeded && r.resolved && r.answer.trim().length > 0)
+    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
 }
 
 /**

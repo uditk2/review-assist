@@ -648,3 +648,77 @@ describe("sweeping", () => {
     expect(runs.getRun(run.run_id)).toBeDefined();
   });
 });
+
+/**
+ * `evaluated` is the document's lookup section: questions already asked and answered, kept
+ * out of the reading path but not thrown away, so a reviewer arriving at the same question
+ * finds it settled instead of re-deriving the answer.
+ *
+ * The selection is the whole idea, so these pin it. Measured across 32 runs on disk: 84
+ * resolved standing answers (which already ARE the document's fields) and 188 diff-provoked
+ * ones, 5.9 per document. Letting the standing set through would say everything twice.
+ */
+describe("evaluatedRounds", () => {
+  // Opened per test rather than in a hook: the suite's own beforeEach empties the runs
+  // directory, and relying on hook order between the two is needless fragility.
+  const fresh = () => runs.openRun({ repo: REPO_A, baseSha: BASE, headSha: HEAD }).run.run_id;
+
+  it("keeps a diff-provoked question once it is answered", () => {
+    const runId = fresh();
+    const run = () => runs.getRun(runId)!;
+    runs.recordRounds(runId, [{ question: "Can a service outside DEPLOY_ORDER be dispatched?", anchors: ["H4"] }]);
+    const q_id = Object.values(run().rounds).find((r) => r.question.startsWith("Can a service"))!.q_id;
+    runs.recordAnswers(runId, [{ q_id, answer: "- No, the input is type: choice." }]);
+    const got = runs.evaluatedRounds(run());
+    expect(got.map((r) => r.question)).toEqual(["Can a service outside DEPLOY_ORDER be dispatched?"]);
+    expect(got[0].anchors).toEqual(["H4"]);
+  });
+
+  it("excludes the standing set, whose answers are already the document's own fields", () => {
+    const runId = fresh();
+    const run = () => runs.getRun(runId)!;
+    // openRun seeds six standing questions. Answering one must not put it in the lookup:
+    // the PLAN answer becomes the tour's ordering, the verbatim asks become problem.user_asks.
+    const seeded = Object.values(run().rounds).filter((r) => r.seeded);
+    expect(seeded.length).toBeGreaterThan(0);
+    runs.recordAnswers(
+      runId,
+      seeded.map((r) => ({ q_id: r.q_id, answer: "- answered from the transcript" }))
+    );
+    expect(runs.evaluatedRounds(run())).toEqual([]);
+  });
+
+  it("excludes a question nobody has answered", () => {
+    const runId = fresh();
+    const run = () => runs.getRun(runId)!;
+    runs.recordRounds(runId, [{ question: "Why are these two files edited together?" }]);
+    expect(runs.evaluatedRounds(run())).toEqual([]);
+  });
+
+  it("excludes an answered question still marked unresolved", () => {
+    const runId = fresh();
+    const run = () => runs.getRun(runId)!;
+    // An unresolved question belongs on the front page as a live finding, which is the
+    // opposite of this section's purpose.
+    runs.recordRounds(runId, [
+      { question: "Does the VM's Compose support --wait?", answer: "The transcript does not cover this.", resolved: false },
+    ]);
+    expect(runs.evaluatedRounds(run())).toEqual([]);
+  });
+
+  it("keeps anchors when a question is re-recorded without them", () => {
+    const runId = fresh();
+    const run = () => runs.getRun(runId)!;
+    // Re-recording a question is a free retry, and the reviewer may not resend the anchors.
+    // Losing them would silently strip the only link to the code that settles the question,
+    // and nobody can put it back: only the reviewer ever knew which hunk raised it.
+    const Q = "Is the pinned SHA duplicated on purpose?";
+    runs.recordRounds(runId, [{ question: Q, anchors: ["H2", "H9"] }]);
+    runs.recordRounds(runId, [{ question: Q }]);
+    const q_id = Object.values(run().rounds).find((r) => r.question === Q)!.q_id;
+    runs.recordAnswers(runId, [{ q_id, answer: "- Deferred to phase 4." }]);
+    const got = runs.evaluatedRounds(run());
+    expect(got).toHaveLength(1);
+    expect(got[0].anchors).toEqual(["H2", "H9"]);
+  });
+});

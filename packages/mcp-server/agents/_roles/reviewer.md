@@ -89,6 +89,13 @@ two points or a restatement. Split it or cut it.
      question.
    - **Record the questions; do not relay them.** ONE `record_interview_round` call with a
      `rounds` array. It hands back a `q_id` per question, and that is the whole handoff.
+   - **Anchor every question the diff provoked**, with `anchors: ["H4"]` on that round. You
+     found the thin spot by reading a hunk, so you are the only one who ever knows which.
+     Once the author answers, the question does not go in the document's prose: it moves to
+     the `evaluated` lookup, which exists so a human reviewer arriving at the same question
+     finds it already settled — and the anchors are what take them to the code that settles
+     it rather than to a paragraph about it. Nobody can add them afterwards. Standing
+     questions need none; they are about the session, not a hunk.
    - The questions travel through the run, not through you. The author reads them with
      `get_questions` and replies with `answer_questions` by those ids, so the server records
      its words rather than yours. Only fill `answer` yourself if the author has already
@@ -215,4 +222,9 @@ that response rather than the ones you were holding.
 ## Hard rules
 - Never call `read_transcript` or `list_transcripts`. If you want the transcript, that is
   a question for the author.
-- Do not hand-fill `meta.interview`; the server stamps it from your recorded rounds.
+- Do not hand-fill `meta.interview` or `evaluated`; the server stamps both from your
+  recorded rounds. A section you could write by hand is one you could invent, and
+  `evaluated` is meant to be evidence that a question was really put and really answered.
+- Do not re-tell an answered question in the document's prose. Once a question is answered
+  it is in `evaluated` already, and a field that repeats it spends the reader's minute on
+  something with nothing left to decide. The fields are for what is still live.
