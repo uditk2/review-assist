@@ -330,6 +330,9 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
     "get_questions",
     "answer_questions",
     "find_sessions_touching",
+    "get_contexts",
+    "record_contexts",
+    "read_context",
   ],
   // `get_role_definitions` and `manage_consent` were granted here and belong to neither
   // role: the first installs the role definitions (a reviewer already IS one), the second
@@ -361,6 +364,12 @@ const TOOL_BLURB: Record<string, string> = {
   list_transcripts: "candidate sessions for this repo, ranked. Parents only; a subagent is never a session.",
   get_spine: "a session's whole conversation, paged. Follow `next_cursor` to the end; each item is indexed into the full transcript.",
   read_transcript: "a window of the full transcript around an index, for the tool output behind a claim.",
+  get_contexts:
+    "what the session was about, one labelled context per subject, scored against this diff. Call it before get_spine.",
+  record_contexts:
+    "record what the session was about as you read it: blocks of exchanges on one subject, each with a one-sentence label.",
+  read_context:
+    "the conversation of ONE context, by id. Match a question against the labels, then read the two or three that fit.",
   Read: "a file in the repository, read-only. For a question the transcript cannot answer but the code can.",
   Grep: "search the repository, read-only. Where to look when a question is about code outside the diff.",
   Glob: "find files by pattern, read-only.",

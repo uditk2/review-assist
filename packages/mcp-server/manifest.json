@@ -65,6 +65,18 @@
       "description": "Read a session's whole conversation in one call, each item indexed into the full transcript."
     },
     {
+      "name": "get_contexts",
+      "description": "What the session was about, as one labelled context per subject, scored against the change under review."
+    },
+    {
+      "name": "record_contexts",
+      "description": "Record what a session was about: blocks of consecutive exchanges on one subject, each with a one-sentence label."
+    },
+    {
+      "name": "read_context",
+      "description": "The conversation of one context, by id, so a question can be answered from the two or three subjects that bear on it."
+    },
+    {
       "name": "read_transcript",
       "description": "Read a window of the full transcript around a spine index, for the tool output behind a claim."
     },

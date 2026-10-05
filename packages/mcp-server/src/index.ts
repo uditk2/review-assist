@@ -19,6 +19,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { findAuthoringSessions } from "./footprint.js";
+import { readIndex, recordContexts, resumePoint, scoreContexts } from "./contexts.js";
 import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -788,6 +789,159 @@ registerTool(
       );
     } catch (e) {
       return textResult(`find_sessions_touching failed: ${(e as Error).message}`, true);
+    }
+  }
+);
+
+registerTool(
+  "get_contexts",
+  "Author role: what this session was ABOUT, as one labelled context per subject, scored against the " +
+    "change. Call it right after compute_diff and BEFORE get_spine. If `indexed` comes back true the work " +
+    "is already done — a context index is kept per session, so a second distillation of the same session " +
+    "costs nothing. Each context carries a one-sentence `label`, the `blocks` (index ranges) it occupies, " +
+    "`overlap` (files it touched that this diff also changed) and `only_here` (files it touched that the " +
+    "diff did not). `only_here` with no overlap is NOT noise: it is usually an approach tried on this code " +
+    "and abandoned, which is the one thing a diff-only reviewer can never recover. Match a question against " +
+    "the labels, then read_context the two or three that fit, instead of re-reading the whole session for " +
+    "every question. `resume_from` is the first entry not yet indexed; when it is past `last_entry` there is " +
+    "nothing new to do.",
+  {
+    run_id: z.string().describe("Run handle from compute_diff — the diff's changed paths come from it."),
+    path: z.string().describe("Transcript path, from list_transcripts."),
+  },
+  async ({ run_id, path }) => {
+    const run = getRun(run_id);
+    if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    try {
+      const { diff } = await computeDiff(run.repo, run.base_sha, run.head_sha);
+      const changed = summarizeFiles(indexHunks(diff)).map((f) => f.path);
+      const index = readIndex(path);
+      const resume = resumePoint(path);
+      return textResult(
+        JSON.stringify(
+          {
+            session: index.session,
+            indexed: !resume.cold,
+            resume_from: resume.from,
+            last_entry: resume.last,
+            contexts: scoreContexts(index.contexts, changed),
+            next:
+              resume.from > resume.last
+                ? "Indexed to the end. Match a question against the labels, then read_context the two or three that fit."
+                : resume.cold
+                  ? "Not indexed. Read the session with get_spine and record what it was about with record_contexts as you go."
+                  : `Indexed to entry ${index.closed_through}. get_spine from there and record_contexts the rest; the open tail is re-read on purpose.`,
+          },
+          null,
+          2
+        )
+      );
+    } catch (e) {
+      return textResult(`get_contexts failed: ${(e as Error).message}`, true);
+    }
+  }
+);
+
+registerTool(
+  "record_contexts",
+  "Author role: record what the session was about, as you read it. A BLOCK is a run of consecutive " +
+    "exchanges — both directions, counter-questions and follow-ups included — about ONE thing; the boundary " +
+    "is a change of subject, never a change of speaker, because \"yes, do that\" belongs to the exchange it " +
+    "answers. A CONTEXT is a subject and owns one or more blocks: pass an existing `id` to rejoin a subject " +
+    "the session returns to, so A-then-B-then-A stays one context instead of two halves. The `label` is one " +
+    "plain sentence naming the subject AND what happened to it — it is matched against the diff and against " +
+    "every question you are later asked, so \"spine paging\" matches nothing while \"weighed three ways to " +
+    "page and settled on item boundaries\" matches both. Mark the LAST block `open: true` if the conversation " +
+    "was still on that subject where you stopped: it is then re-read next time rather than being labelled " +
+    "from half the evidence. Do not report files — they are derived from the transcript. Do not quote: the " +
+    "index holds pointers, and get_spine can serve any range.",
+  {
+    path: z.string().describe("Transcript path — the same one you passed to get_contexts."),
+    run_id: z.string().describe("Run handle from compute_diff, for the repository the paths belong to."),
+    from: z.number().int().min(0).describe("First entry this pass read: the `resume_from` get_contexts gave you."),
+    scanned_through: z.number().int().min(0).describe("Last entry this pass read."),
+    contexts: z
+      .array(
+        z.object({
+          id: z.string().optional().describe("An existing context id (C3) to rejoin that subject. Omit to open a new one."),
+          label: z.string().min(1).describe("One plain sentence: the subject, and what happened to it."),
+          blocks: z
+            .array(
+              z.object({
+                from: z.number().int().min(0),
+                to: z.number().int().min(0),
+                open: z.boolean().optional().describe("The conversation was still on this subject where you stopped."),
+              })
+            )
+            .min(1),
+        })
+      )
+      .min(1)
+      .describe("Every context this pass saw. Blocks at or after `from` replace what was stored."),
+  },
+  async ({ path, run_id, from, scanned_through, contexts }) => {
+    const run = getRun(run_id);
+    if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    try {
+      const index = recordContexts(path, run.repo, { from, scanned_through, contexts });
+      return textResult(
+        JSON.stringify(
+          {
+            session: index.session,
+            indexed_through: index.closed_through,
+            scanned_through: index.scanned_through,
+            contexts: index.contexts.map((c) => ({ id: c.id, label: c.label, blocks: c.blocks, files: c.files })),
+            next:
+              index.closed_through < index.entries - 1
+                ? `Stored. ${index.entries - 1 - index.closed_through} entries left; the open tail is re-read next pass.`
+                : "Stored, to the end of the session.",
+          },
+          null,
+          2
+        )
+      );
+    } catch (e) {
+      return textResult(`record_contexts failed: ${(e as Error).message}`, true);
+    }
+  }
+);
+
+registerTool(
+  "read_context",
+  "Author role: the conversation of ONE context, by id — every turn in the blocks it occupies, and " +
+    "nothing else. This is what the index is for: match a question against the labels from get_contexts, " +
+    "then read the two or three contexts that fit, rather than re-reading the whole session for every " +
+    "question. Paged like get_spine: follow `next_cursor` until there is none.",
+  {
+    path: z.string().describe("Transcript path."),
+    context_id: z.string().describe("A context id from get_contexts, e.g. C3."),
+    cursor: z.string().optional().describe("`next_cursor` from the previous page."),
+    max_bytes: z.number().int().min(2_000).optional().describe("Byte budget for this page."),
+  },
+  async ({ path, context_id, cursor, max_bytes }) => {
+    try {
+      const index = readIndex(path);
+      const ctx = index.contexts.find((c) => c.id.toUpperCase() === context_id.trim().toUpperCase());
+      if (!ctx) {
+        return textResult(
+          JSON.stringify({ error: `No context ${context_id} in this session.`, known: index.contexts.map((c) => c.id) }, null, 2),
+          true
+        );
+      }
+      const inBlocks = (i: number) => ctx.blocks.some((b) => i >= b.from && i <= b.to);
+      const items = buildSpine(path).items.filter((it) => inBlocks((it as { index?: number }).index ?? -1));
+      const page = pageSpine(items, { cursor, maxBytes: max_bytes ?? maxResultBytes() });
+      return textResult(
+        JSON.stringify({
+          context: { id: ctx.id, label: ctx.label, blocks: ctx.blocks, files: ctx.files },
+          ...page,
+          next: page.next_cursor
+            ? `More of this context. Call read_context again with cursor: "${page.next_cursor}".`
+            : "End of this context.",
+        })
+      );
+    } catch (e) {
+      return textResult(`read_context failed: ${(e as Error).message}`, true);
     }
   }
 );

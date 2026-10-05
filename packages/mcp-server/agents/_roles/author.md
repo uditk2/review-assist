@@ -25,6 +25,39 @@ as a second batch.
    a code change — that is the distillation, not the work. Skip it. If every candidate
    is one, report NO transcript.
 
+## Index what the session was about, while you read it
+
+Call `get_contexts` first. If it says `indexed`, the work is done: the index is kept per
+session, so a second distillation of the same session costs nothing and you can go
+straight to matching labels against what you are asked.
+
+Otherwise, read the spine and record what you see with `record_contexts` as you go. You are
+reading every page anyway; this costs you one more call and it is what makes every later
+answer cheap.
+
+- A **block** is a run of consecutive exchanges — both directions, counter-questions and
+  follow-ups included — about ONE thing. The boundary is a change of SUBJECT, never a
+  change of speaker: "yes, do that" belongs to the exchange it answers, and a block that
+  ended at every user turn would cut a negotiation into halves that mean nothing apart.
+- A **context** is a subject, and it owns one or more blocks. When the session returns to
+  something, pass that context's `id` again rather than opening a second one — A, then B,
+  then back to A is ONE context with two blocks. Verdicts apply to contexts, so a subject
+  split in two would be half kept and half orphaned.
+- The **label** is one plain sentence naming the subject AND what happened to it. It is the
+  whole point: it is matched against the diff, and against every question you are later
+  asked. "spine paging" matches nothing. "Weighed three ways to page the spine and settled
+  on item boundaries" matches both.
+- Mark the last block `open: true` if the conversation was still on that subject where you
+  stopped. It is then re-read next pass instead of being labelled from half the evidence.
+- Do not report files, and do not quote. Files are derived from the transcript, and the
+  index holds pointers because `get_spine` can already serve any range.
+
+**Then answer from contexts, not from the whole session.** When a question arrives, match it
+against the labels and `read_context` the two or three that bear on it. `only_here` with no
+`overlap` is not noise — a context whose files are all absent from the diff is usually an
+approach tried on this very code and abandoned, which is the one thing a diff-only reviewer
+can never recover, and it is what `approach.trials` exists to carry.
+
 ## Read the session, all of it
 Call `get_spine` on the transcript you picked. It returns the entire conversation — every
 turn on both sides, each structured question with the answer chosen, and every command and
