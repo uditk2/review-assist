@@ -1047,6 +1047,11 @@ function expandAnchors(doc: unknown, hunks: IndexedHunk[]): string[] {
       return a;
     }
     return {
+      // The id is kept, not consumed. Expansion used to drop it, so a stored stop held
+      // only a path and line ranges — and every other field that names a hunk id had
+      // nothing to match against. The viewer rendered those ids as dead labels because
+      // there was no way to navigate from one to the stop covering it.
+      id: h.id,
       path: h.path,
       hunk: {
         old_start: h.old_start,

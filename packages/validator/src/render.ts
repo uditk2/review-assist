@@ -5,7 +5,7 @@
  * the guided-review comment, so the document has value even without the viewer.
  */
 
-import type { IntentDocument } from "@review-assist/schema";
+import { notVerifiedItems, type IntentDocument } from "@review-assist/schema";
 
 export interface RenderOptions {
   /** If provided, appends an "Open guided review →" link. */
@@ -70,19 +70,24 @@ export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): s
     p(`Unverified. If any of these is wrong, the change likely needs rework regardless of line-by-line review.`);
     p();
     for (const a of live) {
-      p(`- **[${a.id}] ${escape(a.assumption)}**`);
+      const where = a.anchors?.length ? ` _(${a.anchors.join(", ")})_` : "";
+      p(`- **[${a.id}] ${escape(a.assumption)}**${where}`);
       p(`  - If wrong: ${escape(a.impact_if_wrong)}`);
       if (a.how_to_verify) p(`  - Verify by: ${escape(a.how_to_verify)}`);
     }
     p();
   }
 
-  if (doc.verification.not_verified?.length) {
+  const unexercised = notVerifiedItems(doc.verification);
+  if (unexercised.length) {
     p(`### 🔭 Not verified`);
     p();
     p(`Behaviour nobody exercised. Authors report what passed and go quiet about this half.`);
     p();
-    for (const n of doc.verification.not_verified) p(`- ⚠️ ${escape(n)}`);
+    for (const n of unexercised) {
+      const where = n.anchors.length ? ` _(${n.anchors.join(", ")})_` : "";
+      p(`- ⚠️ ${escape(n.text)}${where}`);
+    }
     p();
   }
 
@@ -113,7 +118,8 @@ export function renderMarkdown(doc: IntentDocument, opts: RenderOptions = {}): s
     p(`### ❓ Open questions`);
     p();
     for (const q of doc.open_questions) {
-      p(`- **[${q.id}]** ${escape(q.question)}`);
+      const where = q.anchors?.length ? ` _(${q.anchors.join(", ")})_` : "";
+      p(`- **[${q.id}]** ${escape(q.question)}${where}`);
       if (q.context) p(`  - ${escape(q.context)}`);
     }
     p();

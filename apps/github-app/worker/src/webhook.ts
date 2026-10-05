@@ -232,7 +232,7 @@ function commentBody(doc: IntentDoc | null, cov: { total: number; explained: num
   }
   const problem = (doc.problem?.statement ?? "").trim();
   const assumptions = liveAssumptions(doc).length;
-  const unexercised = (doc.verification?.not_verified ?? []).length;
+  const unexercised = unverified(doc).length;
   const never = unsettled(doc).filter((u) => (u?.disposition ?? "unanswered") === "unanswered").length;
   const covLine =
     cov.total > 0
@@ -340,6 +340,17 @@ const DISPOSITION: Record<string, string> = {
   accepted_partial: "**Known and shipped anyway.**",
 };
 
+/**
+ * `not_verified` as one shape. Mirrors `notVerifiedItems` in the schema package; the
+ * worker is a standalone bundle and cannot import it. The field is a union because it is
+ * published content read off open pull requests, so the plain-string form cannot retire.
+ */
+function unverified(doc: IntentDoc): { text: string; anchors: string[] }[] {
+  return (doc.verification?.not_verified ?? []).map((n) =>
+    typeof n === "string" ? { text: n, anchors: [] } : { text: n?.text ?? "", anchors: n?.anchors ?? [] }
+  );
+}
+
 /** Unanswered first: a risk nobody considered is the strongest finding, not the weakest. */
 function unsettled(doc: IntentDoc): NonNullable<IntentDoc["unresolved"]> {
   const order: Record<string, number> = { unanswered: 0, escalated: 1, accepted_partial: 2 };
@@ -380,7 +391,8 @@ function intentSection(doc: IntentDoc, link: string): string {
     out.push(`**Assumptions to check first**`, "");
     for (const a of assumptions) {
       const verify = a?.how_to_verify ? ` _Verify:_ ${a.how_to_verify}` : "";
-      out.push(`- **[${a?.id ?? "?"}] ${a?.assumption ?? ""}** — if wrong: ${a?.impact_if_wrong ?? ""}.${verify}`);
+      const where = a?.anchors?.length ? ` _(${a.anchors.join(", ")})_` : "";
+      out.push(`- **[${a?.id ?? "?"}] ${a?.assumption ?? ""}**${where} — if wrong: ${a?.impact_if_wrong ?? ""}.${verify}`);
     }
     out.push("");
   }
@@ -394,10 +406,13 @@ function intentSection(doc: IntentDoc, link: string): string {
     }
     out.push("");
   }
-  const unexercised = doc.verification?.not_verified ?? [];
+  const unexercised = unverified(doc);
   if (unexercised.length) {
     out.push(`**Not verified**`, "");
-    for (const n of unexercised) out.push(`- ⚠️ ${n}`);
+    for (const n of unexercised) {
+      const where = n.anchors.length ? ` _(${n.anchors.join(", ")})_` : "";
+      out.push(`- ⚠️ ${n.text}${where}`);
+    }
     out.push("");
   }
   // A lookup, collapsed: answered questions are not reading, but a reviewer who arrives
@@ -479,8 +494,9 @@ interface IntentDoc {
     impact_if_wrong?: string;
     how_to_verify?: string;
     confidence?: string;
+    anchors?: string[];
   }[];
-  verification?: { not_verified?: string[] };
+  verification?: { not_verified?: (string | { text?: string; anchors?: string[] })[] };
   evaluated?: { question?: string; answer?: string; anchors?: string[] }[];
   unresolved?: { question?: string; disposition?: string; note?: string; anchors?: string[] }[];
   diagrams?: { title?: string; mermaid?: string; caption?: string }[];

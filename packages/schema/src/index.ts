@@ -12,6 +12,14 @@ export const intentDocSchema = schemaJson as Record<string, unknown>;
 export const SCHEMA_VERSION = "0.1" as const;
 
 export interface Anchor {
+  /**
+   * The hunk id this anchor was written as, e.g. "H3", kept through expansion.
+   *
+   * Optional only because documents written before it exists do not carry it. Without it a
+   * stored stop held a path and line ranges and nothing else, so no other field that names
+   * a hunk id could be joined to the stop covering it.
+   */
+  id?: string;
   path: string;
   hunk: {
     old_start: number;
@@ -107,6 +115,8 @@ export interface Problem {
 
 export interface Assumption {
   id: string;
+  /** Hunk ids this assumption bears on, so it can be shown at the stop it applies to. */
+  anchors?: string[];
   assumption: string;
   impact_if_wrong: string;
   depends?: string[];
@@ -119,6 +129,8 @@ export interface OpenQuestion {
   question: string;
   context?: string;
   raised_by?: "reviewer_agent" | "author_agent" | "user";
+  /** Hunk ids this question concerns, so it can be shown at the stop it applies to. */
+  anchors?: string[];
 }
 
 export interface Approach {
@@ -142,5 +154,30 @@ export interface TourStop {
 export interface Verification {
   performed: { kind: "test" | "manual" | "build" | "lint" | "typecheck"; description: string; result: string; evidence?: string }[];
   added_tests?: { covers: string; anchors: Anchor[] }[];
-  not_verified?: string[];
+  /**
+   * A plain string, or one carrying the hunk ids it concerns.
+   *
+   * A union rather than a clean break: this is PUBLISHED content. The GitHub App reads
+   * `.intent/<branch>.json` off open pull requests, so changing the shape outright would
+   * break documents already committed on live branches. Use `notVerifiedItems` to read it
+   * rather than handling both forms at every call site.
+   */
+  not_verified?: (string | { text: string; anchors?: string[] })[];
+}
+
+/**
+ * `verification.not_verified` as one shape, whatever the document wrote.
+ *
+ * The field is a union because it is published content: the GitHub App reads
+ * `.intent/<branch>.json` off open pull requests, so the plain-string form cannot be
+ * retired without breaking documents already committed on live branches. Every renderer
+ * needs the same two pieces, so the normalizing happens once here rather than four times
+ * — the same reason the access list and the tool allowlist are generated from one constant.
+ */
+export function notVerifiedItems(
+  v: Verification | undefined
+): { text: string; anchors: string[] }[] {
+  return (v?.not_verified ?? []).map((n) =>
+    typeof n === "string" ? { text: n, anchors: [] } : { text: n.text, anchors: n.anchors ?? [] }
+  );
 }

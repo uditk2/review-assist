@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { validate } from "../src/index.js";
 import { parseUnifiedDiff, newRange } from "../src/diff.js";
 import { renderMarkdown, orderTour } from "../src/render.js";
+import { notVerifiedItems } from "@review-assist/schema";
 import type { IntentDocument } from "@review-assist/schema";
 
 const exampleUrl = new URL("../../schema/src/example.json", import.meta.url);
@@ -444,5 +445,57 @@ describe("renderMarkdown weights the dispositions", () => {
     const doc = structuredClone(example) as IntentDocument;
     delete doc.unresolved;
     expect(renderMarkdown(doc)).not.toContain("Raised and not settled");
+  });
+});
+
+/**
+ * The live fields can point at a hunk, and the hunk id survives expansion.
+ *
+ * A reviewer reading the document arrives at a stop wanting three things: what changed,
+ * what to check, and what is still uncertain HERE. The third used to sit in a separate
+ * list with no link to the code — 54% of every document in `.intent/` was fields with no
+ * anchor at all — so the reader did the join by hand.
+ *
+ * `not_verified` is a union on purpose. It is published content: the GitHub App reads
+ * `.intent/<branch>.json` off open pull requests, so the plain-string form cannot retire
+ * without breaking documents already committed on live branches.
+ */
+describe("anchoring the live fields", () => {
+  it("shows an assumption's hunk beside it", () => {
+    const doc = structuredClone(example) as IntentDocument;
+    const live = doc.assumptions.find((a) => a.confidence === "unverified")!;
+    live.anchors = ["H2"];
+    expect(renderMarkdown(doc)).toContain("(H2)");
+  });
+
+  it("reads not_verified in either form", () => {
+    const doc = structuredClone(example) as IntentDocument;
+    doc.verification.not_verified = [
+      "a plain string, as every existing document writes it",
+      { text: "an anchored one", anchors: ["H5"] },
+    ];
+    const md = renderMarkdown(doc);
+    expect(md).toContain("a plain string, as every existing document writes it");
+    expect(md).toContain("an anchored one");
+    expect(md).toContain("(H5)");
+  });
+
+  it("normalizes both forms through one helper, so renderers do not each guess", () => {
+    const items = notVerifiedItems({
+      performed: [],
+      not_verified: ["bare", { text: "anchored", anchors: ["H1"] }],
+    });
+    expect(items).toEqual([
+      { text: "bare", anchors: [] },
+      { text: "anchored", anchors: ["H1"] },
+    ]);
+  });
+
+  it("leaves an unanchored entry unadorned rather than inventing a hunk", () => {
+    // An assumption about the whole change has no hunk, and a fabricated anchor is worse
+    // than a global one.
+    const doc = structuredClone(example) as IntentDocument;
+    doc.verification.not_verified = ["load behaviour was never reproduced"];
+    expect(renderMarkdown(doc)).toContain("- ⚠️ load behaviour was never reproduced");
   });
 });

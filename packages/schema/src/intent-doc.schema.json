@@ -207,6 +207,14 @@
               "grounded_in_code",
               "unverified"
             ]
+          },
+          "anchors": {
+            "description": "Hunk ids this concerns, e.g. [\"H4\"]. Ids rather than expanded anchors: these point AT the tour stop covering the hunk, and only the tour needs line ranges, because only the tour drives the diff view.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^H[0-9]+$"
+            }
           }
         }
       }
@@ -238,6 +246,14 @@
               "author_agent",
               "user"
             ]
+          },
+          "anchors": {
+            "description": "Hunk ids this concerns, e.g. [\"H4\"]. Ids rather than expanded anchors: these point AT the tour stop covering the hunk, and only the tour needs line ranges, because only the tour drives the diff view.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^H[0-9]+$"
+            }
           }
         }
       }
@@ -435,8 +451,35 @@
         "not_verified": {
           "type": "array",
           "items": {
-            "type": "string"
-          }
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "anchors": {
+                    "description": "Hunk ids this concerns, e.g. [\"H4\"]. Ids rather than expanded anchors: these point AT the tour stop covering the hunk, and only the tour needs line ranges, because only the tour drives the diff view.",
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^H[0-9]+$"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "description": "Behaviour nobody exercised. A plain string, or an object carrying the hunk ids it concerns so it can be shown at the stop it applies to."
         }
       }
     },
@@ -571,6 +614,11 @@
               "minimum": 0
             }
           }
+        },
+        "id": {
+          "description": "The hunk id this anchor was written as, e.g. \"H3\". Kept through expansion so anything else that names a hunk id can be joined to the stop covering it; expansion used to discard it, which left every other field's anchors unjoinable.",
+          "type": "string",
+          "pattern": "^H[0-9]+$"
         }
       }
     }

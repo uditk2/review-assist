@@ -166,6 +166,16 @@ stop for a competent engineer who does not know this module.
 - **A hunk belonging to no plan item is one of two things, and only the author knows which.**
   Discovered en route — a root cause found while doing something else, often the most
   valuable stop in the document — or incidental churn. Ask; do not decide.
+- **Anchor the live fields too, not just the tour.** An `assumption`, an `open_question`
+  and a `not_verified` entry each take `"anchors": ["H4"]`, and a reviewer reading the
+  document arrives at a stop wanting exactly three things: what changed, what to check, and
+  **what is still uncertain HERE**. Unanchored, that last one sits in a list somewhere else
+  and the reader does the join by hand. Measured on this repo's own documents, 54% of every
+  document was fields with no link to the code. A `not_verified` entry may be written as a
+  plain string, or as `{"text": "...", "anchors": ["H4"]}` when you know where it bites.
+  Anchor what genuinely belongs to a hunk and leave the rest bare: an assumption about the
+  whole change ("the deploy host runs Compose v2") has no hunk, and inventing one for it is
+  worse than leaving it global.
 - **Anchor by hunk id.** Write `"anchors": ["H3", "H4"]`. Never hand-copy line numbers.
   Every `coverage_required` hunk must land in some stop; one hunk may serve two. A coverage
   failure comes back as `uncovered_hunk_ids`, which you fix by adding those ids.

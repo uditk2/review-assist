@@ -385,6 +385,13 @@ async function boot() {
   STATE.data = data;
   STATE.files = parseUnifiedDiff(data.diff || "");
   STATE.ordered = orderTour(data.document.tour || []);
+  // hunk id -> index of the stop covering it. Buildable only because anchor expansion now
+  // keeps the id it was written as; before, a stored stop held a path and line ranges, so
+  // every other field's hunk ids had nothing to match and rendered as dead labels.
+  STATE.stopOfHunk = {};
+  STATE.ordered.forEach((stop, i) => {
+    for (const a of stop.anchors || []) if (a && a.id && !(a.id in STATE.stopOfHunk)) STATE.stopOfHunk[a.id] = i;
+  });
   STATE.coverage = computeCoverage(data.document.tour || [], STATE.files);
   STATE.view = "overview"; STATE.stopIndex = 0;
   STATE.comments = []; STATE.composer = null; STATE.reviewSubmitted = null;
@@ -1730,6 +1737,26 @@ function rerenderCurrent() {
 // Document fields are point lists: "- one\n- two". As a text node the newlines collapse
 // and the dashes show up mid-sentence, so split them back into a real list. A field with
 // no bullets stays inline, which is what the single-point fields want.
+/**
+ * A hunk id as a chip, navigating to the stop covering it when there is one.
+ *
+ * Falls back to a plain label rather than a dead button: a chip that looks clickable and
+ * does nothing is worse than one that does not pretend. That happens for a document
+ * written before anchors kept their ids, and for an id no stop covers.
+ */
+function hunkChip(id){
+  const i = STATE.stopOfHunk ? STATE.stopOfHunk[id] : undefined;
+  if (i === undefined) return el("span",{class:"id-chip ml-1"}, id);
+  return el("button",{class:"id-chip ml-1 cursor-pointer", title:"Go to the stop covering "+id,
+    onclick:()=>{ STATE.view="tour"; STATE.stopIndex=i; render(); }}, id);
+}
+
+/** Hunk-id chips for a list of ids, or null when there are none. */
+function hunkChips(ids){
+  const list = (ids || []).filter(Boolean);
+  return list.length ? el("span",{class:"shrink-0"}, ...list.map(hunkChip)) : null;
+}
+
 function points(text, cls){
   const lines = String(text ?? "").split("\n").filter(l => l.trim());
   const isBullet = l => /^[-*+]\s+/.test(l.trim());
@@ -1778,7 +1805,7 @@ function renderOverview(doc){
       sec.append(el("div",{class:"card mb-3"},
         el("div",{class:"flex items-start justify-between gap-3"},
           el("div",{}, el("span",{class:"id-chip mr-2"},a.id), el("span",{class:"font-medium"}, a.assumption)),
-          el("span",{class:conf.cls}, conf.label)),
+          el("span",{class:"shrink-0"}, el("span",{class:conf.cls}, conf.label), hunkChips(a.anchors))),
         el("dl",{class:"mt-2 space-y-1 text-sm text-ink-600"},
           row("If wrong", a.impact_if_wrong),
           a.how_to_verify ? row("How to verify", a.how_to_verify) : null),
@@ -1794,7 +1821,9 @@ function renderOverview(doc){
   if (doc.open_questions?.length){
     const sec = section("Open questions");
     for (const q of doc.open_questions) sec.append(el("div",{class:"card mb-3"},
-      el("div",{}, el("span",{class:"id-chip mr-2"},q.id), el("span",{class:"font-medium"}, q.question)),
+      el("div",{class:"flex items-start justify-between gap-3"},
+        el("div",{}, el("span",{class:"id-chip mr-2"},q.id), el("span",{class:"font-medium"}, q.question)),
+        hunkChips(q.anchors)),
       q.context ? el("p",{class:"mt-1.5 text-sm text-ink-600"}, q.context) : null));
     right.append(sec);
   }
@@ -1822,7 +1851,7 @@ function renderOverview(doc){
           el("span",{class:"font-medium"}, u.question),
           el("span",{class:"shrink-0"},
             el("span",{class:cls}, label),
-            ...anchors.map(h => el("span",{class:"id-chip ml-1"}, h)))),
+            hunkChips(anchors))),
         gloss ? el("p",{class:"mt-1.5 text-sm text-ink-500"}, gloss) : null,
         u.note ? points(u.note, "mt-2 text-sm text-ink-700") : null));
     }
@@ -1847,7 +1876,7 @@ function renderOverview(doc){
           // interview ran against, while a stored tour stop's anchors are path plus line
           // ranges — so there is nothing here to match them to. A clickable chip that
           // could not navigate would be worse than a label that does not pretend to.
-          anchors.length ? el("span",{class:"shrink-0"}, ...anchors.map(h => el("span",{class:"id-chip ml-1"}, h))) : null),
+          hunkChips(anchors)),
         points(e.answer, "mt-2 text-sm text-ink-700")));
     }
     const d = el("details",{class:"mt-1"});
@@ -2211,9 +2240,13 @@ function renderVerify(doc){
       el("span",{class:"tag"}, p.kind),
       el("span",{class:"text-ink-800"}, p.description),
       el("span",{class:"text-ink-400"}, "— "+p.result))))));
-  if (v.not_verified?.length) cols.append(section("Not verified",
-    el("ul",{class:"space-y-1.5"}, ...v.not_verified.map(n=>el("li",{class:"flex gap-2 text-ink-700"},
-      el("span",{class:"select-none text-warn-fg"},"—"), el("span",{}, n))))));
+  // A plain string or {text, anchors}: published content read off open pull requests, so
+  // the string form cannot retire. Normalized here, as the renderers do elsewhere.
+  const unexercised = (v.not_verified || []).map(n =>
+    typeof n === "string" ? {text:n, anchors:[]} : {text:n.text, anchors:n.anchors || []});
+  if (unexercised.length) cols.append(section("Not verified",
+    el("ul",{class:"space-y-1.5"}, ...unexercised.map(n=>el("li",{class:"flex items-start gap-2 text-ink-700"},
+      el("span",{class:"select-none text-warn-fg"},"—"), el("span",{}, n.text), hunkChips(n.anchors))))));
   return f;
 }
 
