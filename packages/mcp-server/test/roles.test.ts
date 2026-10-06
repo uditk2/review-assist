@@ -10,11 +10,8 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
-import { join } from "node:path";
-import { getRoles, installRoles, sweepStaleRoleDefinitions, ROLE_TOOLS } from "../src/roles.js";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { getRoles, installRoles, sweepStaleRoleDefinitions, ROLE_TOOLS } from "../src/roles.js";
 
 const scratch = mkdtempSync(join(tmpdir(), "review-assist-roles-"));
 const projectDir = join(scratch, "my-repo");
@@ -308,6 +305,8 @@ describe("the role-definition sweep", () => {
   afterEach(() => {
     if (realHome === undefined) delete process.env.HOME;
     else process.env.HOME = realHome;
+    // Each case gets a fresh home; the file's own afterAll does not reach them.
+    rmSync(home, { recursive: true, force: true });
   });
 
   it("leaves both envs alone when the bundle installs nothing", () => {

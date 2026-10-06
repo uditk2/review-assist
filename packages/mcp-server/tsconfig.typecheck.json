@@ -1,0 +1,6 @@
+{
+  "//": "Typecheck only, src AND test. The build config sets rootDir to src/ so it cannot include tests, which meant tsc never looked at a test file: seven duplicate import bindings sat in roles.test.ts through a green `npm run typecheck` and a green `vitest run`, because esbuild dedupes them. Separate config rather than a widened include, so the emit contract stays exactly as it was.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}
