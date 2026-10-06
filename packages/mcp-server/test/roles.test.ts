@@ -18,6 +18,24 @@ const projectDir = join(scratch, "my-repo");
 const claudeAgents = join(projectDir, ".claude", "agents");
 const codexAgents = join(projectDir, ".codex", "agents");
 
+/**
+ * The suite gets its own home directory, and it must be set BEFORE `getRoles` is called.
+ *
+ * `sweepStaleRoleDefinitions` resolves the home directory itself and removes every env's
+ * definitions there except the ones belonging to the bundle it was handed. With a real
+ * `claude` bundle that spares `~/.claude/agents` and takes `~/.codex/agents` — so running
+ * this suite DELETED a developer's real Codex role definitions. Demonstrated: planting
+ * `~/.codex/agents/intent-author.toml` and running `vitest run` removed it, and the two
+ * assertions that cover the case read `.toEqual([])`, which held only because this machine
+ * happened to have no Codex definitions to lose.
+ *
+ * Set here at module scope rather than in a hook because `bundle` is built on the next
+ * line, and its `install_dir` is resolved from the home directory at that moment.
+ */
+const REAL_HOME = process.env.HOME;
+process.env.HOME = join(scratch, "home");
+mkdirSync(process.env.HOME, { recursive: true });
+
 const bundle = getRoles({ env: "claude" });
 
 beforeEach(() => {
@@ -26,7 +44,11 @@ beforeEach(() => {
   mkdirSync(codexAgents, { recursive: true });
 });
 
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+afterAll(() => {
+  if (REAL_HOME === undefined) delete process.env.HOME;
+  else process.env.HOME = REAL_HOME;
+  rmSync(scratch, { recursive: true, force: true });
+});
 
 describe("rendered definitions", () => {
   it("carry a provenance marker, so a later sweep knows what it wrote", () => {
@@ -290,22 +312,18 @@ describe("the role-definition sweep", () => {
     writeFileSync(p, `<!-- review-assist-mcp: generated file — rewritten when the server connects -->\n`);
   };
 
-  // The sweep resolves the home directory itself, via os.homedir(), which honours $HOME on
-  // POSIX. Pointing it at a temp directory is what makes these tests real: written against
-  // the actual home they passed whether or not the bug was present, because the files they
-  // created were somewhere the sweep never looked.
-  let realHome: string | undefined;
+  // A fresh home per case, on top of the suite-wide redirect set at module scope. These
+  // cases plant definitions and assert what survives, so they need isolation from each
+  // other as well as from the developer's real home.
+  const suiteHome = process.env.HOME;
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), "review-assist-sweep-"));
     claudeDir = join(home, ".claude", "agents");
     codexDir = join(home, ".codex", "agents");
-    realHome = process.env.HOME;
     process.env.HOME = home;
   });
   afterEach(() => {
-    if (realHome === undefined) delete process.env.HOME;
-    else process.env.HOME = realHome;
-    // Each case gets a fresh home; the file's own afterAll does not reach them.
+    process.env.HOME = suiteHome;
     rmSync(home, { recursive: true, force: true });
   });
 
