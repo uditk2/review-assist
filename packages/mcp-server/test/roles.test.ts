@@ -7,11 +7,14 @@
  * reported installing the current prompt while every session ran the old one.
  */
 
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import { getRoles, installRoles, sweepStaleRoleDefinitions, ROLE_TOOLS } from "../src/roles.js";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
 const scratch = mkdtempSync(join(tmpdir(), "review-assist-roles-"));
 const projectDir = join(scratch, "my-repo");
@@ -264,5 +267,78 @@ describe("what the author may do beyond this server's tools", () => {
         expect(getRoles({ env }).roles[role]!.definition).not.toMatch(/\{\{[A-Z]+\}\}/);
       }
     }
+  });
+});
+
+/**
+ * A client that installs nothing must remove nothing at home scope.
+ *
+ * `candidateDefinitionPaths` enumerates every env's definitions and `keep` held only the
+ * current bundle's, so a bundle with no `install_dir` kept nothing and swept BOTH envs'
+ * definitions out of the home directory. `generic` is precisely that bundle, and
+ * `detectEnv` falls back to it for any client whose `clientInfo.name` is unrecognised.
+ *
+ * Observed repeatedly while this was being written: a Claude Code session's intent-author
+ * and intent-reviewer subagents disappeared whenever another tool connected to the server,
+ * and the only symptom was their absence — the roles were reported installed, then were
+ * gone, with nothing in between to look at.
+ */
+describe("the role-definition sweep", () => {
+  let home: string;
+  let claudeDir: string;
+  let codexDir: string;
+  const generated = (p: string) => {
+    mkdirSync(dirname(p), { recursive: true });
+    // Only a file carrying the generated marker is ever removed; this is what one looks like.
+    writeFileSync(p, `<!-- review-assist-mcp: generated file — rewritten when the server connects -->\n`);
+  };
+
+  // The sweep resolves the home directory itself, via os.homedir(), which honours $HOME on
+  // POSIX. Pointing it at a temp directory is what makes these tests real: written against
+  // the actual home they passed whether or not the bug was present, because the files they
+  // created were somewhere the sweep never looked.
+  let realHome: string | undefined;
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "review-assist-sweep-"));
+    claudeDir = join(home, ".claude", "agents");
+    codexDir = join(home, ".codex", "agents");
+    realHome = process.env.HOME;
+    process.env.HOME = home;
+  });
+  afterEach(() => {
+    if (realHome === undefined) delete process.env.HOME;
+    else process.env.HOME = realHome;
+  });
+
+  it("leaves both envs alone when the bundle installs nothing", () => {
+    // The generic bundle. Previously this deleted every definition it found.
+    generated(join(claudeDir, "intent-author.md"));
+    generated(join(codexDir, "intent-author.toml"));
+    const bundle = { ...getRoles({ env: "generic" }), install_dir: undefined };
+    const removed = sweepStaleRoleDefinitions(bundle, []);
+    expect(removed).toEqual([]);
+    expect(existsSync(join(claudeDir, "intent-author.md"))).toBe(true);
+    expect(existsSync(join(codexDir, "intent-author.toml"))).toBe(true);
+  });
+
+  it("still clears a project-scoped copy, which shadows the user-scoped one", () => {
+    // The sweep's actual purpose: in Claude Code a project-scoped definition takes
+    // precedence, so installing without removing it leaves the session on a stale prompt
+    // while the server reports success.
+    const projectDir = mkdtempSync(join(tmpdir(), "review-assist-proj-"));
+    const stale = join(projectDir, ".claude", "agents", "intent-author.md");
+    generated(stale);
+    const bundle = { ...getRoles({ env: "generic" }), install_dir: undefined };
+    expect(sweepStaleRoleDefinitions(bundle, [projectDir])).toContain(stale);
+    expect(existsSync(stale)).toBe(false);
+  });
+
+  it("never touches a definition someone wrote by hand", () => {
+    const mine = join(claudeDir, "intent-author.md");
+    mkdirSync(dirname(mine), { recursive: true });
+    writeFileSync(mine, "# my own prompt, not generated\n");
+    const bundle = { ...getRoles({ env: "claude" }), install_dir: claudeDir };
+    sweepStaleRoleDefinitions(bundle, []);
+    expect(readFileSync(mine, "utf8")).toContain("my own prompt");
   });
 });
