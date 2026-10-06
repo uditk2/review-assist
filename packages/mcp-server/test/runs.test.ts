@@ -976,3 +976,60 @@ describe("planDelta", () => {
     expect(d.unlanded).toEqual([]);
   });
 });
+
+/**
+ * Refusing to replace a document that describes different code.
+ *
+ * Keying a document by branch is right while a branch is one change, and stops being right
+ * on a long-lived one. Distilling on `main` overwrote `.intent/main.json`, and the file it
+ * destroyed was complete — 16 of 16 questions attested, nothing unanswered — replaced by a
+ * one-sided document from an interview whose author had not answered. Nothing warned, and
+ * only git got it back.
+ *
+ * The test is the commit RANGE, never the file's existence: resubmitting the same change is
+ * a correction and has to stay free, which is the whole reason a run survives its own submit.
+ */
+describe("existingDocumentClash", () => {
+  const dir = mkdtempSync(join(tmpdir(), "review-assist-doc-"));
+  const docAt = (headSha: string, interview?: unknown) => {
+    const p = join(dir, `doc-${headSha}-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(p, JSON.stringify({ meta: { commit_range: { head_sha: headSha }, interview } }));
+    return p;
+  };
+  const HEAD = "b".repeat(40);
+  const OTHER = "c".repeat(40);
+
+  it("reports no clash when nothing is there yet", () => {
+    expect(runs.existingDocumentClash(join(dir, "absent.json"), HEAD)).toBeUndefined();
+  });
+
+  it("reports no clash when resubmitting the SAME change", () => {
+    // A correction. Blocking this would break the documented edit-and-resubmit flow.
+    expect(runs.existingDocumentClash(docAt(HEAD), HEAD)).toBeUndefined();
+  });
+
+  it("reports a clash when the document describes a different head", () => {
+    const clash = runs.existingDocumentClash(docAt(OTHER), HEAD);
+    expect(clash?.head_sha).toBe(OTHER);
+  });
+
+  it("hands back the interview it would destroy, so the refusal can show its worth", () => {
+    // What made the real loss bad was not the overwrite but that nobody could see what went.
+    const interview = { rounds: 16, author_attested: 16, unanswered: 0 };
+    expect(runs.existingDocumentClash(docAt(OTHER, interview), HEAD)?.interview).toEqual(interview);
+  });
+
+  it("treats an unreadable file as no clash", () => {
+    // Failing a submit over a file that cannot be parsed would be worse than the overwrite:
+    // it is not evidence of work worth protecting.
+    const p = join(dir, "broken.json");
+    writeFileSync(p, "{ not json");
+    expect(runs.existingDocumentClash(p, HEAD)).toBeUndefined();
+  });
+
+  it("treats a document with no recorded head as no clash", () => {
+    const p = join(dir, "nohead.json");
+    writeFileSync(p, JSON.stringify({ meta: {} }));
+    expect(runs.existingDocumentClash(p, HEAD)).toBeUndefined();
+  });
+});
