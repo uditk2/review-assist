@@ -319,10 +319,23 @@ export function sweepStaleRoleDefinitions(
       : []
   );
 
-  const targets = [
-    ...candidateDefinitionPaths(scoped),
-    ...candidateDefinitionPaths([home]).filter((p) => !keep.has(p)),
-  ];
+  // A client that installs NOTHING removes nothing at home scope.
+  //
+  // `candidateDefinitionPaths` enumerates every env's definitions, and `keep` holds only
+  // this bundle's — so a client with no `install_dir` kept nothing and swept both envs'
+  // definitions out of the home directory. `generic` is exactly that client, and
+  // `detectEnv` falls back to it for any MCP client whose `clientInfo.name` is not
+  // recognised. The effect, observed repeatedly: a Claude Code session's intent-author and
+  // intent-reviewer subagents vanish the moment any other tool connects to this server,
+  // and the only symptom is that the subagents are no longer there.
+  //
+  // Removing a definition for an env this bundle DOES install stays deliberate: switching
+  // a machine from Codex to Claude Code should not leave the other one's prompt behind.
+  const homeTargets = bundle.install_dir
+    ? candidateDefinitionPaths([home]).filter((p) => !keep.has(p))
+    : [];
+
+  const targets = [...candidateDefinitionPaths(scoped), ...homeTargets];
 
   const removed: string[] = [];
   for (const path of targets) {
