@@ -2,9 +2,9 @@
   "manifest_version": "0.2",
   "name": "review-assist-mcp",
   "display_name": "Review Assist",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Turn an AI agent's coding session into a reviewable Intent Document.",
-  "long_description": "Review Assist runs a two-agent author/reviewer distillation over your coding session and produces an Intent Document \u2014 the problem, the assumptions, the rejected alternatives, and an anchored walkthrough of every change \u2014 gatekept by a deterministic validator. It also generates a ready-made PR description (with optional Mermaid diagrams) and asks per repository before it does anything. Works with Claude Code, Codex, and any MCP-capable agent.",
+  "long_description": "Review Assist runs a two-agent author/reviewer distillation over your coding session and produces an Intent Document — the problem, the assumptions, the rejected alternatives, and an anchored walkthrough of every change — gatekept by a deterministic validator. It also generates a ready-made PR description (with optional Mermaid diagrams) and asks per repository before it does anything. Works with Claude Code, Codex, and any MCP-capable agent.",
   "author": {
     "name": "Udit Khandelwal",
     "url": "https://github.com/uditk2"
@@ -106,7 +106,7 @@
     },
     {
       "name": "answer_questions",
-      "description": "The author's own answers, by q_id \u2014 the half of the interview the server can attest."
+      "description": "The author's own answers, by q_id — the half of the interview the server can attest."
     },
     {
       "name": "get_answers",
