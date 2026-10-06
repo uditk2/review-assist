@@ -20,6 +20,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { findAuthoringSessions } from "./footprint.js";
 import { readIndex, recordContexts, resumePoint, scoreContexts } from "./contexts.js";
+import { Handoff } from "./handoff.js";
 import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -60,6 +61,7 @@ import {
   recordAnswers,
   runRounds,
   summarizeRun,
+  existingDocumentClash,
   hunkKey,
   recordHunkNotes,
   hunkNotes,
@@ -880,6 +882,7 @@ registerTool(
       .describe("The whole batch in one call."),
   },
   async ({ run_id, answers }) => {
+    handoff.noteAuthorActivity(run_id);
     const res = recordAnswers(run_id, answers);
     if (!res) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
     const { run, unknown } = res;
@@ -941,6 +944,7 @@ registerTool(
     if (!hunks?.length && !paths?.length) {
       return textResult("Pass `hunks` (preferred) or `paths`. With neither there is nothing to look up.", true);
     }
+    handoff.noteAuthorActivity(run_id);
     try {
       // Recomputed from the run's own SHAs, exactly as read_diff does, so the hunk ids
       // mean the same thing here as they did when the reviewer anchored them.
@@ -1010,6 +1014,7 @@ registerTool(
   async ({ run_id, path }) => {
     const run = getRun(run_id);
     if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    handoff.noteAuthorActivity(run_id);
     try {
       const { diff } = await computeDiff(run.repo, run.base_sha, run.head_sha);
       const changed = summarizeFiles(indexHunks(diff)).map((f) => f.path);
@@ -1080,6 +1085,7 @@ registerTool(
   async ({ path, run_id, from, scanned_through, contexts }) => {
     const run = getRun(run_id);
     if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    handoff.noteAuthorActivity(run_id);
     try {
       const index = recordContexts(path, run.repo, { from, scanned_through, contexts });
       return textResult(
@@ -1165,6 +1171,7 @@ registerTool(
   async ({ run_id, only_unanswered, cursor, max_bytes }) => {
     const run = getRun(run_id);
     if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    handoff.noteAuthorActivity(run_id);
     const all = runRounds(run);
     const wanted = (only_unanswered ?? false) ? all.filter((r) => r.answer.length === 0) : all;
     const page = pageRounds(
@@ -1233,8 +1240,11 @@ registerTool(
     );
     const summary = summarizeRun(run);
     const answeredNow = all.filter((r) => r.answer.length > 0).length;
-    const { polls, stalled_ms } = notePoll(run_id, answeredNow);
-    const stalled = summary.unanswered > 0 && (polls >= STALL_POLLS || stalled_ms >= STALL_MS);
+    const { polls, stalled_ms, author_seen, author_quiet_ms, stalled } = handoff.notePoll(
+      run_id,
+      answeredNow,
+      summary.unanswered
+    );
 
     let next: string;
     if (page.next_cursor) {
@@ -1243,7 +1253,11 @@ registerTool(
       next = "That is every round, and all of them are answered.";
     } else if (stalled) {
       next =
-        `STOP POLLING. No new answer has been recorded in ${Math.round(stalled_ms / 1000)}s across ` +
+        `STOP POLLING. ` +
+        (author_seen
+          ? `The author has made no call on this run for ${Math.round(author_quiet_ms / 1000)}s `
+          : `The author has never called this run at all, and no new answer has arrived in ${Math.round(stalled_ms / 1000)}s, `) +
+        `across ` +
         `${polls} consecutive get_answers calls, and ${summary.unanswered} question(s) are still ` +
         "unanswered. The author role is a subagent: it does not idle waiting for work, so if it has " +
         "finished its batches it has already returned and nothing will arrive however long you wait. " +
@@ -1254,7 +1268,12 @@ registerTool(
       next =
         `That is every round. ${summary.unanswered} still have no answer. ` +
         (polls > 1 ? `Waited ${Math.round(stalled_ms / 1000)}s so far. ` : "") +
-        "If the author is mid-batch this is normal; it writes a whole batch in one call.";
+        (author_seen
+          ? `The author IS working on this run — last call ${Math.round(author_quiet_ms / 1000)}s ago. ` +
+            "It answers a whole batch in one call, and it reads the entire session first, which on a " +
+            "long one is several minutes before the first answer appears. Wait."
+          : "The author has not called this run yet. If it was dispatched it is still choosing a " +
+            "transcript; if it was not, nothing will arrive.");
     }
 
     return textResult(
@@ -1272,37 +1291,8 @@ registerTool(
   }
 );
 
-/**
- * Consecutive `get_answers` polls that have seen no new answer, per run.
- *
- * In memory on purpose: this is a property of one waiting reviewer's conversation with
- * this server process, not of the run, and persisting it would mean a disk write per
- * poll — of which there have been 2122, 1998 and 1668 in three observed runs.
- *
- * The reviewer polls because the response tells it what it wants to hear: "the author has
- * not replied to those yet" reads as "keep waiting". It is true and it is useless, because
- * the author is a subagent that does not idle — if it has finished it has already returned,
- * and no amount of waiting changes that. This is what lets the server say so.
- */
-const answerPolls = new Map<string, { answered: number; polls: number; since: number }>();
-
-/** Polls with no progress before the response stops encouraging the wait. */
-const STALL_POLLS = 8;
-/** Or this long with no progress, whichever lands first. */
-const STALL_MS = 60_000;
-
-function notePoll(runId: string, answered: number): { polls: number; stalled_ms: number } {
-  const now = Date.now();
-  const prior = answerPolls.get(runId);
-  // Any new answer resets the watch: the author is alive and writing, and waiting for it
-  // is exactly the right thing to do.
-  if (!prior || prior.answered !== answered) {
-    answerPolls.set(runId, { answered, polls: 1, since: now });
-    return { polls: 1, stalled_ms: 0 };
-  }
-  prior.polls += 1;
-  return { polls: prior.polls, stalled_ms: now - prior.since };
-}
+/** This process's view of the author/reviewer handoff. See `./handoff.ts`. */
+const handoff = new Handoff();
 
 /**
  * Page a list of rounds under a byte budget.
@@ -1427,6 +1417,7 @@ function expandAnchors(doc: unknown, hunks: IndexedHunk[]): string[] {
   return Array.from(new Set(unknown));
 }
 
+
 /**
  * Name the uncovered hunks by id. "uncovered: H7, H12" is a fix the reviewer can apply by
  * adding two strings; "lines 45-51 of src/x.ts are not covered" is one it has to
@@ -1467,8 +1458,12 @@ registerTool(
     strict: z.boolean().default(false).describe("Fail coverage on any unexplained hunk"),
     write: z.boolean().default(true).describe("Write the document on success"),
     require_interview: z.boolean().default(false).describe("Reject unless at least one reviewer interview round was recorded (enforces the two-agent pass)."),
+    overwrite: z
+      .boolean()
+      .default(false)
+      .describe("Replace this branch's existing document even though it describes a DIFFERENT commit range. Refused by default: the usual cause is distilling on a long-lived branch, and the document destroyed is finished work. Resubmitting the same change never needs this."),
   },
-  async ({ document, run_id, strict, write, require_interview }) => {
+  async ({ document, run_id, strict, write, require_interview, overwrite }) => {
     const run = getRun(run_id);
     if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
     const repoDir = run.repo;
@@ -1653,6 +1648,46 @@ registerTool(
           (run.branch ?? (await currentBranch(repoDir, "HEAD")) ?? "").replace(/[/\\]/g, "-") ||
           run.head_sha.slice(0, 12);
         const outPath = join(repoDir, ".intent", `${branch}.json`);
+
+        // Refuse to replace a document that describes DIFFERENT code.
+        //
+        // Keying a document by branch is right while a branch is one change. It stops being
+        // right on a long-lived branch: distilling on `main` overwrote `.intent/main.json`,
+        // and the file it destroyed was complete — 16 of 16 questions attested, nothing
+        // unanswered — replaced by a one-sided document from an interview whose author had
+        // not answered. Nothing warned, and only git could get it back.
+        //
+        // The test is the commit range, not whether the file exists: resubmitting the SAME
+        // change is a correction and stays free, which is the whole reason a run survives
+        // its own submit. A different head means a different document.
+        const clash = existingDocumentClash(outPath, run.head_sha);
+        if (clash && !(overwrite ?? false)) {
+          return textResult(
+            JSON.stringify(
+              {
+                ok: false,
+                refused: "would_overwrite_a_different_document",
+                path: outPath,
+                existing_head_sha: clash.head_sha,
+                existing_interview: clash.interview,
+                this_head_sha: run.head_sha,
+                why:
+                  `${outPath} already describes a different change (head ${clash.head_sha.slice(0, 12)}; ` +
+                  `this run is ${run.head_sha.slice(0, 12)}). Writing would destroy it. The usual cause ` +
+                  "is distilling on a long-lived branch such as `main`, which already holds a document " +
+                  "for earlier work.",
+                how_to_proceed:
+                  "Put this change on its own branch so the document gets its own file, which is what " +
+                  "per-branch naming is for. If replacing it is genuinely intended — the existing " +
+                  "document describes work that no longer exists, say — pass `overwrite: true`.",
+              },
+              null,
+              2
+            ),
+            true
+          );
+        }
+
         mkdirSync(dirname(outPath), { recursive: true });
         writeFileSync(outPath, JSON.stringify(doc, null, 2) + "\n", "utf8");
         written = outPath;

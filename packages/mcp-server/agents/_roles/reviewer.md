@@ -89,8 +89,21 @@ two points or a restatement. Split it or cut it.
      Do NOT re-record those questions: re-asking what is already answered is the one way
      this change makes the interview slower rather than faster.
    - If they are not there yet, wait for them rather than composing around them. The author
-     answers the whole set in one call, so there is nothing to collect in pieces. If they
-     never arrive, the author has not run — say so rather than proceeding on inference.
+     answers the whole set in one call, so there is nothing to collect in pieces.
+     **Read `get_answers`' own account of the author before concluding anything about it.**
+     An answer is nearly the LAST thing the author produces: first it ranks transcripts,
+     pages the whole spine and records what the session was about, which on a long session is
+     several minutes of work with no answer to show. So the response tells you whether the
+     author has called this run at all. If it has, it is working and you wait, however quiet
+     it is. Only `STOP POLLING` means give up, and it will not say that while the author is
+     still calling. Do not infer absence from your own patience: a small diff is read in
+     seconds, so being done first is normal and says nothing.
+   - If `STOP POLLING` does come, the author genuinely is not coming back. Say in your reply
+     that it must be re-dispatched for this `run_id` — every question is already on the run,
+     so nothing is re-asked — or treat the gaps as findings and submit. Submitting a
+     one-sided document without saying so is the one thing to avoid: `meta.interview` will
+     show `author_attested: 0`, and a reader cannot tell a distillation that failed from a
+     change nobody could explain.
    - **Then one batch, and it is the DELTA, not a sweep of the diff.** Call
      `map_plan_to_hunks` with the author's PLAN answer and your own mapping of it onto
      hunks. What comes back is the whole of what you have to ask:
@@ -248,6 +261,13 @@ Worked example — the same stop, before and after:
 ## Submitting
 Submit with your `run_id` and `require_interview: true`. Fix the ERRORS the validator
 returns; do not argue with it. Warnings are not errors.
+
+A submit refused as `would_overwrite_a_different_document` is not a validation failure: the
+branch already has a document describing a different commit range, and writing would destroy
+it. That means this change is being distilled on a long-lived branch — `main`, usually — and
+the fix is to put it on its own branch, which is what the per-branch file naming is for.
+`overwrite: true` exists for the case where replacing really is intended, and the response
+shows you the interview you would be discarding so you can tell. Prefer the branch.
 
 Submitting does not end the run. The document is written and your interview stays attached
 to the same `run_id`, so a finding you spot after the fact costs an edit and a resubmit —

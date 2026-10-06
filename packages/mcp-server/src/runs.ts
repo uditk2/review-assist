@@ -648,6 +648,30 @@ export function planDelta(run: RunRecord, presentKeys: Set<string>): PlanDelta {
   };
 }
 
+/**
+ * Whether a document already at `path` describes a different change than `headSha`.
+ *
+ * Reads only what it needs, and treats anything unparseable as no clash: a file this cannot
+ * read is not evidence of work worth protecting, and failing a submit over it would be
+ * worse than the overwrite it was meant to prevent.
+ */
+export function existingDocumentClash(
+  path: string,
+  headSha: string
+): { head_sha: string; interview: unknown } | undefined {
+  if (!existsSync(path)) return undefined;
+  try {
+    const prior = JSON.parse(readFileSync(path, "utf8")) as {
+      meta?: { commit_range?: { head_sha?: string }; interview?: unknown };
+    };
+    const priorHead = prior.meta?.commit_range?.head_sha;
+    if (typeof priorHead !== "string" || priorHead === headSha) return undefined;
+    return { head_sha: priorHead, interview: prior.meta?.interview };
+  } catch {
+    return undefined;
+  }
+}
+
 /** The notes on this run, by content key. */
 export function hunkNotes(run: RunRecord): Record<string, HunkNote> {
   return run.hunk_notes ?? {};
