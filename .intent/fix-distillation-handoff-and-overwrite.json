@@ -1,0 +1,875 @@
+{
+  "schema_version": "0.1",
+  "meta": {
+    "id": "review-assist-fix-distillation-handoff-and-overwrite",
+    "repo": "uditk2/review-assist",
+    "commit_range": {
+      "base_sha": "634e48ea74802fb389a8742b519791b913cde15f",
+      "head_sha": "62aeec7fd2ef9e41f39d086b8b40eacca81d8452"
+    },
+    "session": {
+      "agent": "claude-code",
+      "model": "not reported by the author from the transcript",
+      "session_ids": [
+        "4804e11e-f64b-4799-aa8e-3f5fde6c8d47"
+      ]
+    },
+    "generated_by": {
+      "pipeline": "review-assist two-agent distillation",
+      "version": "0.1"
+    },
+    "generated_at": "2026-10-07T07:45:00Z",
+    "interview": {
+      "rounds": 26,
+      "questions_asked": 26,
+      "unresolved": 14,
+      "author_attested": 23,
+      "developer_attested": 0,
+      "unanswered": 3
+    }
+  },
+  "problem": {
+    "statement": "Two distillation defects found in one dogfood run: the reviewer gave up on an author that was still reading and submitted a one-sided document, and a submit on `main` destroyed a complete Intent Document.",
+    "origin": "stated_upfront",
+    "user_asks": [
+      "Lets rebase main and fix these issues",
+      "Can we actually build the new mcp server and try it out",
+      "I have reloaded the window",
+      "First, I think we should have a separate branch where these commits should lie. They should not lie on main"
+    ],
+    "out_of_scope": [
+      "Re-measuring latency against the 1143s baseline",
+      "Latency change 4",
+      "open_questions classification",
+      "Codex parity on the developer gate",
+      "The pruner",
+      "Making summarizeRun count unanswered seeded questions"
+    ]
+  },
+  "assumptions": [
+    {
+      "id": "A1",
+      "assumption": "Author and reviewer subagents reach the same MCP server process.",
+      "impact_if_wrong": "author_seen is permanently false, the old 60s patience applies again, and the fix is inert.",
+      "how_to_verify": "With both roles running, count review-assist server processes and confirm get_answers reports author_seen true while the author is mid-read.",
+      "confidence": "grounded_in_code",
+      "anchors": [
+        "H4",
+        "H7"
+      ]
+    },
+    {
+      "id": "A2",
+      "assumption": "The author calls a run-aware tool often enough that silence never reaches 420s.",
+      "impact_if_wrong": "A healthy author on a large session is declared absent between get_contexts and record_contexts.",
+      "how_to_verify": "Time the gap between those two calls on the largest transcript on the machine, against 420000ms.",
+      "confidence": "unverified",
+      "anchors": [
+        "H4",
+        "H9"
+      ]
+    },
+    {
+      "id": "A3",
+      "assumption": "420s is longer than any legitimate author silence.",
+      "impact_if_wrong": "The original failure returns on a bigger session.",
+      "how_to_verify": "Compare the largest observed inter-call gap, not end-to-end runtime, against the constant.",
+      "confidence": "unverified",
+      "anchors": [
+        "H4"
+      ]
+    },
+    {
+      "id": "A4",
+      "assumption": "60s is enough to conclude an author was never dispatched.",
+      "impact_if_wrong": "A dispatched author still ranking large transcripts, which emits no heartbeat, is declared absent.",
+      "how_to_verify": "Time a cold list_transcripts plus the first find_sessions_touching.",
+      "confidence": "unverified",
+      "anchors": [
+        "H4"
+      ]
+    },
+    {
+      "id": "A5",
+      "assumption": "The stall gate only needs to work after the reviewer has recorded a round.",
+      "impact_if_wrong": "Before round one summarizeRun drops unanswered seeded questions, so the reviewer is told everything is answered instead of being warned or reassured.",
+      "how_to_verify": "Call get_answers on a fresh run carrying only standing questions and read the `next` line.",
+      "confidence": "grounded_in_code",
+      "anchors": [
+        "H12"
+      ]
+    },
+    {
+      "id": "A6",
+      "assumption": "Every prior document on disk carries meta.commit_range.head_sha.",
+      "impact_if_wrong": "A malformed or older-schema document is overwritten silently, which is the loss the guard exists to stop.",
+      "how_to_verify": "grep -L commit_range .intent/*.json",
+      "confidence": "grounded_in_code",
+      "anchors": [
+        "H19"
+      ]
+    },
+    {
+      "id": "A7",
+      "assumption": "A different head_sha always means a different change worth protecting.",
+      "impact_if_wrong": "An amend, a rebase, or an ordinary second commit on the same branch is refused and needs overwrite: true.",
+      "how_to_verify": "Commit the document, amend the head, call compute_diff again and resubmit on the same branch.",
+      "confidence": "grounded_in_code",
+      "anchors": [
+        "H18",
+        "H19"
+      ]
+    },
+    {
+      "id": "A8",
+      "assumption": "The reviewer reads and obeys its role prose.",
+      "impact_if_wrong": "The server stops saying stop-polling and the reviewer still concludes absence from its own patience.",
+      "how_to_verify": "A distillation performed after the change, with the reviewer's waiting behaviour observed.",
+      "confidence": "unverified",
+      "anchors": [
+        "H2"
+      ]
+    },
+    {
+      "id": "A9",
+      "assumption": "Fixing the signal fixes the behaviour.",
+      "impact_if_wrong": "The second half of the failure, submitting a one-sided document without flagging it, is addressed by prose alone.",
+      "how_to_verify": "Check that a reviewer forced to submit one-sided names author_attested 0 in its report.",
+      "confidence": "unverified",
+      "anchors": [
+        "H2"
+      ]
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Does the head-sha guard block the documented post-commit resubmit on a feature branch, and is overwrite: true now expected on every one of those?",
+      "context": "Head drift was never raised in the session. After the guide's own correction cycle the committed document holds the old head and the run holds the new one, so the second submit is refused - and `Prefer the branch` is not available advice when the change is already on its own branch. The guard therefore fires from a branch's second commit onward, not only on long-lived branches.",
+      "raised_by": "reviewer_agent",
+      "anchors": [
+        "H18",
+        "H19",
+        "H3"
+      ]
+    },
+    {
+      "id": "Q2",
+      "question": "What bounds existing_interview in the refusal payload?",
+      "context": "existingDocumentClash returns meta.interview as unknown with no shape or size check, and submit JSON.stringifies it whole - no byte budget, unlike get_answers and read_diff. The file is repository content a pull request can edit, so a planted document can blow the client's result cap. This repo has already lost a run_id to a spilled response.",
+      "raised_by": "reviewer_agent",
+      "anchors": [
+        "H18",
+        "H19"
+      ]
+    },
+    {
+      "id": "Q3",
+      "question": "Should the clash test include base_sha?",
+      "context": "The comment says `commit range` and the code tests one end of it. Same head with a different base is a different run and a different document, and it writes silently. It is the only direction in which the guard fails open.",
+      "raised_by": "reviewer_agent",
+      "anchors": [
+        "H19"
+      ]
+    },
+    {
+      "id": "Q4",
+      "question": "Should the heartbeat move after the unknown-run check in answer_questions?",
+      "context": "Four of the five sites validate the run first; answer_questions alone heartbeats first, with no comment marking it deliberate. The author read it as an oversight and could not attest intent.",
+      "raised_by": "reviewer_agent",
+      "anchors": [
+        "H7"
+      ]
+    },
+    {
+      "id": "Q5",
+      "question": "Should the clash check run before validate, or carry the validation report into the refusal?",
+      "context": "The guard sits after validation has already passed, and the early return drops report.findings, report.coverage and pr_description. The reviewer pays the most expensive call it makes twice. write: false is the only way to validate without tripping the guard.",
+      "raised_by": "reviewer_agent",
+      "anchors": [
+        "H18"
+      ]
+    },
+    {
+      "id": "Q6",
+      "question": "Was heartbeat-as-signal weighed against any alternative?",
+      "context": "No author-declares-done call, no run-level dispatched flag, no persisted heartbeat. The session went straight from root cause to two signals.",
+      "raised_by": "reviewer_agent",
+      "anchors": [
+        "H4"
+      ]
+    },
+    {
+      "id": "Q7",
+      "question": "Has the generated-files check been run against this branch's current HEAD?",
+      "context": "The local CI sweep ran on 40af9f2, before 62aeec7 existed. Since then only the MCP server workspace was built, which does not touch build:css. This repo's commonest CI failure is a missing Tailwind class - one past failure was 23 characters of styles.css.",
+      "raised_by": "author_agent",
+      "anchors": [
+        "H1"
+      ]
+    }
+  ],
+  "approach": {
+    "requirements": [
+      {
+        "text": "Fix only the two listed defects; items 3 to 7 on the same list stay carried over.",
+        "source": "user: \"Lets rebase main and fix these issues\""
+      },
+      {
+        "text": "Commits go on their own branch, not on main.",
+        "source": "user: \"First, I think we should have a separate branch where these commits should lie. They should not lie on main\""
+      },
+      {
+        "text": "Resubmitting the same change must stay free.",
+        "source": "the run-outlives-its-submit contract in the generation guide"
+      },
+      {
+        "text": "Build the server and exercise it, not just the tests.",
+        "source": "user: \"Can we actually build the new mcp server and try it out\""
+      }
+    ],
+    "trials": [
+      {
+        "what": "Heartbeat state and clash check written inline in index.ts, beside the old notePoll.",
+        "outcome": "Compiled; existing tests passed.",
+        "why_abandoned": "index.ts calls main() at load, so neither is testable from there."
+      },
+      {
+        "what": "Poll count alone ending the wait: polls >= 8 OR stalled_ms >= 60s.",
+        "outcome": "Shipped behaviour before this change; it ended the wait on a demonstrably healthy author.",
+        "why_abandoned": "A reviewer on a three-hunk diff burns eight polls while the author is still on its first spine page, so the faster the diff read the worse it misfires."
+      },
+      {
+        "what": "One patience value for every case, which is what 60s was.",
+        "outcome": "Too short for an author mid-read, no shorter than needed for one never dispatched.",
+        "why_abandoned": "The two cases are not alike: with nothing in flight there is nothing to be patient for."
+      },
+      {
+        "what": "Refusing to submit whenever .intent/<branch>.json already exists.",
+        "outcome": "Would have blocked the documented edit-and-resubmit correction.",
+        "why_abandoned": "The test has to be the commit range, not the file's existence, because resubmitting the same change must stay free."
+      },
+      {
+        "what": "First handoff.test.ts, asserting the stall fires sooner than it does.",
+        "outcome": "Failed.",
+        "why_abandoned": "The test was wrong and the code right: `since` starts on the first poll, so the reviewer has to actually wait. Test rewritten, code untouched."
+      },
+      {
+        "what": "Making summarizeRun count unanswered seeded questions toward `unanswered`.",
+        "outcome": "Found by live probe after the commit; left unchanged.",
+        "why_abandoned": "Judged acceptable because the fix \"only matters after round one is recorded, which is exactly when it needs to\"."
+      }
+    ],
+    "adopted": {
+      "summary": "Any author call on the run is a heartbeat, and the reviewer's wait ends on author silence rather than on its own poll count. Submit compares the existing document's head_sha against the run's and refuses rather than overwrite, with overwrite: true as the deliberate escape.",
+      "rationale": "- Answers were the old signal's only evidence, and an answer is nearly the last thing the author produces.\n- Poll count demoted from decider to gate (AND, not OR): a fast diff read spends eight polls before the author's first spine page.\n- Patience split by whether the author was ever seen: nothing in flight is worth failing fast on, a session being read is worth waiting out.\n- Both pieces moved out of index.ts, which calls main() at load and cannot be imported by a test.\n- Clock injected, because a stall measured in minutes is otherwise testable only by waiting minutes.\n- Heartbeat kept in memory: a property of one reviewer's conversation with one process, and persisting it would cost a disk write per poll against 2122, 1998 and 1668 observed.\n- Clash keyed on the commit range rather than the file's existence, so the correction cycle a run exists to support stays free.\n- Refusal hands back the interview it would destroy, because what made the real loss bad was that nobody could see what went.\n- Unparseable or head-less document treated as no clash: failing a submit over a file nobody can read is worse than the overwrite.\n- Role prose changed alongside the code, because the reviewer is an LLM and the instruction to give up the old way was itself half the defect."
+    }
+  },
+  "tour": [
+    {
+      "id": "T1",
+      "title": "The wait ends on author silence, not the reviewer's patience",
+      "role": "core",
+      "what": "- Adds `Handoff`, holding a per-run author heartbeat (`noteAuthorActivity`) beside the reviewer's poll watch (`notePoll`).\n- `notePoll` now returns the `stalled` verdict itself, plus `author_seen` and `author_quiet_ms`, instead of leaving the caller to derive it.\n- Poll count stops ending a wait: `polls >= 8 || stalled_ms >= 60s` becomes `polls >= 8 && quiet >= patience`.\n- Splits patience in two: 60s when the author has never called the run, 420s once it has.\n- Measures silence from the author's last call rather than the reviewer's first poll, once the author has been seen.\n- Keeps the new-answer reset, and never reports stalled while nothing is unanswered.\n- Deletes the inline `answerPolls` map, `STALL_POLLS`, `STALL_MS` and `notePoll` from index.ts, leaving one `Handoff` instance.",
+      "why": "- The old signal fired on a healthy author: a reviewer polled 33 times over 148s, was told to stop, reported that the author never ran, and submitted a one-sided document with 11 unanswered questions, while the author ran 9m52s and returned all 17 answers attested.\n- Transcript ranking, five spine pages and 21 recorded contexts all come before the first answer, and answers were the only thing the old signal watched.\n- The error gets likelier as the reviewer gets faster, so the latency work on the diff read aggravated it.\n- Clock is a constructor argument so a minutes-long stall needs no minutes to test.",
+      "anchors": [
+        {
+          "id": "H4",
+          "path": "packages/mcp-server/src/handoff.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 121
+          }
+        },
+        {
+          "id": "H5",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 20,
+            "old_lines": 6,
+            "new_start": 20,
+            "new_lines": 7
+          }
+        },
+        {
+          "id": "H15",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 1272,
+            "old_lines": 37,
+            "new_start": 1291,
+            "new_lines": 8
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Whether 420s exceeds the author's longest gap between heartbeating calls - the answer batch emits no heartbeat until it lands, and that silence grows with the number of questions the reviewer asked."
+    },
+    {
+      "id": "T2",
+      "title": "Five author-only tools now emit the heartbeat",
+      "role": "core",
+      "what": "- Calls `handoff.noteAuthorActivity(run_id)` at the top of `answer_questions`, `find_sessions_touching`, `get_contexts`, `record_contexts` and `get_questions`.\n- Those five calls are the only thing that ever makes `author_seen` true.",
+      "why": "- Reads as copy-paste noise and is the whole of the first fix: without these five lines the 420s patience never applies and nothing changes.\n- The heartbeat has to come from work done before the first answer, which is exactly the phase the old signal could not see.\n- The five are author-exclusive by construction - ROLE_TOOLS gives the reviewer none of them - so reviewer traffic cannot vouch for an author that was never dispatched.\n- `get_spine`, `read_transcript`, `read_context` and `list_transcripts` take a path rather than a run_id, so they cannot heartbeat at all.",
+      "anchors": [
+        {
+          "id": "H7",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 880,
+            "old_lines": 6,
+            "new_start": 882,
+            "new_lines": 7
+          }
+        },
+        {
+          "id": "H8",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 941,
+            "old_lines": 6,
+            "new_start": 944,
+            "new_lines": 7
+          }
+        },
+        {
+          "id": "H9",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 1010,
+            "old_lines": 6,
+            "new_start": 1014,
+            "new_lines": 7
+          }
+        },
+        {
+          "id": "H10",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 1080,
+            "old_lines": 6,
+            "new_start": 1085,
+            "new_lines": 7
+          }
+        },
+        {
+          "id": "H11",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 1165,
+            "old_lines": 6,
+            "new_start": 1171,
+            "new_lines": 7
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Paging a long spine is the author's single longest stretch and no heartbeat covers it - the same blind spot as the defect, one level in."
+    },
+    {
+      "id": "T3",
+      "title": "What a waiting reviewer is now told",
+      "role": "core",
+      "what": "- Routes `get_answers` through `handoff.notePoll`, passing `summary.unanswered`, and takes `stalled` from the verdict.\n- STOP POLLING now distinguishes an author quiet for N seconds from one that never called the run at all.\n- The still-waiting line asserts \"The author IS working on this run - last call Ns ago ... Wait\", or else says the author has not called yet.",
+      "why": "- The reviewer acts on this string, so the code fix is worth only what the prose says.\n- \"If the author is mid-batch this is normal\" read identically whether the author was alive or gone.",
+      "anchors": [
+        {
+          "id": "H12",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 1233,
+            "old_lines": 8,
+            "new_start": 1240,
+            "new_lines": 11
+          }
+        },
+        {
+          "id": "H13",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 1243,
+            "old_lines": 7,
+            "new_start": 1253,
+            "new_lines": 11
+          }
+        },
+        {
+          "id": "H14",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 1254,
+            "old_lines": 7,
+            "new_start": 1268,
+            "new_lines": 12
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "summarizeRun drops unanswered seeded questions, so before the reviewer records a round get_answers reports unanswered 0 and returns \"That is every round, and all of them are answered\" - neither new string is reachable in the window the change was built for. Known and shipped."
+    },
+    {
+      "id": "T4",
+      "title": "Submit refuses to overwrite a document describing different code",
+      "role": "core",
+      "what": "- Adds `existingDocumentClash`, comparing the on-disk document's `meta.commit_range.head_sha` against the run's head.\n- `submit_document` returns `refused: \"would_overwrite_a_different_document\"` instead of writing, naming both heads, the path, and the interview the write would have destroyed.\n- Adds an `overwrite` parameter, default false, as the deliberate escape.\n- Absent, unparseable and head-less documents all count as no clash.",
+      "why": "- Distilling on `main` overwrote `.intent/main.json`; the destroyed file was complete at 16 of 16 attested with nothing unanswered, replaced by a one-sided document, with no warning and only git to recover it.\n- Keyed on the commit range rather than the file's existence, so the edit-and-resubmit correction stays free - the reason a run outlives its own submit.\n- The interview is handed back because what made the real loss bad was that nobody could see what went.\n- An unreadable file is not evidence of work worth protecting, so failing a submit over it would be worse than the overwrite.",
+      "anchors": [
+        {
+          "id": "H6",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 60,
+            "old_lines": 6,
+            "new_start": 61,
+            "new_lines": 7
+          }
+        },
+        {
+          "id": "H17",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 1467,
+            "old_lines": 8,
+            "new_start": 1458,
+            "new_lines": 12
+          }
+        },
+        {
+          "id": "H18",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 1653,
+            "old_lines": 6,
+            "new_start": 1648,
+            "new_lines": 46
+          }
+        },
+        {
+          "id": "H19",
+          "path": "packages/mcp-server/src/runs.ts",
+          "hunk": {
+            "old_start": 648,
+            "old_lines": 6,
+            "new_start": 648,
+            "new_lines": 30
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Whether an ordinary feature-branch correction trips the guard: once the document is committed and the branch moves, the on-disk head is stale and \"prefer the branch\" is no longer available advice."
+    },
+    {
+      "id": "T5",
+      "title": "The reviewer's instructions, which were half the defect",
+      "role": "core",
+      "what": "- Deletes the instruction that produced the incident: \"If they never arrive, the author has not run - say so rather than proceeding on inference.\"\n- Replaces it with: read get_answers' own account of the author, treat any author call as proof it is working, give up only on an explicit STOP POLLING.\n- Adds that finishing first says nothing, because a small diff is read in seconds.\n- Says what to do when STOP POLLING really arrives: ask for re-dispatch on the same run_id, or submit and say the document is one-sided.\n- Adds a section reading would_overwrite_a_different_document as a branch problem rather than a validation failure.",
+      "why": "- Reads as documentation and is the behaviour change: the reviewer is an LLM and this file is its program.\n- Ship the code without it and the reviewer still concludes absence from its own patience.\n- The failed run did two things and only the first was a server defect: it stopped waiting, and it submitted a one-sided document without flagging it.",
+      "anchors": [
+        {
+          "id": "H2",
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 89,
+            "old_lines": 8,
+            "new_start": 89,
+            "new_lines": 21
+          }
+        },
+        {
+          "id": "H3",
+          "path": "packages/mcp-server/agents/_roles/reviewer.md",
+          "hunk": {
+            "old_start": 249,
+            "old_lines": 6,
+            "new_start": 262,
+            "new_lines": 13
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "Nothing in the test suite can exercise prose; the only evidence is a distillation performed after the edit, and the edit is inert until a rebuild, a reinstall and a fresh client session."
+    },
+    {
+      "id": "T6",
+      "title": "Tests for both, with the clock held still",
+      "role": "supporting",
+      "what": "- Adds handoff.test.ts: the 148s/33-poll failure stays patient, a nine-minute read with a heartbeat per page stays patient, poll count alone never stalls however many, a crashed author is eventually declared gone, silence is measured from the last call, a new answer resets, nothing outstanding never stalls, and two runs do not vouch for each other.\n- Appends existingDocumentClash cases to runs.test.ts: absent file, same head stays free, different head clashes, the interview is handed back, unparseable file, document with no recorded head.\n- 316 tests, up 15 from 301.",
+      "why": "- Each test was written to fail without its fix.\n- The nine-minute case assumes a heartbeat per spine page, which is the thing get_spine cannot provide, so it bounds the question rather than settling it.\n- A throwaway test/_real.test.ts, removed before commit, ran the guard against the real destroyed .intent/main.json and confirmed it would have refused that exact overwrite.",
+      "anchors": [
+        {
+          "id": "H20",
+          "path": "packages/mcp-server/test/handoff.test.ts",
+          "hunk": {
+            "old_start": 0,
+            "old_lines": 0,
+            "new_start": 1,
+            "new_lines": 128
+          }
+        },
+        {
+          "id": "H21",
+          "path": "packages/mcp-server/test/runs.test.ts",
+          "hunk": {
+            "old_start": 976,
+            "old_lines": 3,
+            "new_start": 976,
+            "new_lines": 60
+          }
+        }
+      ],
+      "provenance": "from_transcript",
+      "attention": "The same-head resubmit that must stay free is unit-tested only; no real resubmit, and no real refusal, was ever performed."
+    },
+    {
+      "id": "T7",
+      "title": "A blog article from a different commit, and a stray blank line",
+      "role": "incidental",
+      "what": "- Prepends an article to the viewer's ARTICLES array: \"How to add repository-specific review questions for AI-written PRs\", dated 7 Oct 2026.\n- Adds one blank line in index.ts above the expandAnchors follow-on comment.",
+      "why": "- Commit 62aeec7, which landed on the branch from outside the authoring session; the branch HEAD was not the author's commit.\n- find_sessions_touching ranked seven candidate sessions against it and every one came back authored 0/22, \"only read the file\".\n- Substantive content in its own right rather than churn, but it belongs to no plan item and nothing about it was built, run, checked or discussed.\n- Its two claims about shipped behaviour do hold at this commit: READABLE is exactly [\".md\", \".markdown\", \".txt\"], and the diff excludes only .intent/, so .reviewer/ changes carry coverage.",
+      "anchors": [
+        {
+          "id": "H1",
+          "path": "apps/github-app/viewer/index.html",
+          "hunk": {
+            "old_start": 1264,
+            "old_lines": 6,
+            "new_start": 1264,
+            "new_lines": 35
+          }
+        },
+        {
+          "id": "H16",
+          "path": "packages/mcp-server/src/index.ts",
+          "hunk": {
+            "old_start": 1427,
+            "old_lines": 6,
+            "new_start": 1417,
+            "new_lines": 7
+          }
+        }
+      ],
+      "provenance": "inferred_from_code"
+    }
+  ],
+  "verification": {
+    "performed": [
+      {
+        "kind": "test",
+        "description": "npx vitest run",
+        "result": "316 passing, up 15 from 301."
+      },
+      {
+        "kind": "typecheck",
+        "description": "npx tsc --noEmit -p packages/mcp-server; npm run typecheck -w review-assist-mcp",
+        "result": "0 errors."
+      },
+      {
+        "kind": "build",
+        "description": "npm run build -w review-assist-mcp, then grep the built bundle",
+        "result": "Succeeded; STALL_MS_AFTER_ACTIVITY 2, would_overwrite_a_different_document 2, noteAuthorActivity 6."
+      },
+      {
+        "kind": "manual",
+        "description": "Throwaway test/_real.test.ts ran existingDocumentClash against the real .intent/main.json that had been destroyed, at head 634e48e",
+        "result": "Would have refused that exact overwrite, naming the interview it protected: author_attested 16, unanswered 0.",
+        "evidence": "File removed before commit; not in the diff."
+      },
+      {
+        "kind": "manual",
+        "description": "CI's own steps run locally on 40af9f2: full rebuild then git diff --exit-code, example document validation, release-consistency check",
+        "result": "Clean and green."
+      },
+      {
+        "kind": "manual",
+        "description": "Live probe: opened a run and called get_answers against the running servers",
+        "result": "Old response shape; every running process predated the fix commit (latest started Oct 6 16:59, fix committed Oct 6 19:26)."
+      }
+    ],
+    "added_tests": [
+      {
+        "covers": "Never-seen versus seen patience, poll count never stalling alone, a nine-minute heartbeat read, eventual give-up on a crashed author, silence measured from the last call, new-answer reset, nothing outstanding, per-run isolation.",
+        "anchors": [
+          {
+            "id": "H20",
+            "path": "packages/mcp-server/test/handoff.test.ts",
+            "hunk": {
+              "old_start": 0,
+              "old_lines": 0,
+              "new_start": 1,
+              "new_lines": 128
+            }
+          }
+        ]
+      },
+      {
+        "covers": "existingDocumentClash: absent file, same head stays free, different head clashes, interview handed back, unparseable file, document with no recorded head.",
+        "anchors": [
+          {
+            "id": "H21",
+            "path": "packages/mcp-server/test/runs.test.ts",
+            "hunk": {
+              "old_start": 976,
+              "old_lines": 3,
+              "new_start": 976,
+              "new_lines": 60
+            }
+          }
+        ]
+      }
+    ],
+    "not_verified": [
+      "No CI run fired on this branch: the workflow triggers on push to main and on pull_request, and no PR was opened.",
+      {
+        "text": "Neither fix was exercised end to end at commit time - every running server process predated the fix commit by hours or days.",
+        "anchors": [
+          "H4",
+          "H18"
+        ]
+      },
+      {
+        "text": "No get_answers response carrying author_seen true was ever observed in the session; the only post-commit call returned the old shape.",
+        "anchors": [
+          "H12",
+          "H14"
+        ]
+      },
+      {
+        "text": "The overwrite guard's live path is not exercisable by this distillation: it writes .intent/fix-distillation-handoff-and-overwrite.json, which did not exist, so the guard stays quiet.",
+        "anchors": [
+          "H18"
+        ]
+      },
+      {
+        "text": "overwrite: true was never run, in test or live, and nothing checks whether a blocked reviewer prefers the branch over the flag - the tool description is the shortest path to the flag.",
+        "anchors": [
+          "H17",
+          "H3"
+        ]
+      },
+      {
+        "text": "The same-head resubmit that must stay free is covered by unit test only; no real resubmit was performed.",
+        "anchors": [
+          "H19",
+          "H21"
+        ]
+      },
+      {
+        "text": "Role prose changes cannot be covered by the test suite and were not; the edit is also inert until a rebuild, a reinstall of the generated subagent definition, and a fresh client session.",
+        "anchors": [
+          "H2",
+          "H3"
+        ]
+      },
+      {
+        "text": "The stall path is unreachable before round one, and that was left unfixed and unexercised.",
+        "anchors": [
+          "H12"
+        ]
+      },
+      {
+        "text": "The largest gap between two heartbeating author calls was never measured; 420s is sized against a 9m52s end-to-end figure, which is the wrong quantity.",
+        "anchors": [
+          "H4"
+        ]
+      },
+      {
+        "text": "No bound, shape check or byte budget on existing_interview, which is read from repository content and stringified whole into the refusal.",
+        "anchors": [
+          "H18",
+          "H19"
+        ]
+      },
+      {
+        "text": "The viewer was never opened in a browser, the hero image path was never confirmed to exist, and no generated-files check has run against this branch's current HEAD - the local sweep predates 62aeec7, and the only build since was the MCP workspace alone.",
+        "anchors": [
+          "H1"
+        ]
+      },
+      "Latency re-measurement still not done; the 1143s baseline stands and latency changes 2 and 3 remain shipped on predictions."
+    ]
+  },
+  "diagrams": [
+    {
+      "title": "Why the old signal misread a working author",
+      "mermaid": "sequenceDiagram\n    participant R as Reviewer\n    participant S as Server\n    participant A as Author\n    A->>S: find_sessions_touching (heartbeat)\n    R->>S: get_answers (poll 1)\n    S-->>R: no answers yet\n    A->>S: get_contexts (heartbeat)\n    Note over A: pages 5 spine pages, records 21 contexts\n    R->>S: get_answers (polls 2 to 33, over 148s)\n    S-->>R: OLD - STOP POLLING, author has gone\n    S-->>R: NEW - author last called 40s ago, wait\n    A->>S: answer_questions (17 answers, at 9m52s)\n    S-->>R: answers, author_attested 17",
+      "caption": "Any author call is now a heartbeat, so minutes of visible work no longer look like absence."
+    },
+    {
+      "title": "The overwrite guard, and the case it does not distinguish",
+      "mermaid": "flowchart TD\n    A[submit_document] --> B[validate: passes]\n    B --> C{document at .intent/branch.json?}\n    C -->|no| W[write]\n    C -->|unparseable or no head| W\n    C -->|same head_sha| W\n    C -->|different head_sha| D{overwrite true?}\n    D -->|yes| W\n    D -->|no| R[refused: would_overwrite_a_different_document]\n    R --> N[validation report and pr_description discarded]",
+      "caption": "A committed document plus a moved head looks the same as a different change, so the ordinary correction cycle lands on the refusal."
+    }
+  ],
+  "evaluated": [
+    {
+      "question": "Which tool is the one at index.ts around line 944 that requires `hunks` or `paths`, and is every one of the five heartbeat sites author-only? If any of them is a tool the REVIEWER also calls, the reviewer's own polling makes author_seen true, it is told \"The author IS working\" forever, and it never gets the 60s short-patience warning it needs when the author was never dispatched.",
+      "answer": "All five are author-exclusive. Confirmed in code.\n- The tool at index.ts:944 is `find_sessions_touching` (registered at index.ts:913); the `hunks`-or-`paths` guard is its own.\n- The five heartbeat sites and their tools: `answer_questions` (885), `find_sessions_touching` (947), `get_contexts` (1017), `record_contexts` (1088), `get_questions` (1174).\n- roles.ts:356-374 grants the author: get_generation_guide, list_transcripts, get_spine, read_transcript, compute_diff, read_diff, get_questions, answer_questions, find_sessions_touching, get_contexts, record_contexts, read_context.\n- roles.ts:380-392 grants the reviewer: get_generation_guide, compute_diff, read_diff, record_hunk_notes, get_hunk_notes, map_plan_to_hunks, get_reviewer_instructions, record_interview_round, get_answers, submit_document, set_consent.\n- Intersection with the five heartbeat tools: EMPTY. The reviewer cannot make author_seen true by polling, and the failure mode you describe does not arise.\n- On Claude Code the split is enforced by the generated `tools:` allowlist, so this is structural rather than advisory (roles.ts:173-183 generates the allowlist from ROLE_TOOLS).\n- THE OPPOSITE GAP IS REAL, THOUGH, and I raised it as assumption B: three tools the author uses heavily cannot heartbeat because they take a path rather than a run_id — `get_spine` (index.ts:672), `read_transcript` (717), `read_context`. Paging a long spine is the author's longest single stretch of work and it is invisible to the new signal. `list_transcripts` likewise. Inference from code; never raised in the session.",
+      "anchors": [
+        "H7",
+        "H8",
+        "H9",
+        "H10",
+        "H11"
+      ]
+    },
+    {
+      "question": "The refusal returns early with only the refusal payload. Does the reviewer lose the validation result and pr_description it had already earned from that submit, and does it have to re-run the whole submit after switching branch?",
+      "answer": "Yes, both are lost, and the whole submit has to be re-run. Confirmed by reading the code; not discussed in the session.\n- Order in `submit_document`: anchors expanded (index.ts:1601-1618), then `const report = validate(...)` at 1620, then the `!report.ok` early return at 1622. So by the time the guard runs, validation has already PASSED.\n- The guard sits at index.ts:1652 onwards, inside `if (write ?? true)`, after `outPath` is computed. Its early return carries only the refusal payload: `ok, refused, path, existing_head_sha, existing_interview, this_head_sha, why, how_to_proceed`.\n- Not in that payload: `report.findings`, `report.coverage`, and `pr_description`. The passing validation result is computed and thrown away.\n- Also discarded: everything downstream of the write. `previously_submitted_at` is captured at 1642 but nothing marks the run submitted, so the run's own state is untouched — which is at least consistent, since nothing was written.\n- Practical cost to the reviewer: it must switch branch (or pass `overwrite: true`) and resubmit the entire candidate document, paying validation again. On a large document that is the most expensive call it makes.\n- A cheaper shape was available and not taken: put the clash check before `validate`, or carry the report into the refusal payload. Neither is discussed anywhere in the session.\n- One mitigation worth naming: `write: false` would let a reviewer validate without tripping the guard, since the whole block is inside `if (write ?? true)`.",
+      "anchors": [
+        "H18"
+      ]
+    },
+    {
+      "question": "House rule, duplicated facts: the role prose lives in _roles/reviewer.md and is wrapped per environment on install. Does editing _roles/reviewer.md alone leave a generated or committed copy stale anywhere, and does an already-installed subagent definition need regenerating for these edits to take effect?",
+      "answer": "Nothing committed goes stale, but the edit is inert until a rebuild AND a reinstall AND a fresh client session. Three gates, all three exercised in the session.\n- SINGLE SOURCE CONFIRMED. roles.ts:6-10: \"the role prose lives once in `agents/_roles/`, and each environment supplies a thin template under `agents/<env>/`... the prose never forks, so the three copies cannot drift.\" roles.ts:26-28 imports `../agents/_roles/{author,reviewer,questions}.md` directly; roles.ts:54-57 assembles `BODY`; roles.ts:180 substitutes `{{BODY}}`. Editing `_roles/reviewer.md` is the only edit needed in the repo.\n- GATE 1, BUILD. roles.ts:12-14: \"Templates are authored as real files and inlined at build time (esbuild `--loader:.md=text --loader:.toml=text`), so the single-file bundle and the .mcpb are unchanged.\" So `dist/index.js` carries a COPY of the prose, and an unbuilt tree serves the old text. `dist/` is gitignored here (the session's generated-files CI check covers styles.css, not dist), so nothing committed is stale — but the running server is.\n- GATE 2, REINSTALL. The installed `~/.claude/agents/intent-reviewer.md` is a generated file, written by `get_role_definitions` with `install: true`. It does not update itself. The session reinstalled explicitly, twice (spine 2789, 2831).\n- GATE 3, CLIENT RESTART. An already-registered subagent in a live session holds the old definition. This repo has a standing rule that a rebuilt server is not a reloaded one, and the session hit it hard: spine 2814 lists every running server as predating the fix, and the work could not be tried until the user said \"I have reloaded the window\" (spine 2819).\n- There is a FOURTH copy nobody controls from this repo: the npm-published bundle. The same session proved the published 1.0.6 lacked a fix the tree had (spine 2556: \"the **published `review-assist-mcp@1.0.6` on npm does not contain the fix**\"), so these reviewer.md edits reach other machines only on a version bump and release. At the end of the session the published version is 1.0.7, which predates this change.\n- Also worth naming: `scripts/check-release-consistency.mjs` is what guards the generated/committed consistency here, and it ran green (spine 2764).",
+      "anchors": [
+        "H2",
+        "H3"
+      ]
+    },
+    {
+      "question": "Is the new blog article part of what you and the user agreed, or something done alongside the handoff and overwrite fixes? Core work, supporting, or incidental to this change?",
+      "answer": "Incidental, and not just incidental to the change — incidental to the SESSION. Nobody in it wrote the article.\n- Not part of what was agreed. The user's ask was \"Lets rebase main and fix these issues\" (spine 2606), pointing at two named bugs. The article is in neither.\n- No user turn anywhere in the session mentions the article, the viewer, blog content, or `.reviewer/` documentation.\n- It arrived from outside, mid-work, and was noticed rather than authored. Spine 2783: \"Branch HEAD is `62aeec7`, not my commit — something landed on top.\" Spine 2814: \"**The branch also has a commit I didn't make.** `62aeec7 Explain repository-specific review questions for AI PRs` landed on top of my `40af9f2`. Worth knowing since the distillation will cover both — 21 hunks across 7 files.\"\n- I checked for another session rather than assuming. `find_sessions_touching` on H1: seven candidate sessions had touched `apps/github-app/viewer/index.html`, every one `authored: 0/22`, all verdicts \"only read the file — holds no reason, skip it\". The tool's conclusion: \"No session on this machine wrote these lines.\"\n- So: role=incidental, and the honest provenance is that the transcript does not cover it and no session on this machine does either. It should not be grouped with the two fixes, and no intent for it should be inferred from the diff.\n- It is substantive content in its own right, though — a whole new article, not churn. Calling it \"churn\" would be as wrong as calling it core.",
+      "anchors": [
+        "H1"
+      ]
+    },
+    {
+      "question": "The article asserts two things about shipped behaviour: that Review Assist \"includes `.reviewer/` changes in diff coverage\", and that the tool \"serves readable `.md`, `.markdown`, and `.txt` files\" while listing other types without reading them. Are both true of the code at this commit, and what did you check them against?",
+      "answer": "Both claims are TRUE at this commit. I checked them against the code, not the transcript — the session never discusses the article at all. Inference from code.\n- CLAIM 1, file types: true and exact. `packages/mcp-server/src/reviewer-instructions.ts:28`: `const READABLE = [\".md\", \".markdown\", \".txt\"];` — the same three, in the same order.\n- The \"lists other file types but does not read them as rules\" half is also true. reviewer-instructions.ts:92 states the intent in a comment: \"The served set stays deliberately narrow: a `.reviewer/Makefile` is...\", and :212 is the message for a folder holding nothing readable: \"`.reviewer/` exists here but holds nothing this tool reads (it serves ...)\".\n- The article's \"An empty or absent folder is normal\" is true too: reviewer-instructions.ts:218 returns \"No .reviewer/ folder in this repository. Proceed with the baseline question set; this is the normal case.\"\n- CLAIM 2, `.reviewer/` changes are in diff coverage: true, and true by omission rather than by a rule naming `.reviewer/`. `git.ts:53` excludes exactly one path from the diff: `\":(exclude).intent/\"`, with git.ts:34 explaining why only that one. Nothing excludes `.reviewer/`, so a change under it is an ordinary substantive hunk and gets `coverage_required: true`.\n- The article's framing of `.reviewer/` as untrusted reference material also matches the shipped prose: compute_diff's own `next` text (index.ts:265) calls it \"what this repository always wants asked, in addition to your baseline set\", and roles.ts:433 calls it \"Reference material, not a second protocol.\"\n- WHAT I COULD NOT CHECK: that the reviewer actually reads the folder after the diff and before round one, as the article claims. That is agent behaviour, and nothing in this session exercised it — though the earlier dogfood run's reviewer did report using two `.reviewer/verification.md` rules in batch one (spine 2146), which is weak supporting evidence from a different commit.\n- Caveat on all of this: I am grading an article written by nobody in this session against code at this commit. If the article was written against a different revision I would have no way to know.",
+      "anchors": [
+        "H1"
+      ]
+    },
+    {
+      "question": "House rule, a rebuilt server is not a reloaded one: was `npm run build` run only, or was a fresh client session started so the heartbeat and the refusal were exercised live? Give the commands, and say specifically which of the two fixes was never exercised end to end outside the unit tests.",
+      "answer": "Build only at commit time. A fresh client session came later, and at the end of the session NEITHER fix had been exercised end to end outside the unit tests.\n- COMMANDS RUN AT COMMIT TIME (spine 2744-2764): `npx vitest run` (316 tests, up 15 from 301); `npm run typecheck -w review-assist-mcp` (0 errors); `npm run build -w review-assist-mcp`; the generated-files check (full rebuild then `git diff --exit-code`, clean); example document validation; release-consistency check. All green.\n- NO CI. Spine 2761, verbatim: \"**No CI run fired.** The workflow triggers on `push: branches: [main]` and `pull_request`, and there's no PR open.\" CI's steps were run locally instead. No PR was opened in the session.\n- REBUILT, NOT RELOADED — and the session proved it rather than assuming. On the user's \"Can we actually build the new mcp server and try it out\" (spine 2767), it rebuilt and then grepped the BUILT BUNDLE to confirm the fixes shipped (spine 2814): \"STALL_MS_AFTER_ACTIVITY 2 / would_overwrite_a_different_document 2 / noteAuthorActivity 6\".\n- Then it proved nothing was running that code, by probe not inference: \"I opened a run (`0842dcd9d646`) and called `get_answers`, and the response came back with the old shape.\" And by process age: \"latest: Oct 6 **16:59**\" against \"fix committed Oct 6 **19:26**\".\n- THE RELOAD HAPPENED, after the user said so (spine 2819: \"I have reloaded the window\"). A fresh server was then confirmed by `ps`: pid 93406, started 12:47 that day. Spine 2830: \"A fresh server is running (pid 93406, started today 12:47), so the fixes are live.\"\n- WHICH FIX WAS NEVER EXERCISED END TO END: BOTH, as of the end of the transcript.\n- Fix 1 (handoff): no `get_answers` response carrying `author_seen: true` was ever seen. The run that would produce one is this one, launched at spine 2845, outcome not in the transcript.\n- Fix 2 (overwrite): deliberately not exercisable here. Spine 2814: \"since that file doesn't exist yet, the guard stays quiet, which is the correct behaviour for a first submit.\" `overwrite: true` never run at all.\n- So the \"try it out\" the user asked for was satisfied by a build plus a probe. The actual try-out is the distillation you and I are in.",
+      "anchors": [
+        "H4",
+        "H18",
+        "H20",
+        "H21"
+      ]
+    }
+  ],
+  "unresolved": [
+    {
+      "question": "Handoff state is in-memory in ONE server process, but noteAuthorActivity is written by the author's calls and notePoll is read by the reviewer's. Do the author subagent and the reviewer subagent share a single stdio MCP server process? If each subagent gets its own, the heartbeat is written to a different map than the one read, author_seen is permanently false, and the whole fix is inert. What was observed that shows the heartbeat actually crosses between the two roles?",
+      "disposition": "unanswered",
+      "note": "NOT OBSERVED. The transcript does not cover it, and I could not settle it from the code either.\n- The session never saw the heartbeat cross, and could not have: the commit was made at Oct 6 19:26 and every server process then running had started before it (latest 16:59). Spine 2814 tabulates exactly that.\n- The only live check performed was the opposite one: a probe confirming the running server did NOT have the new code (\"I opened a run (`0842dcd9d646`) and called `get_answers`, and the response came back with the old shape\").\n- The first run that could exercise it is THIS one, launched at spine 2845, and its outcome is by definition not in the transcript.\n- What the code says: `const handoff = new Handoff()` at index.ts:1295 is module scope, and handoff.ts:33-34 is explicit that this is deliberate: \"In memory on purpose: this is a property of one waiting reviewer's conversation with this server process, not of the run, and persisting it would mean a disk write per poll.\" So your reading is right — cross-process means inert.\n- What makes it worth worrying about: this same session found EIGHT concurrent review-assist server processes on the machine (spine 2589-2599), with uptimes from 3h40m to 4d22h. A machine that runs many is a machine where \"which process\" is a real question.\n- Everything else on the run IS on disk (runs.ts:41 puts run state outside the repo), so run_id agreement between the two roles proves nothing about process identity.\n- I flagged this as assumption A in my standing answer and ranked it first. It is a developer/client question, not a code question: I had no AskUserQuestion tool in this run so I could not put it to the developer.\n- The check that settles it: with both roles running, count review-assist server processes and confirm the reviewer's `get_answers` reports `author_seen: true` while the author is mid-read.",
+      "anchors": [
+        "H4",
+        "H7",
+        "H11"
+      ]
+    },
+    {
+      "question": "On THIS run, right now, get_answers reports unanswered: 0 and standing_unanswered: 6, and its `next` line says \"That is every round, and all of them are answered.\" So summary.unanswered appears to exclude the seeded standing questions. If that is right, notePoll is handed unanswered=0 during batch one, stalled can never be true, and neither new message (the STOP POLLING one or the \"The author IS working\" one) can ever print in exactly the situation this change was built for. Does summarizeRun count standing questions, and was the new messaging ever observed to fire?",
+      "disposition": "unanswered",
+      "note": "YOUR READING IS CORRECT, AND IT IS WORSE THAN YOU PUT IT. Confirmed in code; the session saw half of it.\n- runs.ts:550, verbatim: `const rounds = all.filter((r) => !r.seeded || r.answer.length > 0);` — an unanswered SEEDED question is dropped from `rounds` entirely.\n- runs.ts:557 then computes `unanswered` over `rounds`, so unanswered standing questions never count. With only standing questions outstanding, `summary.unanswered` is 0.\n- notePoll is handed that 0, and handoff.ts:117 gates on `unanswered > 0`, so `stalled` can never be true. Agreed.\n- THE PART THE SESSION DID NOT NOTICE: index.ts:1252 branches on `summary.unanswered === 0` BEFORE either new message, and returns \"That is every round, and all of them are answered.\" So in the window this change was built for, the reviewer is not merely denied the new messaging — it is actively told everything is answered while six standing questions are unanswered. Neither the STOP POLLING text (H13) nor the \"The author IS working\" text (H14) is reachable. This is inference from reading index.ts:1249-1277, not from the transcript.\n- What the session DID record, spine 2814 verbatim: \"it reported `unanswered: 0` with `standing_unanswered: 6`. `summarizeRun` excludes unanswered *seeded* questions from the `unanswered` count, so **the stall logic can't engage until the reviewer has recorded its own questions.** That's consistent with the original failure — the reviewer had 11 recorded by then — but it means the fix only matters after round one is recorded, which is exactly when it needs to.\"\n- So it was found, reasoned about, and knowingly shipped unchanged. I listed it as assumption E and as an abandoned trial.\n- The new messaging was NEVER observed to fire. Nothing in the transcript shows either string printed.",
+      "anchors": [
+        "H12",
+        "H13",
+        "H14"
+      ]
+    },
+    {
+      "question": "In answer_questions the heartbeat is recorded BEFORE the unknown-run check, so a call carrying a wrong or invented run_id still registers a heartbeat for that run_id. Deliberate (any call is evidence something is alive) or an oversight?",
+      "disposition": "unanswered",
+      "note": "The transcript does not cover it. Reading the code, it looks like an oversight rather than a decision, because it is inconsistent with the other four sites.\n- `answer_questions` is the ONLY one of the five that heartbeats before validating the run. index.ts:884-885: `async ({ run_id, answers }) => { handoff.noteAuthorActivity(run_id);` with the `getRun` check after it.\n- The other four all check the run first and heartbeat second: `find_sessions_touching` 942-947, `get_contexts` 1015-1017, `record_contexts` 1086-1088, `get_questions` 1172-1174. Each is `const run = getRun(run_id); if (!run) return ...;` then `handoff.noteAuthorActivity(run_id);`.\n- Four-against-one, with no comment marking the fifth as deliberate, is what makes me read it as an oversight. The session never discusses ordering at any of the five sites.\n- Practical blast radius is small but not nil: an invented run_id writes a heartbeat into a map keyed by a run that does not exist, so it cannot make `author_seen` true for any real run. The harm would need a typo that collides with a real run_id.\n- I cannot attest intent here. It was not discussed, and I had no AskUserQuestion tool in this run to put it to the developer.",
+      "anchors": [
+        "H7"
+      ]
+    },
+    {
+      "question": "STALL_MS_AFTER_ACTIVITY is 420s. The provoking run was 9m52s end to end, but what matters is the longest gap between two consecutive AUTHOR calls. What was the largest inter-call gap you actually observed, and can a single spine page or a cold context index on the biggest session exceed 7 minutes of silence?",
+      "disposition": "unanswered",
+      "note": "NEVER MEASURED. The constant is sized against the wrong quantity, and the session says so without noticing.\n- The only number in the transcript is end-to-end: \"Author | 9m 52s\" (spine 2262), and handoff.ts:52-53 reuses exactly that: \"The run that provoked this took 9m52s end to end, so a minute of silence means nothing at all.\"\n- No inter-call gap was ever recorded, instrumented or estimated. The session had the data to do it — the previous author run is on disk — and did not.\n- The 420s figure appears in the transcript with no derivation at all. Spine 2764 simply states the table: \"never called the run | 60s\" and \"has called the run | 7 min\". No measurement is cited for the 7.\n- What the shape of the work suggests (inference, not measurement): the author's heartbeat-free stretch is between `get_contexts` and `record_contexts`, because `get_spine` cannot heartbeat. On the provoking run that stretch was five spine pages of a 2143-entry session plus composing 21 context labels. On a cold index of a much larger session, exceeding 420s of silence is plausible and nothing rules it out.\n- The session's own test cases bound the question rather than answering it (spine 2764): \"a nine-minute read with a heartbeat per page stays patient\" — i.e. the test ASSUMES a heartbeat per page, which is the thing `get_spine` cannot provide.\n- This is assumption C in my standing answer. It is a measurement nobody has taken, not a disagreement.",
+      "anchors": [
+        "H4"
+      ]
+    },
+    {
+      "question": "The guide documents a correction cycle: commit the document, let the branch move, call compute_diff again, resubmit under the same run_id with nothing re-asked. After that head drift the committed .intent/<branch>.json holds the OLD head_sha and the run holds the NEW one, so existingDocumentClash reports a clash and submit is refused. Does the new guard block the documented post-commit resubmit on a feature branch, and is `overwrite: true` now expected on every one of those? \"Prefer the branch\" is not available advice in that case, since it is already its own branch.",
+      "disposition": "unanswered",
+      "note": "The transcript does not cover the moved-head case AT ALL, and reading the code I agree it breaks the documented correction cycle.\n- What the session considered was only the SAME-head resubmit. Spine 2764, verbatim: \"The test is the range, not the file's existence, so resubmitting the same change stays free — that's the whole reason a run survives its own submit.\" The H18 comment says the same thing.\n- Head DRIFT is never mentioned in the design, the commit, the comment or the reviewer.md prose. It was not weighed and rejected; it was not raised.\n- Reading the code, your trace holds: `existingDocumentClash` (runs.ts:658-673) compares the on-disk `meta.commit_range.head_sha` against `run.head_sha` and returns a clash on any difference. After the guide's own cycle — commit the document, fix a finding, let the branch move, `compute_diff` again — the committed document holds the old head and the run holds the new one, so the second submit is refused.\n- And the remedy text is useless there. The refusal says \"Put this change on its own branch so the document gets its own file\" and reviewer.md's H3 ends \"Prefer the branch\" — advice that cannot be followed when the change is already on its own branch. So the reviewer is pushed toward `overwrite: true` on every post-commit correction, which is precisely the flag the change exists to make rare.\n- Note this also means the guard fires from a branch's SECOND commit onward in the normal flow, not just on long-lived branches. The guide already notes that the intent document arrives as a whole-file addition from a branch's second commit on, which is the same situation seen from the diff side.\n- Marking unresolved: this is a design question about intended behaviour that only the developer can close, and I had no AskUserQuestion tool in this run.",
+      "anchors": [
+        "H18",
+        "H19",
+        "H3"
+      ]
+    },
+    {
+      "question": "House rule, response bounds: `existing_interview` is parsed out of an on-disk document and echoed verbatim into the refusal payload as `unknown`. That file is repository content a PR can edit. What bounds the size of that field, and what does the caller get when a document carries a huge or hostile meta.interview?",
+      "disposition": "unanswered",
+      "note": "Nothing bounds it. Confirmed in code; never discussed in the session.\n- runs.ts:661 types the return as `{ head_sha: string; interview: unknown }` and runs.ts:669 returns `prior.meta?.interview` as-is, with no shape check and no size check.\n- index.ts (H18) puts it straight into the refusal payload as `existing_interview` and `JSON.stringify`s the whole object. There is no truncation, no `maxResultBytes()` budget, and no schema validation on the way through — unlike `get_answers` and `read_diff`, which both page under a byte budget.\n- `meta.interview` in the schema is a small object of seven integers, so a well-formed document costs a few hundred bytes. But `existingDocumentClash` does not validate against the schema: anything JSON-parseable at `meta.interview` is echoed, including a megabyte string or a deeply nested object.\n- The file is repository content a pull request can edit, as you say, so the untrusted-input framing is right. The session never considered it — the only robustness thought recorded is the opposite direction, runs.ts:654-656: \"treats anything unparseable as no clash: a file this cannot read is not evidence of work worth protecting, and failing a submit over it would be worse than the overwrite it was meant to prevent.\"\n- Consequence if a hostile document is planted: a refusal response large enough to blow the client's result cap. The repo has felt this failure before — the guide records a 234,337-character response that spilled to a file and cost a reviewer its run_id, which is why `read_diff` pages at all.\n- Inference from code throughout. Not attested, not discussed.",
+      "anchors": [
+        "H18",
+        "H19"
+      ]
+    },
+    {
+      "question": "existingDocumentClash compares head_sha only. Two different commit ranges can share a head when the base differs (re-distilling the same branch against a different base), and that case now writes silently. Was base_sha deliberately left out of the test, and what is the reasoning?",
+      "disposition": "unanswered",
+      "note": "Not deliberate as far as the transcript shows — base_sha is simply never mentioned.\n- runs.ts:667-668 compares `prior.meta?.commit_range?.head_sha` against `headSha` and nothing else. The function's whole signature is `(path, headSha)`; base was never a parameter.\n- The session's reasoning is entirely about head. Spine 2764: \"`submit_document` now refuses when the branch's existing document describes a **different commit range**. The test is the range, not the file's existence.\" The words say \"commit range\" while the code tests one end of it.\n- No turn in the session raises base_sha, re-distilling against a different base, or the run-id hash's inclusion of base. So I cannot attest a reason.\n- Your case is real and I confirm it from the code: same head, different base is a different run (the run_id hash includes base, per the guide) producing a different document, and it writes silently over the existing one.\n- Worth adding, as inference: this is the only direction in which the guard FAILS OPEN, and it fails open on the case where two runs genuinely coexist for the same head. Everything else about the guard errs toward refusing.",
+      "anchors": [
+        "H19"
+      ]
+    },
+    {
+      "question": "House rule, prompt changes: for the reviewer.md waiting-rule edit, what did the reviewer agent DO before this wording and what does it do now? Name the distillation performed after the change that showed the new behaviour. Describing the new wording rather than the old failure would mean the change is untested.",
+      "disposition": "unanswered",
+      "note": "The OLD behaviour is documented in detail. The NEW behaviour was never observed, and I can name no distillation that showed it.\n- WHAT IT DID BEFORE, from the reviewer's own hand-back in this session (spine 2146), verbatim: \"**The author role never ran.** All 6 standing questions were still `answered_by: null` after 33 consecutive `get_answers` polls over ~148s, at which point the server returned its explicit `STOP POLLING` / `author_probably_returned: true` signal.\" It then submitted with \"`rounds: 11, author_attested: 0, unanswered: 11, standing_unanswered: 6`\".\n- And the author was fine. Spine 2200: \"The reviewer was wrong about that: the author is **still running**, 6 minutes in. It gave up polling after ~148s.\" It finished at 9m52s with 17 of 17 attested.\n- The exact wording H2 DELETES is the instruction that produced that: \"If they never arrive, the author has not run — say so rather than proceeding on inference.\"\n- WHAT IT DOES NOW: unobserved. No distillation was performed after the wording change and before the end of the session. Every server process running at commit time predated the fix (spine 2814: latest started Oct 6 16:59, fix committed Oct 6 19:26), so no agent could have read the new prose.\n- The first run against the new wording is THIS one, launched at spine 2845 after the user reloaded the window. Its outcome is not in the transcript. The session states the acceptance test it intends but cannot report: \"whether the reviewer reports being told to stop polling. If it does, the fix didn't take. If it reports waiting quietly and then getting answers, it did.\"\n- So by the house rule's own standard, this prompt change is untested, and I am saying so rather than describing the new wording. Note also the reachability problem in my answer to dffeeef2d22f04c3: with only standing questions outstanding the reviewer is told \"all of them are answered\", so the behaviour the new prose describes may not be exercisable in round one even on a fixed server.",
+      "anchors": [
+        "H2"
+      ]
+    },
+    {
+      "question": "House rule, prompt changes: same question for the reviewer.md section on would_overwrite_a_different_document, and for the `overwrite` tool description, which is prose read by a model. Was a reviewer agent ever observed hitting the refusal, and did it do the right thing (switch branch) rather than reaching for overwrite: true?",
+      "disposition": "unanswered",
+      "note": "Never observed, and on this run it cannot be: the refusal is designed to stay silent here.\n- No reviewer agent was ever seen hitting `would_overwrite_a_different_document`. There is no such event anywhere in the transcript.\n- The branch had no existing document when the work was done, and the session says so as an EXPECTED outcome rather than a gap. Spine 2814, verbatim: \"**Fix 2:** it writes `.intent/fix-distillation-handoff-and-overwrite.json`, not `main.json` — and since that file doesn't exist yet, the guard stays quiet, which is the correct behaviour for a first submit.\"\n- So the only live property this run can demonstrate is that the guard does NOT fire. Whether a reviewer reads the refusal correctly is untested.\n- `overwrite: true` was never exercised, by an agent or by hand, in test or live.\n- Nothing tests whether a reviewer prefers the branch over the flag. Both the H3 prose and the H17 tool description are model-read text with no behavioural check — and H17's description is the only place a reviewer that skipped reviewer.md would learn the flag exists, which cuts the other way: the shortest path for a blocked agent is the flag, not the branch.\n- The strongest evidence that exists is not behavioural but counterfactual, and it is good evidence of the GUARD, not of the prose. A throwaway `test/_real.test.ts` ran the check against the real `.intent/main.json` that had actually been destroyed. Spine 2748, verbatim: \"The guard would have refused the exact overwrite that happened, and names the interview it was protecting: `author_attested: 16, unanswered: 0`.\" That file was deleted and is not in the diff.",
+      "anchors": [
+        "H3",
+        "H17"
+      ]
+    },
+    {
+      "question": "House rule, the viewer is verified in a browser or not at all: was the article page actually opened and rendered, and did the new article body introduce any markup or class that needs a styles.css regeneration? A recent commit on this branch's history existed only to regenerate styles.css for one class a walkthrough added.",
+      "disposition": "unanswered",
+      "note": "Not opened, not rendered, not checked — and the generated-files check was not re-run after this commit landed. That last part is the finding.\n- The viewer was never opened in a browser at any point after 62aeec7 landed. Nothing in the transcript shows it.\n- THE TIMING IS THE RISK. The full local CI sweep, including the generated-files check, ran at spine 2761-2764 on commit 40af9f2 — BEFORE 62aeec7 existed on the branch. After 62aeec7 was discovered (spine 2783), the only build run was `npm run build -w review-assist-mcp` (spine 2779, 2811), which is the MCP server workspace alone and does not touch `build:css` or the viewer. So no generated-files check has ever been run against this branch's current HEAD.\n- Your reference is exact and this session is where it came from: commit 0e59d70 (originally 126a3b5) existed only to add `.opacity-60{opacity:.6}` to styles.css, and the entire CI failure was those 23 characters. Spine 2499: \"The entire failure was **23 characters**... CI's diff was 23209 bytes against the committed 23186 — exactly that rule.\" That makes a missing-class regression the single most likely CI failure on this repo.\n- Reading H1, I think the risk is low but I cannot discharge it: the added material is DATA in the existing `ARTICLES` array — plain strings plus `{ h: ... }` and `{ ul: [...] }` shapes that `renderArticle` already handles. No class names, no markup, no new utility appears in the added lines. Tailwind scans index.html for class strings, so data that introduces no class string generates no new rule.\n- But that is my read of one hunk, not a build. The check that settles it is the one CI runs: `npm run build` at the root, then `git diff --exit-code`. It was not run.\n- Nothing about the article's rendering, hero image (`/blog/how-to-add-repository-review-rules-for-ai-prs.png`), prerender output or links was verified. That image path in particular is asserted by the data and unchecked — I did not confirm the file exists.",
+      "anchors": [
+        "H1"
+      ]
+    },
+    {
+      "question": "The tests drive Handoff with an injected clock and existingDocumentClash against temp files. Was either path ever seen working for real: an actual get_answers response carrying author_seen: true, or an actual submit refused as would_overwrite_a_different_document? If not, say so plainly.",
+      "disposition": "unanswered",
+      "note": "NEITHER PATH WAS EVER SEEN WORKING FOR REAL. Saying so plainly, as asked.\n- No `get_answers` response carrying `author_seen: true` appears anywhere in the transcript. The only live `get_answers` call made after the commit returned the OLD response shape, which is how the session proved the servers were stale (spine 2814).\n- No submit was ever refused as `would_overwrite_a_different_document`. No submit of any kind happened after the commit.\n- `overwrite: true` was never passed, in a test or live.\n- Neither new message string (H13's STOP POLLING variant, H14's \"The author IS working\") was ever observed printing. And per my answer to dffeeef2d22f04c3, with only standing questions outstanding they are not reachable at all, because index.ts:1252 returns \"That is every round, and all of them are answered\" first.\n- The reason is structural, not negligence: every server process running when the commit was made predated it by hours or days (spine 2814). There was no server that COULD have run the new code until the user reloaded, which happened after the fix was already committed and pushed.\n- WHAT NON-UNIT EVIDENCE DOES EXIST, and it is worth more than nothing:\n- The shipped bundle was grepped to confirm the code is actually in it: `STALL_MS_AFTER_ACTIVITY` 2, `would_overwrite_a_different_document` 2, `noteAuthorActivity` 6 (spine 2814).\n- A throwaway `test/_real.test.ts` ran `existingDocumentClash` against the REAL `.intent/main.json` that had actually been destroyed, at HEAD 634e48e. Spine 2748: \"The guard would have refused the exact overwrite that happened, and names the interview it was protecting: `author_attested: 16, unanswered: 0`.\" That is a real file and a real past incident, not a temp fixture — but it is still the function called directly, not a submit. The file was removed and is not in the diff.\n- The 15 new cases do cover both real scenarios with the injected clock (spine 2764): \"33 polls over 148s with the author mid-read stays patient, a nine-minute read with a heartbeat per page stays patient, and a crashed author is still eventually declared gone.\"\n- This run is the first exercise of either path. Marking unresolved because the answer is \"not yet\", and the evidence that would resolve it is being generated right now.",
+      "anchors": [
+        "H20",
+        "H21"
+      ]
+    },
+    {
+      "question": "For meta.session I need what the transcript itself records, not what I can infer from how this distillation is running: the exact agent string and the exact model string for session 4804e11e-f64b-4799-aa8e-3f5fde6c8d47, plus started_at and ended_at if the spine carries them. If the transcript does not name the model, say so and I will record it as unknown rather than guess.",
+      "disposition": "unanswered"
+    },
+    {
+      "question": "Was the destroyed .intent/main.json ever restored from git, and does a .intent/main.json exist in the working tree now? It decides whether the new guard currently has anything to protect on this repo, and it is the one case where assumption F (every prior document carries meta.commit_range.head_sha) can be checked against a real file rather than a fixture.",
+      "disposition": "unanswered",
+      "anchors": [
+        "H18",
+        "H19"
+      ]
+    },
+    {
+      "question": "For problem.out_of_scope I have the five carried-over items from your plan answer: re-measure latency against the 1143s baseline, latency change 4, open_questions classification, Codex parity on the developer gate, the pruner. Was anything else explicitly ruled out in the session - in particular, was fixing the summarizeRun seeded-question exclusion ruled out for this change, or merely deferred without a decision?",
+      "disposition": "unanswered",
+      "anchors": [
+        "H12"
+      ]
+    }
+  ]
+}

@@ -882,8 +882,10 @@ registerTool(
       .describe("The whole batch in one call."),
   },
   async ({ run_id, answers }) => {
-    handoff.noteAuthorActivity(run_id);
+    // After the run is known, as the other four heartbeats are: a call naming a run that
+    // does not exist is not evidence of an author working on one that does.
     const res = recordAnswers(run_id, answers);
+    if (res) handoff.noteAuthorActivity(run_id);
     if (!res) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
     const { run, unknown } = res;
     return textResult(
@@ -1240,16 +1242,25 @@ registerTool(
     );
     const summary = summarizeRun(run);
     const answeredNow = all.filter((r) => r.answer.length > 0).length;
+    // What the reviewer is actually waiting for INCLUDES the standing set.
+    //
+    // `summarizeRun` drops unanswered seeded questions from `rounds`, so `unanswered` is 0
+    // for a run whose only outstanding questions are the standing six — which is every run
+    // before the reviewer records a batch. Branching on that told the reviewer "That is
+    // every round, and all of them are answered" while six were unanswered, and kept both
+    // the stall warning and the "the author is working" reassurance unreachable in exactly
+    // the window the reviewer spends waiting for the standing answers.
+    const outstanding = summary.unanswered + summary.standing_unanswered;
     const { polls, stalled_ms, author_seen, author_quiet_ms, stalled } = handoff.notePoll(
       run_id,
       answeredNow,
-      summary.unanswered
+      outstanding
     );
 
     let next: string;
     if (page.next_cursor) {
       next = `More answers. Call get_answers again with cursor: "${page.next_cursor}".`;
-    } else if (summary.unanswered === 0) {
+    } else if (outstanding === 0) {
       next = "That is every round, and all of them are answered.";
     } else if (stalled) {
       next =
@@ -1258,15 +1269,17 @@ registerTool(
           ? `The author has made no call on this run for ${Math.round(author_quiet_ms / 1000)}s `
           : `The author has never called this run at all, and no new answer has arrived in ${Math.round(stalled_ms / 1000)}s, `) +
         `across ` +
-        `${polls} consecutive get_answers calls, and ${summary.unanswered} question(s) are still ` +
-        "unanswered. The author role is a subagent: it does not idle waiting for work, so if it has " +
+        `${polls} consecutive get_answers calls, and ${outstanding} question(s) are still ` +
+        `unanswered (${summary.standing_unanswered} of them the standing set). ` +
+        "The author role is a subagent: it does not idle waiting for work, so if it has " +
         "finished its batches it has already returned and nothing will arrive however long you wait. " +
         "Calling this tool again will not change that. Either say in your reply to whoever dispatched " +
         "you that the author must be re-dispatched for this run_id, or treat these as findings: put " +
         "them in `verification.not_verified`, raise them in your closing report, and submit.";
     } else {
       next =
-        `That is every round. ${summary.unanswered} still have no answer. ` +
+        `That is every round. ${outstanding} still have no answer` +
+        (summary.standing_unanswered > 0 ? `, including ${summary.standing_unanswered} of the standing set. ` : ". ") +
         (polls > 1 ? `Waited ${Math.round(stalled_ms / 1000)}s so far. ` : "") +
         (author_seen
           ? `The author IS working on this run — last call ${Math.round(author_quiet_ms / 1000)}s ago. ` +
@@ -1660,7 +1673,11 @@ registerTool(
         // The test is the commit range, not whether the file exists: resubmitting the SAME
         // change is a correction and stays free, which is the whole reason a run survives
         // its own submit. A different head means a different document.
-        const clash = existingDocumentClash(outPath, run.head_sha);
+        const clash = existingDocumentClash(
+          outPath,
+          { base_sha: run.base_sha, head_sha: run.head_sha },
+          { writtenByThisRun: run.document_path }
+        );
         if (clash && !(overwrite ?? false)) {
           return textResult(
             JSON.stringify(
@@ -1669,6 +1686,9 @@ registerTool(
                 refused: "would_overwrite_a_different_document",
                 path: outPath,
                 existing_head_sha: clash.head_sha,
+                existing_base_sha: clash.base_sha,
+                // A short summary, not the stored object: .intent/*.json is repo content a
+                // pull request can edit, and no response here may be unbounded.
                 existing_interview: clash.interview,
                 this_head_sha: run.head_sha,
                 why:

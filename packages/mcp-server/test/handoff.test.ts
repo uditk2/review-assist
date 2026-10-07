@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { Handoff, STALL_POLLS, STALL_MS, STALL_MS_AFTER_ACTIVITY } from "../src/handoff.js";
+import { Handoff, STALL_POLLS, STALL_MS, STALL_MS_AFTER_ACTIVITY, patienceFor } from "../src/handoff.js";
 
 /** A controllable clock: a stall measured in minutes is otherwise untestable by waiting. */
 function at(start = 1_000_000) {
@@ -75,9 +75,11 @@ describe("an author that is demonstrably working", () => {
   });
 
   it("is eventually declared gone, so a crashed author cannot hang the reviewer", () => {
+    // Past the patience for THIS many outstanding questions, not past the flat base: the
+    // base alone no longer ends the wait, because the answer batch legitimately exceeds it.
     const { handoff, tick } = at();
     handoff.noteAuthorActivity(RUN);
-    tick(STALL_MS_AFTER_ACTIVITY + 1);
+    tick(patienceFor(3) + 1);
     expect(pollTimes(handoff, STALL_POLLS).stalled).toBe(true);
   });
 
@@ -124,5 +126,77 @@ describe("runs are independent", () => {
     expect(v.stalled).toBe(true);
     // And the busy run's heartbeat is still its own.
     expect(handoff.notePoll("busy", 0, 1).author_seen).toBe(true);
+  });
+});
+
+/**
+ * What the reviewer is waiting for includes the STANDING set.
+ *
+ * `summarizeRun` drops unanswered seeded questions from `rounds`, so its `unanswered` is 0
+ * for any run whose only outstanding questions are the standing six — which is every run
+ * before the reviewer records a batch. Passing that figure in made the whole watch inert in
+ * exactly the window the reviewer spends waiting for the standing answers, and the response
+ * said "all of them are answered" while six were not.
+ *
+ * `notePoll` takes the real outstanding count, so these pin that it behaves on that number
+ * rather than on how the count was derived.
+ */
+describe("the outstanding count", () => {
+  it("engages the watch when only standing questions are outstanding", () => {
+    const { handoff, tick } = at();
+    let v = handoff.notePoll(RUN, 0, 6); // six standing, nothing else
+    tick(STALL_MS);
+    for (let i = 1; i < STALL_POLLS; i++) v = handoff.notePoll(RUN, 0, 6);
+    expect(v.stalled).toBe(true);
+  });
+
+  it("still waits on those when the author is demonstrably working", () => {
+    const { handoff, tick } = at();
+    handoff.noteAuthorActivity(RUN);
+    tick(148_000);
+    expect(pollTimes(handoff, 33, 0, 6).stalled).toBe(false);
+  });
+});
+
+/**
+ * Patience has to cover the answer batch, which is the gap that actually matters.
+ *
+ * The flat seven minutes was sized against a run that took 9m52s END TO END, which is not
+ * the largest gap between two author calls. The author answers a whole batch in ONE call, so
+ * from the server's side there is no contact from the moment it starts composing until the
+ * answers land — and that stretch grows with the number of questions asked.
+ *
+ * Measured by living through it: a reviewer asked 17 on top of the standing 6, the author
+ * went quiet for 426s composing 23 answers, crossed the flat 420s, and was declared gone.
+ * The same false negative, one step on, and punishing the thorough reviewer: more questions
+ * meant a longer batch meant a likelier cliff.
+ */
+describe("patience for the answer batch", () => {
+  it("covers the 426s gap that misfired, for the batch that caused it", () => {
+    const { handoff, tick } = at();
+    handoff.noteAuthorActivity(RUN); // last call before it starts composing
+    tick(426_000);
+    expect(pollTimes(handoff, 40, 0, 23).stalled).toBe(false);
+  });
+
+  it("grows with the number of questions outstanding", () => {
+    expect(patienceFor(23)).toBeGreaterThan(patienceFor(6));
+    expect(patienceFor(6)).toBeGreaterThan(STALL_MS_AFTER_ACTIVITY - 1);
+  });
+
+  it("still gives up eventually, so a crashed author cannot hang the reviewer", () => {
+    const { handoff, tick } = at();
+    handoff.noteAuthorActivity(RUN);
+    tick(patienceFor(23) + 1);
+    expect(pollTimes(handoff, STALL_POLLS, 0, 23).stalled).toBe(true);
+  });
+
+  it("does not extend patience for an author never seen", () => {
+    // Nothing is composing, so there is nothing to be patient for however many questions.
+    const { handoff, tick } = at();
+    let v = handoff.notePoll(RUN, 0, 23);
+    tick(STALL_MS);
+    for (let i = 1; i < STALL_POLLS; i++) v = handoff.notePoll(RUN, 0, 23);
+    expect(v.stalled).toBe(true);
   });
 });

@@ -45,14 +45,37 @@ export const STALL_POLLS = 8;
 export const STALL_MS = 60_000;
 
 /**
- * And the silence required once the author HAS called this run.
+ * Base silence allowed once the author HAS called this run.
  *
  * Generous because the gap between its calls is set by how long the session is, not by
  * whether it is healthy: one page of a large spine, or a cold context index, is minutes of
- * legitimate quiet. The run that provoked this took 9m52s end to end, so a minute of
- * silence means nothing at all.
+ * legitimate quiet.
  */
 export const STALL_MS_AFTER_ACTIVITY = 420_000;
+
+/**
+ * Extra patience per outstanding question.
+ *
+ * The flat 420_000 was sized against the wrong quantity. It was justified by one run taking
+ * 9m52s END TO END, which is not the largest gap between two of the author's calls — and the
+ * gap that actually matters is the answer batch itself. The author answers a whole batch in
+ * ONE call, so from the server's side there is no contact at all from the moment it starts
+ * composing until the answers land, and that stretch grows with the number of questions.
+ *
+ * Measured by living through it: a reviewer asked 17 questions on top of the standing 6, the
+ * author went quiet for 426s composing 23 answers, crossed the flat 420s, and was declared
+ * gone — the same false negative this module exists to remove, one step further on.
+ *
+ * The perverse direction is the point. A thorough reviewer asks more, which makes the batch
+ * longer, which makes the cliff likelier: being careful was punished. So patience scales
+ * with what is actually being waited for.
+ */
+export const STALL_MS_PER_QUESTION = 45_000;
+
+/** How long to stay patient with an author known to be working on `outstanding` questions. */
+export function patienceFor(outstanding: number): number {
+  return STALL_MS_AFTER_ACTIVITY + STALL_MS_PER_QUESTION * Math.max(0, outstanding);
+}
 
 interface PollState {
   answered: number;
@@ -112,7 +135,7 @@ export class Handoff {
 
     // Poll COUNT alone can no longer end the wait; it only gates it. What ends the wait is
     // silence from the author, and how much depends on whether it was ever there.
-    const patience = author_seen ? STALL_MS_AFTER_ACTIVITY : STALL_MS;
+    const patience = author_seen ? patienceFor(unanswered) : STALL_MS;
     const quiet = author_seen ? author_quiet_ms : stalled_ms;
     const stalled = unanswered > 0 && prior.polls >= STALL_POLLS && quiet >= patience;
 

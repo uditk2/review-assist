@@ -991,45 +991,77 @@ describe("planDelta", () => {
  */
 describe("existingDocumentClash", () => {
   const dir = mkdtempSync(join(tmpdir(), "review-assist-doc-"));
-  const docAt = (headSha: string, interview?: unknown) => {
-    const p = join(dir, `doc-${headSha}-${Math.random().toString(36).slice(2)}.json`);
-    writeFileSync(p, JSON.stringify({ meta: { commit_range: { head_sha: headSha }, interview } }));
+  const docAt = (head: string, base = "a".repeat(40), interview?: unknown) => {
+    const p = join(dir, `doc-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(p, JSON.stringify({ meta: { commit_range: { base_sha: base, head_sha: head }, interview } }));
     return p;
   };
+  const BASE = "a".repeat(40);
   const HEAD = "b".repeat(40);
   const OTHER = "c".repeat(40);
+  const RANGE = { base_sha: BASE, head_sha: HEAD };
 
   it("reports no clash when nothing is there yet", () => {
-    expect(runs.existingDocumentClash(join(dir, "absent.json"), HEAD)).toBeUndefined();
+    expect(runs.existingDocumentClash(join(dir, "absent.json"), RANGE)).toBeUndefined();
   });
 
-  it("reports no clash when resubmitting the SAME change", () => {
-    // A correction. Blocking this would break the documented edit-and-resubmit flow.
-    expect(runs.existingDocumentClash(docAt(HEAD), HEAD)).toBeUndefined();
+  it("reports no clash when resubmitting the SAME range", () => {
+    expect(runs.existingDocumentClash(docAt(HEAD, BASE), RANGE)).toBeUndefined();
   });
 
   it("reports a clash when the document describes a different head", () => {
-    const clash = runs.existingDocumentClash(docAt(OTHER), HEAD);
-    expect(clash?.head_sha).toBe(OTHER);
+    expect(runs.existingDocumentClash(docAt(OTHER, BASE), RANGE)?.head_sha).toBe(OTHER);
   });
 
-  it("hands back the interview it would destroy, so the refusal can show its worth", () => {
-    // What made the real loss bad was not the overwrite but that nobody could see what went.
-    const interview = { rounds: 16, author_attested: 16, unanswered: 0 };
-    expect(runs.existingDocumentClash(docAt(OTHER, interview), HEAD)?.interview).toEqual(interview);
+  it("reports a clash on the same head with a DIFFERENT base", () => {
+    // Testing head alone was the guard's only fail-open direction: same head and a different
+    // base is a different run describing a different change, and it wrote silently.
+    const clash = runs.existingDocumentClash(docAt(HEAD, OTHER), RANGE);
+    expect(clash?.base_sha).toBe(OTHER);
+  });
+
+  it("reports no clash on a file THIS run already wrote, however far the branch moved", () => {
+    // The documented correction cycle, which comparing heads broke: commit the document, fix
+    // a finding, the branch moves because committing moved it, compute_diff again, resubmit.
+    // The committed file then holds the OLD head while the run holds the new one.
+    const p = docAt(OTHER, OTHER);
+    expect(runs.existingDocumentClash(p, RANGE)).toBeDefined();
+    expect(runs.existingDocumentClash(p, RANGE, { writtenByThisRun: p })).toBeUndefined();
+  });
+
+  it("still protects a file a DIFFERENT run wrote", () => {
+    const mine = docAt(HEAD, BASE);
+    const theirs = docAt(OTHER, OTHER);
+    expect(runs.existingDocumentClash(theirs, RANGE, { writtenByThisRun: mine })).toBeDefined();
+  });
+
+  it("summarizes the interview instead of echoing it, because the file is PR-editable", () => {
+    // .intent/*.json is repository content a fork's pull request can edit, so quoting it back
+    // whole would be unbounded untrusted input in a response. This repo already lost a run_id
+    // to a 234KB response that spilled to disk.
+    const huge = { rounds: 16, author_attested: 16, unanswered: 0, junk: "x".repeat(200_000) };
+    const clash = runs.existingDocumentClash(docAt(OTHER, OTHER, huge), RANGE);
+    expect(typeof clash?.interview).toBe("string");
+    expect(clash!.interview!.length).toBeLessThan(200);
+    expect(clash!.interview).toContain("author_attested 16");
+    expect(clash!.interview).not.toContain("xxxx");
+  });
+
+  it("survives an interview of the wrong shape entirely", () => {
+    expect(runs.existingDocumentClash(docAt(OTHER, OTHER, "not an object"), RANGE)?.interview)
+      .toBe("(no interview recorded)");
   });
 
   it("treats an unreadable file as no clash", () => {
-    // Failing a submit over a file that cannot be parsed would be worse than the overwrite:
-    // it is not evidence of work worth protecting.
+    // Failing a submit over a file that cannot be parsed would be worse than the overwrite.
     const p = join(dir, "broken.json");
     writeFileSync(p, "{ not json");
-    expect(runs.existingDocumentClash(p, HEAD)).toBeUndefined();
+    expect(runs.existingDocumentClash(p, RANGE)).toBeUndefined();
   });
 
   it("treats a document with no recorded head as no clash", () => {
     const p = join(dir, "nohead.json");
     writeFileSync(p, JSON.stringify({ meta: {} }));
-    expect(runs.existingDocumentClash(p, HEAD)).toBeUndefined();
+    expect(runs.existingDocumentClash(p, RANGE)).toBeUndefined();
   });
 });
