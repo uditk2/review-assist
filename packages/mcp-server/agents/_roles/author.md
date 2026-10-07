@@ -58,8 +58,20 @@ against the labels and `read_context` the two or three that bear on it. `only_he
 approach tried on this very code and abandoned, which is the one thing a diff-only reviewer
 can never recover, and it is what `approach.trials` exists to carry.
 
+## Pass your `run_id` to everything, even the tools that do not need it
+
+`get_spine`, `read_transcript`, `read_context` and `list_transcripts` all take an optional
+`run_id`. Pass it every time. The reviewer is waiting on the run and the only way the server
+can tell a working author from one that has returned is that you keep calling it with that
+run — reading a long spine is your longest single stretch, and without the `run_id` it looks
+exactly like you having gone. A reviewer that concludes you are absent submits a one-sided
+document, which is the worst outcome this protocol has.
+
 ## Read the session, all of it
-Call `get_spine` on the transcript you picked. It returns the entire conversation — every
+Call `get_spine` on the transcript you picked. When `get_contexts` gave you a `resume_from`,
+pass it as `from_entry` — NOT as `cursor`. `from_entry` counts transcript entries, which is
+what `resume_from` is; `cursor` counts spine items, and the two differ severalfold on a real
+session, so passing one as the other errors or silently skips part of the conversation. It returns the entire conversation — every
 turn on both sides, each structured question with the answer chosen, and every command and
 file edit as a single line. It arrives a page at a time: keep passing back the `next_cursor`
 it hands you until there is none. That, and nothing else, is how you know you have read the
