@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildSpine,
+  entryIndexOf,
   pageSpine,
   type SpineItem,
   type SpineTurn,
@@ -224,5 +225,26 @@ describe("pageSpine", () => {
   it("refuses a malformed cursor rather than silently restarting", () => {
     expect(() => pageSpine(turns(["a"]), { cursor: "nonsense" })).toThrow(/Malformed cursor/);
     expect(() => pageSpine(turns(["a"]), { cursor: "9" })).toThrow(/past the end/);
+  });
+});
+
+/**
+ * Selecting by TRANSCRIPT ENTRY, which is not what the page cursor counts.
+ *
+ * `get_contexts` reports `resume_from` as a transcript entry index while the spine's cursor
+ * counts spine ITEMS, and on a real session those differ severalfold — 2846 entries against
+ * 786 items. An author handed one and asked for the other got "points past the end of a
+ * 786-item spine" and had to guess an offset, which either errors or silently skips part of
+ * the conversation it was told to read to the end.
+ */
+describe("entryIndexOf", () => {
+  it("reads a turn or event at its own index", () => {
+    expect(entryIndexOf({ kind: "user", index: 7, text: "x" } as SpineItem)).toBe(7);
+    expect(entryIndexOf({ kind: "command", index: 9, summary: "npm test" } as SpineItem)).toBe(9);
+  });
+
+  it("reads a gap at its END, so one straddling a resume point still follows it", () => {
+    // A gap spanning the boundary is partly unread, so it belongs to what comes after.
+    expect(entryIndexOf({ kind: "gap", from: 3, to: 50, entries: 47, failures: 1 } as SpineItem)).toBe(50);
   });
 });

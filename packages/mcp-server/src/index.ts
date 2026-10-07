@@ -52,7 +52,7 @@ import {
   readTranscriptWindow,
   git,
 } from "./git.js";
-import { buildSpine, pageSpine } from "./spine.js";
+import { buildSpine, pageSpine, entryIndexOf } from "./spine.js";
 import { importSession, listImported } from "./transcript/export.js";
 import {
   openRun,
@@ -598,8 +598,13 @@ registerTool(
     base: z.string().optional().describe("Base ref/branch/SHA of the change — enables relevance ranking by changed files"),
     head: z.string().default("HEAD"),
     repo: z.string().optional().describe("Absolute path of the repository. Defaults to REVIEW_ASSIST_REPO or cwd."),
+    run_id: z
+      .string()
+      .optional()
+      .describe("Pass your run_id once you have one, so the reviewer can tell you are working."),
   },
-  async ({ path, base, head, repo }) => {
+  async ({ path, base, head, repo, run_id }) => {
+    if (run_id) handoff.noteAuthorActivity(run_id);
     const repoDir = repo ? resolve(repo) : REPO_DIR;
     let changedBasenames: string[] = [];
     if (base) {
@@ -682,10 +687,20 @@ registerTool(
     "tool output behind a claim.",
   {
     path: z.string().describe("Transcript path (from list_transcripts)"),
+    run_id: z
+      .string()
+      .optional()
+      .describe("Pass your run_id on EVERY page. Reading a long spine is your longest stretch of work and the only way the reviewer can tell you are alive is that you keep calling the server with this run — without it, waiting on you looks identical to you having returned."),
+    from_entry: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe("Serve only items at or after this TRANSCRIPT ENTRY index — feed `resume_from` from get_contexts straight in. Needed because `cursor` counts spine ITEMS, not entries, and the two differ by several times on a real session, so passing one as the other errors or silently skips."),
     cursor: z
       .string()
       .optional()
-      .describe('Where to resume: the `next_cursor` from the previous page ("87", or "87:4000" inside an oversized turn). Omit to start at the beginning.'),
+      .describe('Where to resume within the selection: the `next_cursor` from the previous page ("87", or "87:4000" inside an oversized turn). Counts SPINE ITEMS. Omit to start at the beginning.'),
     max_bytes: z
       .number()
       .int()
@@ -693,17 +708,28 @@ registerTool(
       .optional()
       .describe("Byte budget for this page. Defaults to the server's own ceiling; raise it only if you know your client's cap is higher."),
   },
-  async ({ path, cursor, max_bytes }) => {
+  async ({ path, run_id, from_entry, cursor, max_bytes }) => {
+    if (run_id) handoff.noteAuthorActivity(run_id);
     try {
       const spine = buildSpine(path);
-      const page = pageSpine(spine.items, { cursor, maxBytes: max_bytes ?? maxResultBytes() });
+      // `from_entry` is a TRANSCRIPT index and `cursor` is a SPINE ITEM index. Selecting by
+      // entry here is what lets `resume_from` from get_contexts be used directly: the two
+      // counts differ severalfold on a real session (2846 entries against 786 items), so an
+      // author handed one and asked for the other had to guess an offset, and guessing wrong
+      // either errors or silently skips part of the conversation.
+      const selected =
+        from_entry === undefined ? spine.items : spine.items.filter((i) => entryIndexOf(i) >= from_entry);
+      const page = pageSpine(selected, { cursor, maxBytes: max_bytes ?? maxResultBytes() });
       const { items: _all, ...header } = spine;
       return textResult(
         JSON.stringify({
           ...header,
+          ...(from_entry === undefined
+            ? {}
+            : { from_entry, items_from_entry: selected.length, items_in_session: spine.items.length }),
           ...page,
           next: page.next_cursor
-            ? `More of this session to read. Call get_spine again with the same path and cursor: "${page.next_cursor}".`
+            ? `More of this session to read. Call get_spine again with the same path${from_entry === undefined ? "" : ", the same from_entry"} and cursor: "${page.next_cursor}".`
             : "End of the session — you have read the whole conversation.",
         })
       );
@@ -720,10 +746,15 @@ registerTool(
     "the tool output holds the evidence. Not for hydration; get_spine does that in one call.",
   {
     path: z.string().describe("Transcript path (from list_transcripts)"),
+    run_id: z
+      .string()
+      .optional()
+      .describe("Pass your run_id so the reviewer can tell you are still working. Without it a long read looks exactly like you having returned."),
     offset: z.number().int().min(0).default(0),
     limit: z.number().int().min(1).max(200).default(50),
   },
-  async ({ path, offset, limit }) => {
+  async ({ path, run_id, offset, limit }) => {
+    if (run_id) handoff.noteAuthorActivity(run_id);
     try {
       const win = readTranscriptWindow(path, offset ?? 0, limit ?? 50);
       return textResult(JSON.stringify(win, null, 2));
@@ -1120,11 +1151,16 @@ registerTool(
     "question. Paged like get_spine: follow `next_cursor` until there is none.",
   {
     path: z.string().describe("Transcript path."),
+    run_id: z
+      .string()
+      .optional()
+      .describe("Pass your run_id so the reviewer can tell you are still working. Without it a long read looks exactly like you having returned."),
     context_id: z.string().describe("A context id from get_contexts, e.g. C3."),
     cursor: z.string().optional().describe("`next_cursor` from the previous page."),
     max_bytes: z.number().int().min(2_000).optional().describe("Byte budget for this page."),
   },
-  async ({ path, context_id, cursor, max_bytes }) => {
+  async ({ path, run_id, context_id, cursor, max_bytes }) => {
+    if (run_id) handoff.noteAuthorActivity(run_id);
     try {
       const index = readIndex(path);
       const ctx = index.contexts.find((c) => c.id.toUpperCase() === context_id.trim().toUpperCase());
@@ -1630,6 +1666,61 @@ registerTool(
       );
     }
 
+    // Where this document would go, and whether writing it would destroy someone else's.
+    //
+    // Checked BEFORE validate, which is the most expensive call in a submit: refusing
+    // afterwards threw away a passed report, its coverage and the pr_description, so a
+    // reviewer that hit the refusal paid for all of it again on the next attempt.
+    const outBranch =
+      (run.branch ?? (await currentBranch(repoDir, "HEAD")) ?? "").replace(/[/\\]/g, "-") ||
+      run.head_sha.slice(0, 12);
+    const outPath = join(repoDir, ".intent", `${outBranch}.json`);
+      // Refuse to replace a document that describes DIFFERENT code.
+      //
+      // Keying a document by branch is right while a branch is one change. It stops being
+      // right on a long-lived branch: distilling on `main` overwrote `.intent/main.json`,
+      // and the file it destroyed was complete — 16 of 16 questions attested, nothing
+      // unanswered — replaced by a one-sided document from an interview whose author had
+      // not answered. Nothing warned, and only git could get it back.
+      //
+      // The test is the commit range, not whether the file exists: resubmitting the SAME
+      // change is a correction and stays free, which is the whole reason a run survives
+      // its own submit. A different head means a different document.
+      const clash = existingDocumentClash(
+        outPath,
+        { base_sha: run.base_sha, head_sha: run.head_sha },
+        { writtenByThisRun: run.document_path }
+      );
+      if (clash && !(overwrite ?? false)) {
+        return textResult(
+          JSON.stringify(
+            {
+              ok: false,
+              refused: "would_overwrite_a_different_document",
+              path: outPath,
+              existing_head_sha: clash.head_sha,
+              existing_base_sha: clash.base_sha,
+              // A short summary, not the stored object: .intent/*.json is repo content a
+              // pull request can edit, and no response here may be unbounded.
+              existing_interview: clash.interview,
+              this_head_sha: run.head_sha,
+              why:
+                `${outPath} already describes a different change (head ${clash.head_sha.slice(0, 12)}; ` +
+                `this run is ${run.head_sha.slice(0, 12)}). Writing would destroy it. The usual cause ` +
+                "is distilling on a long-lived branch such as `main`, which already holds a document " +
+                "for earlier work.",
+              how_to_proceed:
+                "Put this change on its own branch so the document gets its own file, which is what " +
+                "per-branch naming is for. If replacing it is genuinely intended — the existing " +
+                "document describes work that no longer exists, say — pass `overwrite: true`.",
+            },
+            null,
+            2
+          ),
+          true
+        );
+      }
+
     const report = validate(doc, { diff, headSha: run.head_sha, strictCoverage: strict ?? false });
 
     if (!report.ok) {
@@ -1657,56 +1748,6 @@ registerTool(
     let written: string | null = null;
     if (write ?? true) {
       try {
-        const branch =
-          (run.branch ?? (await currentBranch(repoDir, "HEAD")) ?? "").replace(/[/\\]/g, "-") ||
-          run.head_sha.slice(0, 12);
-        const outPath = join(repoDir, ".intent", `${branch}.json`);
-
-        // Refuse to replace a document that describes DIFFERENT code.
-        //
-        // Keying a document by branch is right while a branch is one change. It stops being
-        // right on a long-lived branch: distilling on `main` overwrote `.intent/main.json`,
-        // and the file it destroyed was complete — 16 of 16 questions attested, nothing
-        // unanswered — replaced by a one-sided document from an interview whose author had
-        // not answered. Nothing warned, and only git could get it back.
-        //
-        // The test is the commit range, not whether the file exists: resubmitting the SAME
-        // change is a correction and stays free, which is the whole reason a run survives
-        // its own submit. A different head means a different document.
-        const clash = existingDocumentClash(
-          outPath,
-          { base_sha: run.base_sha, head_sha: run.head_sha },
-          { writtenByThisRun: run.document_path }
-        );
-        if (clash && !(overwrite ?? false)) {
-          return textResult(
-            JSON.stringify(
-              {
-                ok: false,
-                refused: "would_overwrite_a_different_document",
-                path: outPath,
-                existing_head_sha: clash.head_sha,
-                existing_base_sha: clash.base_sha,
-                // A short summary, not the stored object: .intent/*.json is repo content a
-                // pull request can edit, and no response here may be unbounded.
-                existing_interview: clash.interview,
-                this_head_sha: run.head_sha,
-                why:
-                  `${outPath} already describes a different change (head ${clash.head_sha.slice(0, 12)}; ` +
-                  `this run is ${run.head_sha.slice(0, 12)}). Writing would destroy it. The usual cause ` +
-                  "is distilling on a long-lived branch such as `main`, which already holds a document " +
-                  "for earlier work.",
-                how_to_proceed:
-                  "Put this change on its own branch so the document gets its own file, which is what " +
-                  "per-branch naming is for. If replacing it is genuinely intended — the existing " +
-                  "document describes work that no longer exists, say — pass `overwrite: true`.",
-              },
-              null,
-              2
-            ),
-            true
-          );
-        }
 
         mkdirSync(dirname(outPath), { recursive: true });
         writeFileSync(outPath, JSON.stringify(doc, null, 2) + "\n", "utf8");

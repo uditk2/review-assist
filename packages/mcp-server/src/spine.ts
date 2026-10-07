@@ -81,6 +81,17 @@ export interface SpineGap {
 
 export type SpineItem = SpineTurn | SpineEvent | SpineGap;
 
+/**
+ * Where an item sits in the full transcript.
+ *
+ * Turns and events carry one `index`; a gap spans a range, and its END is the position that
+ * matters when deciding whether it is still ahead of a resume point — a gap straddling that
+ * point is partly unread, so it belongs to what follows.
+ */
+export function entryIndexOf(item: SpineItem): number {
+  return item.kind === "gap" ? item.to : item.index;
+}
+
 export interface Spine {
   path: string;
   session: string;
