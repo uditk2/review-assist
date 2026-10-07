@@ -649,27 +649,80 @@ export function planDelta(run: RunRecord, presentKeys: Set<string>): PlanDelta {
 }
 
 /**
- * Whether a document already at `path` describes a different change than `headSha`.
+ * Whether a document already at `path` is somebody ELSE's work rather than this run's.
  *
- * Reads only what it needs, and treats anything unparseable as no clash: a file this cannot
- * read is not evidence of work worth protecting, and failing a submit over it would be
- * worse than the overwrite it was meant to prevent.
+ * Guards the overwrite that happened: distilling on `main` replaced `.intent/main.json`, and
+ * the file destroyed was complete — 16 of 16 questions attested, nothing unanswered — with a
+ * one-sided document from an interview whose author had not answered. Nothing warned, and
+ * only git got it back.
+ *
+ * THE TEST IS WHICH RUN WROTE IT, not which commit it describes. Comparing head SHAs looked
+ * right and broke the correction cycle the guide promises: commit the document, fix a
+ * finding, the branch moves because committing the document moved it, `compute_diff` again,
+ * resubmit. The committed file then holds the old head while the run holds the new one, so a
+ * head comparison refuses the very flow reviewer.md tells the reviewer to use — and the
+ * advice it offers ("put this change on its own branch") is useless when it already is,
+ * which would send every post-commit correction straight to `overwrite: true`.
+ *
+ * Ancestry was the other candidate and is wrong in the opposite direction: it allows the
+ * drift case, but on a long-lived branch two distillations at successive points leave the
+ * earlier head an ancestor of the later, so it waves through precisely the overwrite this
+ * exists to stop.
+ *
+ * `document_path` is exact. A run records the file it wrote, so a resubmit from the same run
+ * is a correction however far the branch has moved, and a file written by another run — or
+ * committed by a person — is not this run's to replace.
+ *
+ * Anything unparseable counts as no clash: a file this cannot read is not evidence of work
+ * worth protecting, and failing a submit over it would be worse than the overwrite.
  */
 export function existingDocumentClash(
   path: string,
-  headSha: string
-): { head_sha: string; interview: unknown } | undefined {
+  range: { base_sha: string; head_sha: string },
+  opts: { writtenByThisRun?: string } = {}
+): { head_sha: string; base_sha?: string; interview?: string } | undefined {
   if (!existsSync(path)) return undefined;
+  if (opts.writtenByThisRun && resolve(opts.writtenByThisRun) === resolve(path)) return undefined;
   try {
     const prior = JSON.parse(readFileSync(path, "utf8")) as {
-      meta?: { commit_range?: { head_sha?: string }; interview?: unknown };
+      meta?: { commit_range?: { base_sha?: string; head_sha?: string }; interview?: unknown };
     };
     const priorHead = prior.meta?.commit_range?.head_sha;
-    if (typeof priorHead !== "string" || priorHead === headSha) return undefined;
-    return { head_sha: priorHead, interview: prior.meta?.interview };
+    const priorBase = prior.meta?.commit_range?.base_sha;
+    if (typeof priorHead !== "string") return undefined;
+    // BOTH ends, because the comment said "commit range" while the code tested one. A
+    // document with this head and a different base came from a different run and describes a
+    // different change, and testing head alone let that one write silently — the only
+    // direction this guard could fail open.
+    const sameRange = priorHead === range.head_sha && priorBase === range.base_sha;
+    if (sameRange) return undefined;
+    return {
+      head_sha: priorHead,
+      ...(typeof priorBase === "string" ? { base_sha: priorBase } : {}),
+      ...(prior.meta?.interview !== undefined ? { interview: summarizeForRefusal(prior.meta.interview) } : {}),
+    };
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The prior document's interview, as a short string safe to echo.
+ *
+ * `.intent/*.json` is repository content and a fork's pull request can edit it, so this is
+ * untrusted input of unbounded size being quoted back into a response. Every other response
+ * in this server is bounded — `read_diff`, `get_spine`, `get_answers` all page — because a
+ * 234KB response once spilled to disk and took a `run_id` with it. A refusal is the last
+ * place to reintroduce that.
+ *
+ * It only has to convey how much would be lost, so the counts are read defensively and
+ * anything else is dropped.
+ */
+function summarizeForRefusal(interview: unknown): string {
+  if (!interview || typeof interview !== "object") return "(no interview recorded)";
+  const iv = interview as Record<string, unknown>;
+  const num = (k: string) => (typeof iv[k] === "number" ? String(iv[k]) : "?");
+  return `rounds ${num("rounds")}, author_attested ${num("author_attested")}, unanswered ${num("unanswered")}`;
 }
 
 /** The notes on this run, by content key. */
