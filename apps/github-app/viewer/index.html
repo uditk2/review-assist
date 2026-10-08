@@ -1265,6 +1265,37 @@ function renderArticle(a){
 
 const ARTICLES = [
   {
+    slug: "where-code-and-transcript-go-in-review-assist",
+    date: "8 Oct 2026",
+    title: "Where your code and transcript go in Review Assist",
+    summary: "The raw transcript stays local. The Intent Document lives in GitHub. The hosted App sees the diff in transit when a reviewer opens the PR.",
+    hero: "/blog/where-code-and-transcript-go-in-review-assist.png",
+    alt: "A local transcript stays inside a workstation boundary while a compact review document and diff lead through a repository to a browser",
+    caption: "Follow each artifact to the place it actually lives.",
+    body: [
+      "If your team reviews private code, “we do not store your code” is only one part of the answer. You also need to know what leaves the developer’s machine, what is committed to GitHub, and what a hosted service handles while someone reads the pull request.",
+      "Here is the short version for Review Assist: its local MCP flow reads the coding transcript on the developer’s machine. It writes a smaller Intent Document into the repository after consent and validation. GitHub stores that document with the PR. The hosted GitHub App fetches the document and diff from GitHub for each review request, handles them in memory, and returns them with private, no-store responses. The raw transcript is not sent to the App, but the diff does pass through it in transit.",
+      { h: "The transcript stays in the local authoring flow" },
+      "The Author role can read the coding session through a local [conversation spine](/blog/conversation-spine-code-review-context/). The cold Intent Reviewer reads the diff and asks questions, but has no transcript or general file-reading tools. Their questions and answers pass through a local run file under `~/.review-assist/runs/`. That is local state, not a copy of the transcript in the hosted App.",
+      "Before writing `.intent/<branch>.json`, the local submit path checks repository consent, interview evidence, schema, diff coverage, staleness, cross-references, and likely secrets. The MCP server itself does not call a model. Your coding agent’s own model connection is a separate data path, governed by that agent’s configuration and provider; this article is about Review Assist’s data path.",
+      { h: "The Intent Document is repository content" },
+      "The output is a curated review artifact, not a raw session archive. It can still contain sensitive context: the problem, user asks, assumptions, rejected approaches, tour notes, and verification results. Once committed to `.intent/<branch>.json`, it lives in GitHub under the repository’s access controls and follows the same PR history as the code.",
+      "The redaction lint checks document strings for likely credentials and blocks a matching submission. A pattern check cannot prove that every business secret or private detail was removed. Read the generated document before committing it, especially quoted user requests and examples copied from a session. Treat it like any other file you publish to your repository.",
+      { h: "The hosted App sees the diff in transit" },
+      "On a pull request event, the GitHub App reads the committed document and diff to post its check and summary. When a signed-in reviewer opens the guided view, the Worker fetches the document and PR diff from GitHub with that reviewer’s token and sends them to the browser. The viewer renders the review there. The Worker has no application database or server-side session store, and its repository-data API responses use Cache-Control: private, no-store.",
+      "No server-side storage does not mean no hosted exposure. The Worker receives private repository content for the duration of a request. Static site assets can be cached, but those assets do not contain the PR diff. If your policy forbids even transient handling by the hosted App, self-host the open-source GitHub App and point the review flow at your own infrastructure.",
+      "The signed-in reviewer’s GitHub token is kept in an encrypted, HTTP-only, Secure cookie rather than a server-side session table. Review comments, replies, checks, the summary, and the final verdict are durable GitHub records. A reviewer should expect those to remain on the pull request.",
+      { h: "Check the boundary before using it on a private repo" },
+      { ul: [
+        "Inspect the proposed .intent/<branch>.json before committing. Look for customer details, internal URLs, prompts, credentials, or statements you would not put in the PR description.",
+        "Confirm the GitHub App installation and reviewer access match the repositories your team intends to expose. The guided viewer reads through GitHub access, not an anonymous public endpoint.",
+        "Decide whether transient hosted transit is allowed. If it is not, self-host the App. If your concern is the coding model provider, review that provider’s settings separately.",
+        "For a specific PR, use the browser network panel to inspect `/api/document`: it carries the document and diff, and its response should say `Cache-Control: private, no-store`.",
+      ] },
+      "That is the useful privacy test for an AI code review tool: trace each artifact to its durable home and each service that sees it along the way. Review Assist keeps the raw coding session local, stores the review artifact in GitHub, and uses the App as a request-time bridge to the reviewer. Read [the architecture](https://github.com/uditk2/review-assist/blob/main/docs/ARCHITECTURE.md) for the full boundary, then [try it](/#install) on a non-sensitive PR before making it part of your team’s review process.",
+    ],
+  },
+  {
     slug: "how-to-add-repository-review-rules-for-ai-prs",
     date: "7 Oct 2026",
     title: "How to add repository-specific review questions for AI-written PRs",
