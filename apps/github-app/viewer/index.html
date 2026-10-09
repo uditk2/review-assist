@@ -1265,6 +1265,36 @@ function renderArticle(a){
 
 const ARTICLES = [
   {
+    slug: "what-a-review-assist-check-means",
+    date: "9 Oct 2026",
+    title: "What a green Review Assist check tells you",
+    summary: "A successful PR check means the current coverage count has no unexplained substantive hunks. It does not approve the code or verify every claim in the Intent Document.",
+    hero: "/blog/what-a-review-assist-check-means.png",
+    alt: "A diff connects to a completed check while a separate lens inspects unresolved verification traces",
+    caption: "Coverage is a map of explanations, not a merge decision.",
+    body: [
+      "A successful Review Assist check is a useful signal, but it is a narrow one. It says the App's current coverage count has no unexplained substantive diff hunks. It does not say the change is correct, the tests are sufficient, or the pull request is ready to merge.",
+      "That distinction matters when GitHub puts a green result beside an AI-written PR. Read the count and the Intent Document before making the review decision.",
+      { h: "Read the conclusion and the count" },
+      "The GitHub App handles opened, synchronized, and reopened pull requests. It reads the committed `.intent/<branch>.json` at the PR head, compares the base and head, and posts a Review Assist check plus a sticky summary comment. Its check is deliberately advisory: a missing or unreadable document gets a neutral result; a document with uncovered substantive hunks also gets neutral. When the computed count has no gap, it reports success.",
+      "For example, `4/5 changes explained` means one substantive diff hunk has no overlapping tour anchor. `5/5` means every counted hunk has an anchor. The numerator measures coverage of the diff, not the quality of the explanation. A success result can also have no count when no substantive hunks were counted, so inspect the check title and summary rather than relying on color alone. The current webhook also leaves the count at zero if the GitHub compare request fails. A success without a denominator deserves a manual diff check.",
+      { h: "What the check actually measures" },
+      "A tour stop in the Intent Document names the files and hunk ranges it explains. The webhook counts a substantive hunk as explained when one of those anchors overlaps it. It excludes the `.intent/` document itself from that coverage count.",
+      "An anchor can exist while its explanation is weak or wrong. The App cannot infer that a claim about a migration, failure path, or user request is true from a line overlap. The local `submit_document` path separately gates document creation on consent, interview evidence, schema, coverage, staleness, cross-references, and redaction lint. The PR webhook recomputes coverage; its green check is not a rerun of all those local gates.",
+      { h: "Use the result to decide where to look" },
+      { ul: [
+        "If the check is neutral because the document is missing, ask the author to generate and commit the Intent Document for this branch. A malformed document also produces a neutral check.",
+        "If the count is short, open the guided review's Uncovered changes view. Ask why each unanchored hunk exists, and have the author update the code or document before relying on the tour.",
+        "If the count is complete, read the problem and live assumptions, then follow the anchored stops against the code. Finish with Checks performed and the items marked not verified. Decide whether those gaps are acceptable for this PR.",
+      ] },
+      "For the detailed reviewer action, see [how to inspect unexplained changes](/blog/how-to-spot-unexplained-changes-in-ai-written-prs/) and [how to challenge an unverified assumption](/blog/how-to-comment-on-unverified-assumptions-in-ai-prs/).",
+      "The summary comment also calls out unverified behavior and questions nobody answered. Those are review leads, even when the coverage count is complete. The human reviewer posts comments and an Approve or Request changes verdict under their own GitHub identity; the bot check does not make that call.",
+      { h: "Recheck after a push" },
+      "The App posts a new check for the new head when a PR is synchronized. Read the count on that head and revisit changed hunks and verification evidence. A previous green result described a previous diff, not whatever the author pushed later.",
+      "Treat the check as a map of where an explanation exists. Your code review still has to test whether the explanation, behavior, and remaining risk justify approval. The [Intent Document specification](https://github.com/uditk2/review-assist/blob/main/SPEC.md) defines the tour and verification fields; the [architecture](https://github.com/uditk2/review-assist/blob/main/docs/ARCHITECTURE.md) explains which checks happen locally and which happen in the App.",
+    ],
+  },
+  {
     slug: "where-code-and-transcript-go-in-review-assist",
     date: "8 Oct 2026",
     title: "Where your code and transcript go in Review Assist",
