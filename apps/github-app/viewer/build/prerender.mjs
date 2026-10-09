@@ -86,7 +86,7 @@ function isoDate(d) {
 }
 
 /** The template with this route's metadata and prerendered #app. */
-function page({ path, title, description, html, type = "website", image = null, jsonLd = null, noindex = false }) {
+function page({ path, title, description, html, type = "website", image = null, imageSize = null, jsonLd = null, noindex = false }) {
   const dom = new JSDOM(template);
   const { document } = dom.window;
   const url = ORIGIN + path;
@@ -106,6 +106,10 @@ function page({ path, title, description, html, type = "website", image = null, 
   if (image) {
     set('meta[property="og:image"]', "content", image);
     set('meta[name="twitter:image"]', "content", image);
+    if (imageSize) {
+      set('meta[property="og:image:width"]', "content", String(imageSize.width));
+      set('meta[property="og:image:height"]', "content", String(imageSize.height));
+    }
   }
   set('meta[name="twitter:title"]', "content", title);
   set('meta[name="twitter:description"]', "content", description);
@@ -171,6 +175,7 @@ for (const a of articles) {
   await write(path, page({
     path, title: `${plain(a.title)} · Review Assist`, description, html, type: "article",
     image: ORIGIN + a.hero,
+    imageSize: { width: 1672, height: 941 },
     jsonLd: {
       "@context": "https://schema.org",
       "@type": "BlogPosting",
