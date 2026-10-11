@@ -1265,6 +1265,38 @@ function renderArticle(a){
 
 const ARTICLES = [
   {
+    slug: "how-to-check-scope-drift-in-ai-written-prs",
+    date: "11 Oct 2026",
+    modified: "11 Oct 2026",
+    title: "How to check scope drift in an AI-written PR",
+    summary: "Compare the original ask with the changed behavior, then decide whether extra work belongs in this PR, needs approval, or should be split out.",
+    hero: "/blog/how-to-check-scope-drift-in-ai-written-prs.png",
+    alt: "A reviewer compares a small request with a larger stack of code changes and points to a sheet outside the agreed boundary",
+    caption: "A related change still needs a reason to be in this pull request.",
+    body: [
+      "To check scope drift in an AI-written PR, compare the original request with what the diff actually changes. For each behavior that goes beyond the request, ask who authorized it, what it depends on, and whether it can be reviewed and shipped separately. A tidy explanation from the agent is useful context, but it is not approval for extra work.",
+      "This is a pull request review problem even when every changed hunk has a good explanation. Coverage tells you that the tour accounts for code. It does not tell you whether the code belongs in the change.",
+      { h: "Recover the request before reading the rationale" },
+      "Start with the ticket or conversation that authorized the work. In Review Assist, the guided overview shows `problem.statement`, whether the problem was stated up front or emerged during the session, and any `problem.out_of_scope` items. The committed `.intent/<branch>.json` also contains `problem.user_asks`, the key user requests recorded verbatim. The current guided overview does not display those verbatim asks, so open the document in the PR when exact wording matters.",
+      "Do not treat either artifact as the sole source of authority. An agent can misstate the problem or omit a later decision. Compare its account with the actual request and any human follow-up. If the request changed, establish who changed it and when before judging the diff against it.",
+      { h: "Trace each extra behavior to a reason" },
+      "Read `approach.requirements` for constraints and their recorded sources, then follow the guided tour to the hunks that implement them. `approach.trials` can explain why an alternative was rejected. A tour stop's `why` explains why the agent says a change exists. None of these fields proves that the requester agreed to a broader outcome.",
+      "Suppose the request is to cache session validation to reduce auth-service 429s without letting revoked sessions linger. A cache invalidation path on logout is part of that request's safety condition. Renaming a public response field while touching the same middleware is different. It may be a sensible cleanup, but it changes an API contract and needs its own reason, compatibility check, and owner decision.",
+      "For each suspect change, write down three things: the behavior it changes, the request or constraint that justifies it, and the cost of separating it. This keeps the discussion about an observable effect, rather than whether the file looks related. If a hunk has no tour stop at all, first follow the [unexplained-change review](/blog/how-to-spot-unexplained-changes-in-ai-written-prs/) before accepting a scope claim.",
+      { h: "Separate necessary work from opportunistic work" },
+      { ul: [
+        "**Necessary dependency:** The requested behavior cannot work safely without it. Ask for the dependency to be stated in the PR and covered by the relevant test. Logout invalidation in the cache example belongs here.",
+        "**Approved expansion:** A human explicitly added the work during the session. Check that the approval covers the exact behavior and that the Intent Document records the updated ask.",
+        "**Opportunistic change:** The agent found nearby cleanup or a new feature while implementing the ask. Request a separate PR unless the owner deliberately accepts the added review and release risk.",
+      ] },
+      "This classification is a decision aid, not a validator result. Review Assist checks document structure, diff coverage, staleness, cross-references, and likely secrets locally. The GitHub App recomputes coverage for its PR check. Neither check can decide whether a response rename was in scope. The [Intent Document format](https://github.com/uditk2/review-assist/blob/main/SPEC.md) describes the problem, approach, and tour fields; the [architecture](https://github.com/uditk2/review-assist/blob/main/docs/ARCHITECTURE.md) describes which checks run where.",
+      { h: "Make the review request specific" },
+      "A useful comment names the extra behavior and the decision needed: ‘This PR renames the response field used by API clients. I cannot find that in the original cache request or a later approved ask. Was this required for the cache change? If not, please move it to a separate PR. If it was required, link the decision and add a compatibility check.’",
+      "If the extra work stays, ask the author to update the Intent Document's problem, requirements, and tour so they match the agreed scope, then review the new diff and verification. A rewritten document alone does not turn an unapproved change into an approved one. If the work is removed, check that the removal did not break the requested path.",
+      "The practical pull request review process is short: recover the ask, map each changed behavior to an authorized reason, and resolve anything left over with the owner. That lets an engineering team accept a real dependency without quietly shipping whatever the agent happened to improve nearby.",
+    ],
+  },
+  {
     slug: "how-to-review-untested-paths-in-ai-prs",
     date: "10 Oct 2026",
     modified: "10 Oct 2026",
