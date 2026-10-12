@@ -1265,6 +1265,37 @@ function renderArticle(a){
 
 const ARTICLES = [
   {
+    slug: "how-to-re-review-an-ai-pr-after-a-new-push",
+    date: "12 Oct 2026",
+    modified: "12 Oct 2026",
+    title: "How to re-review an AI-written PR after a new push",
+    summary: "Use the new PR head as the review boundary: inspect changed behavior, refresh the explanation and evidence, then decide what needs another look.",
+    hero: "/blog/how-to-re-review-an-ai-pr-after-a-new-push.png",
+    alt: "An engineer examines a revised code change handed over by a teammate while the earlier version sits aside",
+    caption: "A new push changes the evidence the review decision rests on.",
+    body: [
+      "After an AI agent pushes more commits to a pull request, review the new head as a new state of the change. First identify what changed since your last read. Then check whether the Intent Document still explains the current diff and whether the new code changes any assumption, test result, or accepted risk. Do not carry an earlier approval forward by memory alone.",
+      "The useful question is not ‘Did the agent address my comment?’ It is ‘What is true about this PR now, and what evidence supports it?’ A fix can add a fallback, move a permission check, or alter a test while closing the original thread.",
+      { h: "Start with the delta since your last review" },
+      "In GitHub, compare the latest head with the commit you last reviewed. Read the new commits and their combined effect on the full PR diff. If the branch was rebased or force-pushed, commit-by-commit comparison may be noisy; use the resulting behavior and final diff as the stable review target. Write down which paths or claims need a second look before opening the guided review.",
+      "Suppose you asked for a test proving that logout invalidates a cached session. The next push adds that test, but also changes cache eviction on a network error. The test may answer your original question. The eviction behavior is a separate review item, even if it sits in the same file.",
+      { h: "Check the explanation against the current head" },
+      "Review Assist stores the Intent Document in `.intent/<branch>.json` and anchors its tour to diff hunks. The local validator checks its recorded `head_sha` against the current head when given a head SHA; local submission also refuses a run if the branch moved after it opened and asks the author to re-anchor the tour. That protects the authoring path from publishing an explanation for an older change.",
+      "On a PR `synchronize` event, the GitHub App reads the document and diff at the new head and posts a fresh coverage check. That webhook check counts substantive hunks with overlapping tour anchors. It does not rerun the local staleness, schema, cross-reference, or redaction gates. A fresh green coverage result therefore does not prove the document was revised well, or that its recorded head matches the new head. Open the committed document when that matters.",
+      "If the document is missing, stale, or its tour skips a new hunk, ask the author to update it for the new change. For an [unexplained hunk](/blog/how-to-spot-unexplained-changes-in-ai-written-prs/), ask what behavior it adds before treating the coverage count as the task. An anchor with a thin explanation is still a thin explanation.",
+      { h: "Revisit the claims the new code can invalidate" },
+      { ul: [
+        "**Assumptions:** Did the new path make an earlier premise more important or reveal a new one? Reopen the relevant question, even if the old thread was resolved.",
+        "**Scope:** Does the fix introduce behavior beyond the request? Check the original ask and get an owner decision for extra work. The [scope review](/blog/how-to-check-scope-drift-in-ai-written-prs/) gives a way to separate a necessary dependency from opportunistic cleanup.",
+        "**Verification:** Does the reported test exercise the final code and the failure mode you asked about? Read `verification.performed` beside `verification.not_verified`; a test run on the previous head is evidence about the previous head.",
+      ] },
+      "For the cache example, verify that the new test warms the cache, logs out, then retries the same token before expiry. Check its assertion. Then inspect the added network-error branch separately. If it can keep a revoked token usable, the original risk is still open despite the new test.",
+      { h: "Close the loop on the new state" },
+      "Respond to each earlier review thread with the evidence that resolves it, or keep it open with a narrower request. If the new push introduces another risk, leave a new comment anchored to that code. Record in your final review which head and behavior you evaluated, what was verified, and what you accepted without a check. The human reviewer still makes the Approve or Request changes decision in GitHub.",
+      "A practical pull request review process after a push is: compare the delta, read the final diff, check the current Intent Document, revisit changed assumptions and verification, then make a fresh decision. The [Intent Document specification](https://github.com/uditk2/review-assist/blob/main/SPEC.md) defines the fields; the [architecture](https://github.com/uditk2/review-assist/blob/main/docs/ARCHITECTURE.md) shows where local validation and the GitHub App run.",
+    ],
+  },
+  {
     slug: "how-to-check-scope-drift-in-ai-written-prs",
     date: "11 Oct 2026",
     modified: "11 Oct 2026",
