@@ -160,9 +160,13 @@ await write("/", page({
 }));
 
 const releases = home.releases;
+// A silent console: this run only reads ARTICLES, and without one jsdom prints its "Not
+// implemented: window.scrollTo" as a stack trace. render("/blog/") below runs the same page
+// and fails the build on any real script error.
 const articles = JSON.parse(new JSDOM(template, {
   url: RENDER_ORIGIN + "/blog/",
   runScripts: "dangerously",
+  virtualConsole: new VirtualConsole(),
 }).window.eval("JSON.stringify(ARTICLES.map(a => ({ slug: a.slug, title: a.title, summary: a.summary, date: a.date, modified: a.modified, hero: a.hero })))"));
 const index = await render("/blog/");
 await write("/blog/", page({
