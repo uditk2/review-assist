@@ -73,8 +73,10 @@ function makeDoc(coreHasNothing = false) {
   };
 }
 
-async function open(doc: unknown) {
+/** `discussion` is what /api/discussion returns: reviews and PR-level comments already on the PR. */
+async function open(doc: unknown, discussion: { reviews?: unknown[]; comments?: unknown[] } = {}) {
   const errors: string[] = [];
+  const posts: { url: string; body: any }[] = [];
   const vc = new VirtualConsole();
   // jsdom has no layout or scrolling; "Not implemented" is it saying so, not a page failure.
   vc.on("jsdomError", (e) => { if (!/Not implemented/.test(e.message)) errors.push(e.message); });
@@ -85,11 +87,14 @@ async function open(doc: unknown) {
     runScripts: "dangerously",
     virtualConsole: vc,
     beforeParse(w: any) {
-      w.fetch = async (u: unknown) => {
+      w.fetch = async (u: unknown, init?: { method?: string; body?: string }) => {
         const url = String(u);
+        if (init?.method === "POST") posts.push({ url, body: JSON.parse(init.body ?? "{}") });
         if (url.includes("/api/me")) return { ok: true, json: async () => ({ login: "dev" }) };
         if (url.includes("/api/document"))
-          return { ok: true, json: async () => ({ document: doc, diff: DIFF, meta: { owner: "o", repo: "r", pull: 7, head_sha: "b".repeat(40) } }) };
+          return { ok: true, json: async () => ({ document: doc, diff: DIFF, meta: { owner: "o", repo: "r", pull: 7, head_sha: "b".repeat(40), author: "octo" } }) };
+        if (url.includes("/api/discussion")) return { ok: true, json: async () => ({ reviews: [], comments: [], ...discussion }) };
+        if (url.includes("/api/review")) return { ok: true, json: async () => ({ review: { id: 1, state: "COMMENTED", html_url: "https://x.invalid/r" } }) };
         return { ok: false, json: async () => ({}) };
       };
       w.scrollTo = () => {};
@@ -98,14 +103,45 @@ async function open(doc: unknown) {
 
   await new Promise((r) => setTimeout(r, 1200));
   const d = dom.window.document;
-  const stops = () => [...d.querySelectorAll(".rail .nav-link")] as any[];
+  const route = () => [...d.querySelectorAll(".route-rail .route-step")] as any[];
+  const pause = () => new Promise((r) => setTimeout(r, 150));
+  const click = async (el: Element | undefined | null) => {
+    el!.dispatchEvent(new dom.window.Event("click"));
+    await pause();
+  };
   return {
     errors,
+    posts,
+    click,
+    /** A button in main whose trimmed text is exactly `text`, the nth match. */
+    button: (text: string, nth = 0) => [...d.querySelectorAll("main button")].filter((b) => (b.textContent ?? "").trim() === text)[nth],
     text: () => (d.querySelector("main")?.textContent ?? "").replace(/\s+/g, " "),
-    stop: (title: string) => stops().find((b) => b.textContent.includes(title))!,
+    doc: d,
+    win: dom.window as any,
+    route: (label: string) => route().find((b) => b.textContent.includes(label))!,
+    routeLabels: () => route().map((b) => b.querySelector(".route-step-title")?.textContent ?? ""),
+    buttons: () => [...d.querySelectorAll("main button")].map((b) => (b.textContent ?? "").trim()),
+    press: async (ariaLabel: string) => {
+      d.querySelector(`[aria-label="${ariaLabel}"]`)!.dispatchEvent(new dom.window.Event("click"));
+      await pause();
+    },
+    goRoute: async (label: string) => {
+      route().find((b) => b.textContent.includes(label))!.dispatchEvent(new dom.window.Event("click"));
+      await pause();
+    },
     go: async (title: string) => {
-      stops().find((b) => b.textContent.includes(title))!.dispatchEvent(new dom.window.Event("click"));
-      await new Promise((r) => setTimeout(r, 150));
+      route().find((b) => b.textContent.includes("Walk the change"))!.dispatchEvent(new dom.window.Event("click"));
+      await pause();
+      // The stop's own heading, not the whole page: the bar names the next stop too.
+      const current = () => (d.querySelector("main h1")?.textContent ?? "");
+      if (title === "Second stop" && !current().includes("Second stop")) {
+        [...d.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Continue →")!.dispatchEvent(new dom.window.Event("click"));
+        await pause();
+      }
+      if (title === "First stop" && !current().includes("First stop")) {
+        [...d.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Previous")!.dispatchEvent(new dom.window.Event("click"));
+        await pause();
+      }
     },
   };
 }
@@ -118,7 +154,26 @@ describe("the guided walkthrough", () => {
     expect(page.errors).toEqual([]);
   });
 
+  it("opens on the Overview, the first step of the route", () => {
+    // Why the change exists comes before anything that asks for a judgement on it.
+    expect(page.route("Overview").className).toContain("is-active");
+    expect(page.text()).toContain("A problem.");
+  });
+
+  it("orders the route as a reviewer reads it", () => {
+    // What was checked comes second: it sets how hard to look at everything after it.
+    const labels = ["Overview", "Verification", "Risk cues", "Walk the change", "Open questions"];
+    const positions = labels.map((l) => page.routeLabels().indexOf(l));
+    expect(positions).toEqual([0, 1, 2, 3, 4]);
+  });
+
   describe("the overview keeps what belongs to the whole change", () => {
+    beforeAll(async () => { await page.goRoute("Overview"); });
+
+    it("continues forward along the route, never back", () => {
+      expect(page.text()).toContain("Next: Verification");
+    });
+
     it("shows an unanchored assumption and hides an anchored one", () => {
       // Nothing appears in both places: saying it twice is the waste this removes.
       expect(page.text()).toContain("GLOBAL assumption");
@@ -163,17 +218,174 @@ describe("the guided walkthrough", () => {
     });
   });
 
-  describe("the walkthrough nav", () => {
-    it("badges a core stop with how much is uncertain there", () => {
-      expect(page.stop("First stop").querySelector(".tag-warn")?.textContent).toBe("4");
+  describe("the review route", () => {
+    it("starts with a count of decision-changing cues", async () => {
+      await page.goRoute("Risk cues");
+      expect(page.route("Risk cues").querySelector(".tag-warn")?.textContent).toBe("4");
+      expect(page.text()).toContain("Risk cue 1 of 4");
     });
 
-    it("dims a supporting stop rather than hiding it", () => {
-      // Every coverage-required hunk must land in some stop, so hiding one would leave a
-      // reviewer unable to reach the code it explains.
-      expect(page.stop("Second stop").className).toContain("opacity-60");
-      expect(page.stop("Second stop")).toBeTruthy();
+    it("never prints an absent optional part as the text \"null\"", () => {
+      // The cue card once used Element.append, which stringifies null children.
+      expect(page.text()).not.toContain("null");
     });
+
+    it("pages to the last cue, so the count never promises one it cannot show", async () => {
+      for (let n = 1; n < 4; n++) await page.press("Next risk cue");
+      expect(page.text()).toContain("Risk cue 4 of 4");
+      expect(page.text()).toContain("GLOBAL unsettled");
+      await page.press("Previous risk cue");
+      expect(page.text()).toContain("Risk cue 3 of 4");
+    });
+
+    it("continues from the last cue to the first stop, so the walk skips nothing", async () => {
+      await page.press("Next risk cue");
+      expect(page.text()).toContain("Next: Walk the change");
+      [...page.doc.querySelectorAll(".route-next button")].find((b: any) => b.textContent.trim() === "Continue →")!
+        .dispatchEvent(new page.win.Event("click"));
+      await new Promise((r) => setTimeout(r, 150));
+      expect(page.doc.querySelector("main h1")?.textContent).toContain("First stop");
+    });
+
+    it("keeps every stop reachable through the walkthrough", async () => {
+      await page.go("Second stop");
+      expect(page.text()).toContain("Second stop");
+    });
+
+    it("hands the last stop over to the next route step", () => {
+      expect(page.text()).toContain("Next: Open questions");
+      expect(page.buttons()).toContain("Continue →");
+    });
+  });
+
+  describe("the open questions step", () => {
+    beforeAll(async () => { await page.goRoute("Open questions"); });
+
+    it("lists every open question, and links a code-tied one to its stop", () => {
+      expect(page.text()).toContain("ANCHORED question");
+      expect(page.text()).toContain("See it at T1 · First stop");
+    });
+
+    it("keeps what was already answered beside the open ones, marked resolved", () => {
+      expect(page.text()).toContain("Resolved during the session (1)");
+      expect(page.text()).toContain("ALREADY ASKED here");
+    });
+
+    it("ends the route at the review decision", () => {
+      expect(page.text()).toContain("Next: Submit review");
+    });
+  });
+
+  describe("the verification step", () => {
+    beforeAll(async () => { await page.goRoute("Verification"); });
+
+    it("separates what was checked from what was not, then leads on to Risk cues", () => {
+      expect(page.text()).toContain("GLOBAL unexercised");
+      expect(page.text()).toContain("Next: Risk cues");
+    });
+  });
+
+  describe("deciding on an item", () => {
+    let p: Awaited<ReturnType<typeof open>>;
+    beforeAll(async () => {
+      p = await open(makeDoc());
+      await p.goRoute("Open questions");
+    });
+
+    it("records a decision in one click, with nothing to write", async () => {
+      await p.click(p.button("Known, close it"));
+      expect(p.button("Known, close it")!.getAttribute("aria-pressed")).toBe("true");
+      expect(p.text()).toContain("Saved. It posts with your review.");
+    });
+
+    it("counts the step as done once everything in it is decided", () => {
+      const tag = p.route("Open questions").querySelector(".tag");
+      expect(tag?.className).toContain("tag-ok");
+    });
+
+    it("clears the decision on a second click", async () => {
+      await p.click(p.button("Known, close it"));
+      expect(p.button("Known, close it")!.getAttribute("aria-pressed")).toBe("false");
+      expect(p.route("Open questions").querySelector(".tag")?.textContent).toBe("1");
+    });
+
+    it("shows a decision wherever the item appears", async () => {
+      await p.goRoute("Risk cues");
+      await p.click(p.button("Blocks merge"));
+      await p.go("First stop");
+      const anchoredCard = [...p.doc.querySelectorAll("main .card")].find((c) => c.textContent?.includes("ANCHORED assumption"))!;
+      const pressed = [...anchoredCard.querySelectorAll("button[aria-pressed='true']")].map((b) => b.textContent);
+      expect(pressed).toEqual(["Blocks merge"]);
+    });
+
+    it("sends the decisions with the review, asks by @mention, and marks what was decided", async () => {
+      await p.go("First stop");
+      const q = [...p.doc.querySelectorAll("main .card")].find((c) => c.textContent?.includes("ANCHORED question"))!;
+      await p.click([...q.querySelectorAll("button")].find((b) => b.textContent === "Ask the author"));
+      await p.click([...p.doc.querySelectorAll(".route-rail button")].find((b) => b.textContent?.includes("Submit review")));
+      const body = (p.doc.querySelector("main textarea") as HTMLTextAreaElement).value;
+      expect(body).toContain("**Blocks merge**");
+      expect(body).toContain("**Questions for @octo**");
+      expect(body).toContain("**Q1** ANCHORED question");
+      // A blocking decision suggests Request changes rather than Approve.
+      expect(p.button("Request changes")!.className).toContain("btn-primary");
+      await p.click(p.button("Send without a verdict"));
+      const sent = p.posts.find((x) => x.url.includes("/api/review"))!.body;
+      expect(sent.event).toBe("COMMENT");
+      expect(sent.body).toMatch(/<!-- review-assist:decisions \{"A1":"block","Q1":"ask"\} -->$/);
+    });
+  });
+
+  describe("decisions already on the pull request", () => {
+    it("are read back from the review that carried them", async () => {
+      const p = await open(makeDoc(), { reviews: [
+        { id: 9, user: "alice", at: "2026-10-01T00:00:00Z", body: 'Looks fine.\n\n<!-- review-assist:decisions {"Q1":"accept"} -->' },
+      ] });
+      await p.goRoute("Open questions");
+      expect(p.text()).toContain("Closed as known by @alice");
+      expect(p.button("Known, close it")!.getAttribute("aria-pressed")).toBe("true");
+    });
+  });
+
+  describe("diagrams", () => {
+    let p: Awaited<ReturnType<typeof open>>;
+    beforeAll(async () => {
+      const doc = { ...makeDoc(), diagrams: [{ title: "THE FLOW", mermaid: "sequenceDiagram\n  A->>B: hi", caption: "WHAT IT SHOWS" }] };
+      p = await open(doc, { comments: [
+        { id: 3, user: "bob", at: "2026-10-02T00:00:00Z", body: "<!-- review-assist:diagram D1 -->\n**On diagram D1: THE FLOW**\n\nWHY THIS HOP" },
+        { id: 4, user: "carol", at: "2026-10-02T00:00:00Z", body: "unrelated PR chatter" },
+      ] });
+      await p.goRoute("Diagrams");
+    });
+
+    it("get their own step, right after the Overview", () => {
+      expect(p.routeLabels().slice(0, 3)).toEqual(["Overview", "Diagrams", "Verification"]);
+    });
+
+    it("say what the diagram shows and how to read it", () => {
+      expect(p.text()).toContain("THE FLOW");
+      expect(p.text()).toContain("WHAT IT SHOWS");
+      expect(p.text()).toContain("Read it top to bottom");
+    });
+
+    it("show the diagram's own comments from the PR, and nothing else", () => {
+      expect(p.text()).toContain("WHY THIS HOP");
+      expect(p.text()).not.toContain("unrelated PR chatter");
+      expect(p.text()).not.toContain("On diagram D1");
+    });
+
+    it("post a comment that reads back under the same diagram", async () => {
+      await p.click(p.button("Comment on this diagram"));
+      (p.doc.querySelector("main textarea") as HTMLTextAreaElement).value = "IS THIS HOP NEEDED";
+      await p.click(p.button("Post to PR"));
+      const sent = p.posts.find((x) => x.url.includes("/api/issue-comment"));
+      expect(sent?.body.body).toContain("<!-- review-assist:diagram D1 -->");
+      expect(sent?.body.body).toContain("IS THIS HOP NEEDED");
+    });
+  });
+
+  it("leaves Diagrams out of the route when the document has none", () => {
+    expect(page.routeLabels()).not.toContain("Diagrams");
   });
 
   describe("a stop with nothing flagged", () => {

@@ -19,6 +19,7 @@ import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 
 const VIEWER = fileURLToPath(new URL("..", import.meta.url));
 const DIST = join(VIEWER, "dist");
@@ -30,7 +31,10 @@ const RENDER_ORIGIN = "https://prerender.invalid";
 // to ship as public assets only because they sat in the served directory.
 const ASSETS = ["favicon.svg", "fonts", "schema", "styles.css", "robots.txt", "llms.txt", "social-preview.png", "blog"];
 
-const template = await readFile(join(VIEWER, "index.html"), "utf8");
+// A changed stylesheet gets a new URL so existing browser caches cannot mix builds.
+const cssVersion = createHash("sha256").update(await readFile(join(VIEWER, "styles.css"))).digest("hex").slice(0, 12);
+const template = (await readFile(join(VIEWER, "index.html"), "utf8"))
+  .replace('href="/styles.css"', `href="/styles.css?v=${cssVersion}"`);
 
 /** Run the page at `path` and return what its script put in #app, plus the release list. */
 async function render(path) {
@@ -159,7 +163,7 @@ const releases = home.releases;
 const articles = JSON.parse(new JSDOM(template, {
   url: RENDER_ORIGIN + "/blog/",
   runScripts: "dangerously",
-}).window.eval("JSON.stringify(ARTICLES.map(a => ({ slug: a.slug, title: a.title, summary: a.summary, date: a.date, hero: a.hero })))"));
+}).window.eval("JSON.stringify(ARTICLES.map(a => ({ slug: a.slug, title: a.title, summary: a.summary, date: a.date, modified: a.modified, hero: a.hero })))"));
 const index = await render("/blog/");
 await write("/blog/", page({
   path: "/blog/",
@@ -183,7 +187,7 @@ for (const a of articles) {
       description,
       image: ORIGIN + a.hero,
       datePublished: isoDate(a.date),
-      dateModified: isoDate(a.date),
+      dateModified: isoDate(a.modified ?? a.date),
       url: ORIGIN + path,
       author: { "@type": "Organization", name: "Review Assist", url: ORIGIN + "/" },
       publisher: { "@type": "Organization", name: "Review Assist", url: ORIGIN + "/" },

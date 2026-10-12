@@ -6,58 +6,83 @@
  * automatically. Light is the default; dark applies via the OS preference and can
  * be overridden by a [data-theme] attribute (the header toggle).
  *
- * No purple. One blue accent. Color carries meaning (add / remove / caution) only.
+ * One restrained blue accent, matched to the product mark. Color carries meaning
+ * (add / remove / caution) only.
  */
 
 :root {
-  --canvas: #fbfaf9;
+  /* Type scale: the only font sizes the site uses, seven steps of IBM Carbon's productive
+     type set (github.com/carbon-design-system/carbon, packages/type), which is drawn for
+     IBM Plex, the face this site uses. tailwind.config.js maps one utility to each and the
+     stylesheet applies those utilities, so a size is defined here once and nowhere else.
+     Reading content is 16px (Carbon body-02), the floor for text read on screen. 14px is for
+     labels, hints and metadata, never for content a reviewer reads. */
+  --text-micro: 0.75rem;     /* 12px  label-01, code-01: mono labels, chips, diff code */
+  --text-sm: 0.875rem;       /* 14px  body-01, code-02: metadata, hints, commands */
+  --text-base: 1rem;         /* 16px  body-02: all reading content, card and nav titles */
+  --text-title: 1.25rem;     /* 20px  heading-03: section and panel titles, lead paragraphs */
+  --text-heading: 1.75rem;   /* 28px  heading-04: page headings, the risk-cue question */
+  --text-display: 2.625rem;  /* 42px  heading-06: landing section and site page titles */
+  --text-hero: 3.375rem;     /* 54px  heading-07: the landing promise */
+}
+
+:root {
+  --canvas: #f7f9fc;
   --surface: #ffffff;
 
-  --ink-50:  #f7f6f5;
-  --ink-100: #efedeb;
-  --ink-200: #e4e1de;
-  --ink-300: #d3cfcb;
-  --ink-400: #a8a29e;
-  --ink-500: #78716c;
-  --ink-600: #57534e;
-  --ink-700: #44403c;
-  --ink-800: #292524;
-  --ink-900: #1c1917;
+  --ink-50:  #f1f5f9;
+  --ink-100: #e6edf5;
+  --ink-200: #d5e0eb;
+  --ink-300: #bccbd9;
+  --ink-400: #8294a6;
+  --ink-500: #637588;
+  --ink-600: #4a5d70;
+  --ink-700: #34475a;
+  --ink-800: #263848;
+  --ink-900: #172936;
 
-  --accent-50:  #eff5fd;
-  --accent-100: #dbe8fb;
-  --accent-600: #0a6ae0;
-  --accent-700: #0857b8;
+  --accent-50:  #eaf3f9;
+  --accent-100: #d4e6f2;
+  --accent-600: #256f9f;
+  --accent-700: #1d5b88;
   --accent-fg:  #ffffff;
 
-  --ok-fg: #1a7f37;
-  --ok-bg: #e6f4ea;
-  --ok-line: #e6ffec;
-  --ok-border: #b7e0c3;
-  --ok-strong: #116329;
+  --ok-fg: #16715d;
+  --ok-bg: #e5f4ee;
+  --ok-line: #e8f7f1;
+  --ok-border: #b9dfd0;
+  --ok-strong: #115e4e;
 
   --danger-fg: #cf222e;
   --danger-bg: #ffebe9;
   --danger-line: #ffdcd7;
 
-  --warn-fg: #8a6100;
-  --warn-bg: #fff8c5;
-  --warn-border: #e6c34a;
+  --warn-fg: #8a5700;
+  --warn-bg: #fff4dd;
+  --warn-border: #e8c47d;
 
   /* Hairline grid behind page mastheads. */
-  --grid-line: rgba(28, 25, 23, 0.055);
+  --grid-line: rgba(37, 82, 119, 0.06);
 
   /* Hero wash. The radial fades to the canvas at zero alpha, not the `transparent`
      keyword: `transparent` is rgba(0,0,0,0), so fading to it drags every stop through
      black and leaves a grey cast midway. */
-  --wash-top:  #eff5fd;
-  --wash-glow: #dbe8fb;
-  --wash-fade: rgba(251, 250, 249, 0);
+  --wash-top:  #eef6fb;
+  --wash-glow: #dcebf6;
+  --wash-fade: rgba(247, 249, 252, 0);
 
   /* Depth under the tilted hero demo. Light lifts with a shadow; dark can't (a shadow on
      a near-black canvas is invisible), so it lifts with a hairline rim instead. */
-  --lift:     rgba(28, 25, 23, 0.28);
+  --lift:     rgba(23, 41, 54, 0.24);
   --lift-rim: transparent;
+
+  /* Fixed-dark surfaces: the Intent Document card in the review-flow picture, and terminal
+     panes. They stay dark in both themes; only the rim and glow shift with the canvas. */
+  --spot-bg: #102641;
+  --spot-rim: #3e8fd6;
+  --spot-glow: rgba(70, 155, 235, 0.38);
+  --terminal-bg: #142131;
+  --flow-line: #6fb2f0;
 
   color-scheme: light;
 }
@@ -65,31 +90,31 @@
 /* Shared dark palette, applied both by OS preference and by explicit toggle. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --canvas: #131210;
-    --surface: #1b1a17;
+    --canvas: #101720;
+    --surface: #17212c;
 
-    --ink-50:  #1e1c19;
-    --ink-100: #262320;
-    --ink-200: #343029;
-    --ink-300: #443f38;
-    --ink-400: #6f6862;
-    --ink-500: #a29b93;
-    --ink-600: #c2bcb4;
-    --ink-700: #d7d1c9;
-    --ink-800: #e8e3dc;
-    --ink-900: #f4f1ec;
+    --ink-50:  #18222d;
+    --ink-100: #202d39;
+    --ink-200: #2c3b49;
+    --ink-300: #405366;
+    --ink-400: #74899e;
+    --ink-500: #afbfce;
+    --ink-600: #c8d4df;
+    --ink-700: #dbe5ed;
+    --ink-800: #e9f0f5;
+    --ink-900: #f5f8fb;
 
-    --accent-50:  #14273c;
-    --accent-100: #17324f;
-    --accent-600: #2f80ed;
-    --accent-700: #4d97ff;
+    --accent-50:  #14334a;
+    --accent-100: #194662;
+    --accent-600: #5aaee5;
+    --accent-700: #82c5ed;
     --accent-fg:  #ffffff;
 
-    --ok-fg: #3fb950;
-    --ok-bg: #10251a;
-    --ok-line: #10251a;
-    --ok-border: #1f5130;
-    --ok-strong: #57d97a;
+    --ok-fg: #69c7b0;
+    --ok-bg: #102923;
+    --ok-line: #102923;
+    --ok-border: #205247;
+    --ok-strong: #7dd5c0;
 
     --danger-fg: #ff7b72;
     --danger-bg: #291414;
@@ -101,45 +126,51 @@
 
     --grid-line: rgba(244, 241, 236, 0.045);
 
-    /* Dark takes the wash down to a hint: accent-50/100 are saturated navy, and a navy band
-       over this warm near-black canvas reads as a second surface rather than a glow. */
-    --wash-top:  #171a20;
-    --wash-glow: #1a2839;
-    --wash-fade: rgba(19, 18, 16, 0);
+    /* Dark takes the wash down to a hint: a saturated accent band over this near-black
+       canvas reads as a second surface rather than a glow. */
+    --wash-top:  #13202c;
+    --wash-glow: #18354b;
+    --wash-fade: rgba(16, 23, 32, 0);
 
     --lift:     rgba(0, 0, 0, 0.6);
     --lift-rim: rgba(244, 241, 236, 0.07);
+
+    --spot-bg: #12304f;
+    --spot-rim: #4f9fe2;
+    --spot-glow: rgba(70, 155, 235, 0.30);
+    --terminal-bg: #0b131c;
+    --flow-line: #5aaee5;
 
     color-scheme: dark;
   }
 }
 
 [data-theme="dark"] {
-  --canvas: #131210;
-  --surface: #1b1a17;
+  --canvas: #101720;
+  --surface: #17212c;
 
-  --ink-50:  #1e1c19;
-  --ink-100: #262320;
-  --ink-200: #343029;
-  --ink-300: #443f38;
-  --ink-400: #6f6862;
-  --ink-500: #a29b93;
-  --ink-600: #c2bcb4;
-  --ink-700: #d7d1c9;
-  --ink-800: #e8e3dc;
-  --ink-900: #f4f1ec;
+  --ink-50:  #18222d;
+  --ink-100: #202d39;
+  --ink-200: #2c3b49;
+  --ink-300: #405366;
+  --ink-400: #74899e;
+  --ink-500: #afbfce;
+  --ink-600: #c8d4df;
+  --ink-700: #dbe5ed;
+  --ink-800: #e9f0f5;
+  --ink-900: #f5f8fb;
 
-  --accent-50:  #14273c;
-  --accent-100: #17324f;
-  --accent-600: #2f80ed;
-  --accent-700: #4d97ff;
+  --accent-50:  #14334a;
+  --accent-100: #194662;
+  --accent-600: #5aaee5;
+  --accent-700: #82c5ed;
   --accent-fg:  #ffffff;
 
-  --ok-fg: #3fb950;
-  --ok-bg: #10251a;
-  --ok-line: #10251a;
-  --ok-border: #1f5130;
-  --ok-strong: #57d97a;
+  --ok-fg: #69c7b0;
+  --ok-bg: #102923;
+  --ok-line: #102923;
+  --ok-border: #205247;
+  --ok-strong: #7dd5c0;
 
   --danger-fg: #ff7b72;
   --danger-bg: #2a1416;
@@ -151,14 +182,20 @@
 
   --grid-line: rgba(244, 241, 236, 0.045);
 
-  /* Dark takes the wash down to a hint: accent-50/100 are saturated navy, and a navy band
-     over this warm near-black canvas reads as a second surface rather than a glow. */
-  --wash-top:  #171a20;
-  --wash-glow: #1a2839;
-  --wash-fade: rgba(19, 18, 16, 0);
+  /* Dark takes the wash down to a hint: a saturated accent band over this near-black
+     canvas reads as a second surface rather than a glow. */
+  --wash-top:  #13202c;
+  --wash-glow: #18354b;
+  --wash-fade: rgba(16, 23, 32, 0);
 
   --lift:     rgba(0, 0, 0, 0.6);
   --lift-rim: rgba(244, 241, 236, 0.07);
+
+  --spot-bg: #12304f;
+  --spot-rim: #4f9fe2;
+  --spot-glow: rgba(70, 155, 235, 0.30);
+  --terminal-bg: #0b131c;
+  --flow-line: #5aaee5;
 
   color-scheme: dark;
 }

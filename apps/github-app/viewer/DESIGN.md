@@ -39,8 +39,12 @@ Layout & components
   item. Neutral states are grey. Color carries meaning (add/remove/warn), never decoration.
 - **Light theme** on a warm-neutral canvas (`stone`), near-black text (`#1c1917`), AA contrast.
 - **Borders, not shadows.** Elevation is a 1px border + a faint surface shift. No `box-shadow`.
-- **Type**: IBM Plex Sans (UI) + IBM Plex Mono (code/IDs). 15–16px body, 1.6 line-height.
-  Deliberate scale; headings by weight, not size alone.
+- **Type**: IBM Plex Sans (UI) + IBM Plex Mono (code/IDs). Seven sizes, taken from IBM
+  Carbon's productive type set (drawn for Plex): 12, 14, 16, 20, 28, 42, 54px, each with
+  Carbon's line height. They are defined once, as tokens in `src/brand.css`, and reach
+  markup only through the Tailwind utilities mapped to them (`text-micro` … `text-hero`).
+  Reading content is 16px; 14px is for labels, hints and metadata, never content. No
+  one-off sizes: `test/type-scale.test.ts` fails on a `text-[…]` size or a raw `font-size`.
 - **Spacing**: 4px base grid, generous; measure capped ~72ch for prose.
 - **Radius**: 6px (`rounded-md`). No pills for buttons; no fully-round chips.
 - **Labels are plain and functional**: "Overview", "Walkthrough", "Reviewer note",
