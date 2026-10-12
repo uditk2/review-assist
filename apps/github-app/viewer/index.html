@@ -26,22 +26,6 @@
   "mainEntity": [
     {
       "@type": "Question",
-      "name": "Why is this needed?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "AI agents now write code faster than any team can read it by hand. The context that makes review fast (what was asked, what was tried and abandoned, what was actually verified) disappears the moment the pull request opens. Review Assist captures it at the source: the agent's session becomes an Intent Document, a validator proves it actually covers the diff, and a GitHub App renders it as a guided review on the pull request."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "How does it work?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Your agent distills its session into an Intent Document as it commits. Every push, the GitHub App validates that document against the diff and names anything unexplained. Reviewers get a guided walkthrough: assumptions first, then the diff anchored stop by stop. See the architecture and internals doc at https://github.com/uditk2/review-assist/blob/main/docs/ARCHITECTURE.md for how the pieces fit together."
-      }
-    },
-    {
-      "@type": "Question",
       "name": "Is Review Assist free?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -54,14 +38,6 @@
       "acceptedAnswer": {
         "@type": "Answer",
         "text": "No. Your session transcript never leaves your machine. The GitHub App has no database: it reads the Intent Document and diff from GitHub per request, holds them in memory for that request, and serves them private, no-store to your browser. Nothing is written down, but your code does pass through the hosted service in transit. Self-host the App if that matters to you."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I self-host it?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Review Assist is fully open source. Run the GitHub App on your own infrastructure if you'd rather your diffs never pass through the hosted service, even in transit."
       }
     },
     {
@@ -158,29 +134,6 @@
   }
 </script>
 <link rel="stylesheet" href="/styles.css" />
-<style>
-html[data-route="pr"] [data-prerendered]{display:none}
-.rev-line{position:relative}
-.rev-line.is-sel{box-shadow:inset 3px 0 0 var(--accent-600);background:var(--accent-50)}
-.rev-range{font-size:.78rem;color:var(--ink-500);margin-bottom:.25rem}
-.rev-add{position:absolute;top:0;right:.25rem;height:100%;display:flex;align-items:center;padding:0 .45rem;border:0;background:none;color:var(--ink-400);font-weight:700;cursor:pointer;opacity:0;transition:opacity .1s}
-.rev-line:hover .rev-add{opacity:1}
-.rev-add:hover{color:var(--accent-600)}
-.rev-thread{margin:.4rem 0 .6rem;border:1px solid var(--ink-200);border-radius:8px;background:var(--ink-50);padding:.45rem .7rem}
-.rev-comment{padding:.4rem 0;border-bottom:1px solid var(--ink-200)}
-.rev-comment:last-of-type{border-bottom:0}
-.rev-meta{display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:var(--ink-500);margin-bottom:.15rem}
-.rev-author{font-weight:600;color:var(--ink-700)}
-.rev-link{margin-left:auto;color:var(--ink-400);text-decoration:none}
-.rev-link:hover{color:var(--accent-600)}
-.rev-body{white-space:pre-wrap;color:var(--ink-800);font-size:.9rem;line-height:1.45}
-.rev-reply-toggle{margin-top:.35rem;border:0;background:none;color:var(--ink-500);font-size:.8rem;cursor:pointer;padding:0}
-.rev-reply-toggle:hover{color:var(--accent-600)}
-.rev-composer{margin:.4rem 0 .6rem}
-.rev-textarea{width:100%;box-sizing:border-box;border:1px solid var(--ink-300);border-radius:8px;background:var(--canvas);color:var(--ink-800);padding:.5rem .6rem;font:inherit;font-size:.9rem;resize:vertical}
-.rev-actions{display:flex;align-items:center;gap:.5rem;margin-top:.4rem}
-.rev-status{font-size:.8rem;color:var(--ink-500)}
-</style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js" onload="window.__onMermaid&&window.__onMermaid()"></script>
 </head>
 <body>
@@ -272,9 +225,25 @@ function runMermaid(){
   try{
     const dark = currentTheme() === "dark";
     if(window.__mmTheme !== (dark ? "dark" : "light")){
-      window.mermaid.initialize({ startOnLoad:false, securityLevel:"strict",
-        theme: dark ? "dark" : "neutral",
-        flowchart:{ useMaxWidth:true }, sequence:{ useMaxWidth:true } });
+      // Drawn in the site's own palette and type, read from the live tokens, so a diagram
+      // matches the page around it in both themes instead of Mermaid's stock look.
+      const t = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+      // Mermaid wants pixels; the body token is in rem.
+      const px = n => parseFloat(t(n)) * parseFloat(getComputedStyle(document.documentElement).fontSize) + "px";
+      window.mermaid.initialize({ startOnLoad:false, securityLevel:"strict", theme:"base",
+        themeVariables:{
+          darkMode: dark, fontFamily:'"IBM Plex Sans", system-ui, sans-serif', fontSize:px("--text-base"),
+          background:t("--surface"), textColor:t("--ink-800"), lineColor:t("--ink-500"),
+          primaryColor:t("--accent-50"), primaryBorderColor:t("--accent-600"), primaryTextColor:t("--ink-900"),
+          secondaryColor:t("--ink-50"), tertiaryColor:t("--surface"),
+          actorBkg:t("--accent-50"), actorBorder:t("--accent-600"), actorTextColor:t("--ink-900"), actorLineColor:t("--ink-300"),
+          signalColor:t("--ink-700"), signalTextColor:t("--ink-800"),
+          labelBoxBkgColor:t("--ink-50"), labelBoxBorderColor:t("--ink-300"), labelTextColor:t("--ink-800"), loopTextColor:t("--ink-700"),
+          noteBkgColor:t("--warn-bg"), noteBorderColor:t("--warn-border"), noteTextColor:t("--ink-800"),
+          activationBkgColor:t("--accent-100"), activationBorderColor:t("--accent-600"),
+        },
+        flowchart:{ useMaxWidth:true, curve:"basis" },
+        sequence:{ useMaxWidth:true, mirrorActors:false, actorMargin:64, boxMargin:12, messageMargin:40 } });
       window.__mmTheme = dark ? "dark" : "light";
     }
     const nodes = [...document.querySelectorAll(".mermaid:not([data-processed])")];
@@ -290,7 +259,65 @@ const CONF = {
 };
 const titleCase = s => String(s||"").replace(/_/g," ");
 
-let STATE = { data:null, files:[], coverage:null, ordered:[], view:"overview", stopIndex:0, acks:{}, me:null, comments:[], composer:null, composerSeed:"", posted:{}, reviewSubmitted:null, selAnchor:null };
+let STATE = { data:null, files:[], coverage:null, ordered:[], view:"overview", stopIndex:0, cueIndex:0, decisions:{}, recorded:{}, noteOpen:null, discussion:[], me:null, comments:[], composer:null, reviewSubmitted:null, selAnchor:null };
+
+/** The review route is deliberately derived from the document rather than hard-coded in
+ * two navs. Desktop's rail and mobile's scroll strip therefore always tell the same story.
+ * The order is the reading order: why the change exists, then what was and was not checked
+ * (which sets how hard to look at everything after it), then what could change the
+ * decision, the code, and what is still open. */
+function reviewRoute(doc){
+  const questions = doc.open_questions || [];
+  const cues = reviewCues(doc);
+  const gaps = (doc.verification?.not_verified || []).length;
+  // Risk cues and open questions count what is still to decide, so the rail shows progress;
+  // `total` lets an all-decided step show a check instead of an empty count.
+  const undecided = xs => xs.filter(x => !isDecided(decisionKey(x))).length;
+  const diagrams = doc.diagrams || [];
+  return [
+    { key:"overview", label:"Overview", count:0, detail:"What the change is for, and how it was approached." },
+    // Right after the why: a picture of how the pieces fit makes everything after it easier.
+    ...(diagrams.length ? [{ key:"diagrams", label:"Diagrams", count:diagrams.length, detail:"How the change fits together, drawn out." }] : []),
+    { key:"verify", label:"Verification", count:gaps, detail:"What was checked, and what was not." },
+    { key:"route", label:"Risk cues", count:undecided(cues.map(c => c.data)), total:cues.length, detail:"Review what could change the decision." },
+    { key:"tour", label:"Walk the change", count:STATE.ordered.length, detail:"Follow the important changes in context." },
+    { key:"questions", label:"Open questions", count:undecided(questions), total:questions.length, detail:"See what the session could not settle." },
+  ];
+}
+
+/** Where Continue goes from a route step: the next step, then Submit for a signed-in
+ *  reviewer. One function, so no view can send the reader backwards along the route. */
+function nextRouteStep(doc, key){
+  const route = reviewRoute(doc);
+  const next = route[route.findIndex(s => s.key === key) + 1];
+  if (next) return { label: next.label, go: () => { STATE.view = next.key; if (next.key === "tour") STATE.stopIndex = 0; render(); } };
+  return STATE.me ? { label: "Submit review", go: () => { STATE.view = "submit"; render(); } } : null;
+}
+/** The route's navigation bar, shared by every step. It is fixed to the bottom of the
+ *  window (see .route-next), so Continue sits in the same place on every step however
+ *  long or short that step's content is. */
+function routeBar(nextLabel, ...buttons){
+  return el("div",{class:"route-next"},
+    el("p",{}, el("strong",{},"Next: "), nextLabel),
+    el("div",{class:"route-next-actions"}, ...buttons));
+}
+const continueButton = go => el("button",{class:"btn-primary", onclick:go}, "Continue →");
+function routeNextBar(doc, key){
+  const next = nextRouteStep(doc, key);
+  return next ? routeBar(next.label, continueButton(next.go)) : null;
+}
+
+/** Everything that could change the review decision, in the order the route visits it:
+ * unverified assumptions, then questions nobody settled. The rail's count and the cue pager
+ * both read this one list, so "cue 1 of N" can never point at a cue the pager cannot reach.
+ * Open questions and verification gaps have route steps of their own. */
+function reviewCues(doc){
+  const cue = kind => x => ({ kind, data:x, anchors:x.anchors || [] });
+  return [
+    ...(doc.assumptions || []).filter(a => (a.confidence || "unverified") === "unverified").map(cue("assumption")),
+    ...(doc.unresolved || []).map(cue("unresolved")),
+  ];
+}
 
 /** Editorial articles and release notes have separate, crawlable route families. */
 function parseBlogRoute() {
@@ -310,6 +337,11 @@ const isInstalledRoute = () => /^\/installed\/?$/.test(location.pathname);
 /** Anchored exactly like PR_ROUTE in <head>: that test decides whether analytics loads and
  *  when a hash change forces a reload, so the two must never disagree about a PR route. */
 function parseHash() {
+  // The public sample is self-contained, so the landing page remains useful on a static
+  // host as well as behind the local mock server. Keep it distinct from a real PR route:
+  // analytics may still measure the landing-to-sample transition, while real PR data never
+  // reaches those tools.
+  if (location.hash === "#sample") return { sample:true };
   const m = /^#([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(location.hash);
   return m ? { owner:m[1], repo:m[2], pull:m[3] } : null;
 }
@@ -372,6 +404,10 @@ async function boot() {
   }
 
   const ref = parseHash();
+  if (ref.sample) {
+    STATE.me = null;
+    return openReview(sampleReviewData(), false);
+  }
   app.replaceChildren(centered(el("p",{class:"text-ink-500"},"Loading…")));
   try { STATE.me = (await (await fetch("/api/me")).json()).login; } catch {}
   const res = await fetch(`/api/document?owner=${encodeURIComponent(ref.owner)}&repo=${encodeURIComponent(ref.repo)}&pull=${ref.pull}`);
@@ -382,6 +418,12 @@ async function boot() {
     el("h1",{},"No Intent Document"),
     el("p",{class:"max-w-prose text-ink-500"},"This pull request has no .intent document on its head commit. The authoring agent should generate one before review.")));
 
+  openReview(data);
+}
+
+/** Populate the reviewer shell from either GitHub data or the public static sample. The
+ * shared initializer keeps their navigation, coverage and review route identical. */
+function openReview(data, fetchComments = true) {
   STATE.data = data;
   STATE.files = parseUnifiedDiff(data.diff || "");
   STATE.ordered = orderTour(data.document.tour || []);
@@ -393,10 +435,12 @@ async function boot() {
     for (const a of stop.anchors || []) if (a && a.id && !(a.id in STATE.stopOfHunk)) STATE.stopOfHunk[a.id] = i;
   });
   STATE.coverage = computeCoverage(data.document.tour || [], STATE.files);
-  STATE.view = "overview"; STATE.stopIndex = 0;
+  STATE.view = "overview"; STATE.stopIndex = 0; STATE.cueIndex = 0;
   STATE.comments = []; STATE.composer = null; STATE.reviewSubmitted = null;
+  STATE.decisions = loadDecisions(); STATE.recorded = {}; STATE.noteOpen = null; STATE.discussion = [];
   render();
-  loadComments().then(render); // overlay PR review comments once fetched
+  // Overlay PR review comments, and the decisions and diagram comments already on the PR.
+  if (fetchComments) Promise.all([loadComments(), loadDiscussion()]).then(render);
 }
 
 function centered(...kids){ return el("div",{class:"mx-auto flex min-h-screen max-w-prose flex-col items-start justify-center gap-3 px-6"}, ...kids); }
@@ -408,8 +452,8 @@ const MCPB_DOWNLOAD = REPO_URL + "/releases/latest/download/review-assist-mcp.mc
 /** Every "Install the GitHub App" button. The placement tag is what tells the hero's CTA
  *  apart from the install step's when reading the funnel. GitHub's own install pages are
  *  out of reach, so this click is the last step the site can see before the Setup URL. */
-function installAppLink(placement, label = "Install the GitHub App →"){
-  return el("a",{class:"btn-primary", href:APP_INSTALL,
+function installAppLink(placement, label = "Install the GitHub App →", cls = "btn-primary"){
+  return el("a",{class:cls, href:APP_INSTALL,
     onclick:()=>track("install_app_click", { install_cta: placement })}, label);
 }
 
@@ -418,12 +462,27 @@ function installAppLink(placement, label = "Install the GitHub App →"){
 function jumpLink(id, cls, ...kids){
   return el("a",{class:cls, href:"#"+id, onclick:(e)=>{
     e.preventDefault();
-    document.getElementById(id)?.scrollIntoView({behavior:"smooth"});
+    const target = document.getElementById(id);
+    if (target) target.scrollIntoView({behavior:"smooth"});
+    else location.hash = "#"+id;
+  }}, ...kids);
+}
+
+/** A real review, with the complete guided-review shell, that needs no GitHub account or
+ * development server. This is intentionally a route instead of a hero scroll: a visitor
+ * who presses the CTA gets a clear state change and can use every review interaction.
+ * The placement tag tells the funnel which of the page's sample links was used. */
+function sampleReviewLink(placement, cls, ...kids){
+  return el("a",{class:cls, href:"#sample", onclick:(e)=>{
+    e.preventDefault();
+    track("sample_review_open", { sample_cta:placement });
+    if (location.hash === "#sample") boot();
+    else location.hash = "#sample";
   }}, ...kids);
 }
 
 function copyIcon(){
-  return `<svg width="14" height="14" viewBox="0 0 16 16" class="fill-none stroke-ink-500" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  return `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <rect x="5.5" y="5.5" width="8" height="8" rx="1.2"></rect>
     <path d="M3 10.5V3.7C3 3.3 3.3 3 3.7 3H10"></path>
   </svg>`;
@@ -435,11 +494,11 @@ function chevronIcon(){
   </svg>`;
 }
 
-function codeBlock(text, onCopy){
-  const body = el("div",{class:"diff-body"});
-  for (const line of String(text).split("\n")) body.append(el("code",{class:"diff-line is-ctx"}, line));
-  const copyBtn = el("button",{
-    class:"flex items-center gap-1.5 font-mono text-micro text-ink-500 hover:text-accent-600",
+/** The copy control shared by every command block. The icon follows the button's text
+ *  colour, so the same control works on the light code block and the dark setup one. */
+function copyButton(text, onCopy, cls){
+  return el("button",{
+    class:cls,
     title:"Copy to clipboard",
     onclick: async (e) => {
       onCopy?.();
@@ -451,62 +510,90 @@ function codeBlock(text, onCopy){
       setTimeout(() => { label.innerHTML = prevHtml; }, 1200);
     }},
     el("span",{class:"copy-label", html: copyIcon()}));
+}
+
+function codeBlock(text, onCopy){
+  const body = el("div",{class:"diff-body"});
+  for (const line of String(text).split("\n")) body.append(el("code",{class:"diff-line is-ctx"}, line));
+  const copyBtn = copyButton(text, onCopy, "flex items-center gap-1.5 font-mono text-micro text-ink-500 hover:text-accent-600");
   return el("div",{class:"diff"}, el("div",{class:"diff-file"}, el("span",{}, "Terminal"), copyBtn), body);
 }
 
-/** Which surface registers the server — three different answers, so three tabs instead of
- *  stacking every command and caveat into one block regardless of which agent a reader uses.
- *  Self-contained: repaints its own DOM on click, the same pattern as the hero demo. */
-function installTabs(){
-  const copied = agent => () => track("mcp_command_copy", { agent });
-  const tabs = [
-    { key:"claude-code", label:"Claude Code", render: () => el("div",{},
-        codeBlock("claude mcp add -s user review-assist -- npx -y review-assist-mcp", copied("claude-code")),
-        el("p",{class:"mt-2 text-sm text-ink-500", html:richHtml(
-          "Editor launched from the Dock? `npx` is not on a GUI app’s PATH — [use the form in the README](" + REPO_URL + "#claude-code).")})) },
-    { key:"codex", label:"Codex", render: () => el("div",{},
-        codeBlock("codex mcp add review-assist -- npx -y review-assist-mcp", copied("codex"))) },
-    { key:"claude-desktop", label:"Claude Desktop", render: () => el("div",{},
-        el("p",{class:"text-sm text-ink-600"}, "No terminal needed: download the bundle and open it — Claude Desktop installs the server automatically."),
-        el("a",{class:"btn-primary mt-3", href:MCPB_DOWNLOAD, onclick:()=>track("mcpb_download")}, "Download the .mcpb →")) },
-  ];
-  let active = tabs[0].key;
-  const bar = el("div",{class:"mb-3 flex gap-1 border-b border-ink-200"});
-  const content = el("div",{});
-  function paint(){
-    bar.replaceChildren(...tabs.map(t => el("button",{
-      class:"-mb-px border-b-2 px-3 py-2 text-sm font-medium "
-        + (t.key===active ? "border-accent-600 text-ink-900" : "border-transparent text-ink-500 hover:text-ink-900"),
-      onclick: () => { active = t.key; paint(); }
-    }, t.label)));
-    content.replaceChildren(tabs.find(t => t.key===active).render());
-  }
-  paint();
-  return el("div",{}, bar, content);
+/** One shell command, set as the terminal it will be pasted into. */
+function commandBlock(text, onCopy){
+  return el("div",{class:"command-block"},
+    el("code",{}, text),
+    copyButton(text, onCopy, "command-copy"));
 }
 
-/** One small line icon per hero proof point and per logo mark: no fill, currentColor via
- *  the accent stroke class, so it repaints for dark mode. */
-function proofIcon(kind){
-  const a = 'width="18" height="18" viewBox="0 0 20 20" class="fill-none stroke-accent-600" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
-  if (kind === "target") return `<svg ${a}>
-    <circle cx="10" cy="10" r="7"></circle>
-    <circle cx="10" cy="10" r="3.4"></circle>
-    <circle cx="10" cy="10" r="0.9" fill="var(--accent-600)" stroke="none"></circle>
-  </svg>`;
-  if (kind === "no-db") return `<svg ${a}>
-    <ellipse cx="10" cy="5.5" rx="6" ry="2.2"></ellipse>
-    <path d="M4 5.5v9c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2v-9"></path>
-    <path d="M4 10c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2"></path>
-    <path d="M3.2 3.2l13.6 13.6"></path>
-  </svg>`;
-  if (kind === "server") return `<svg ${a}>
-    <rect x="3" y="3" width="14" height="6" rx="1.4"></rect>
-    <rect x="3" y="11" width="14" height="6" rx="1.4"></rect>
-    <circle cx="6.2" cy="6" r="0.55" fill="var(--accent-600)" stroke="none"></circle>
-    <circle cx="6.2" cy="14" r="0.55" fill="var(--accent-600)" stroke="none"></circle>
-  </svg>`;
-  return "";
+/** Where each coding agent gets the MCP server. One list, read by the setup flow on the
+ *  landing page and by the post-install page, so the commands cannot drift apart. */
+const AGENTS = [
+  { key:"claude-code", label:"Claude Code", icon:"burst",
+    command:"claude mcp add -s user review-assist -- npx -y review-assist-mcp",
+    note:"Launched your editor from the Dock? A GUI app can’t see `npx` on its PATH, so [use the form in the README](" + REPO_URL + "#claude-code)." },
+  { key:"codex", label:"Codex", icon:"terminal",
+    command:"codex mcp add review-assist -- npx -y review-assist-mcp" },
+  { key:"claude-desktop", label:"Claude Desktop", icon:"desktop" },
+];
+
+/** Pick the agent, get its one command. Three answers to "where do you write code?", so a
+ *  reader sees only their own command and caveat. Self-contained: repaints its own DOM on
+ *  click, the same pattern as the hero demo. */
+function agentPicker(){
+  let active = AGENTS[0].key;
+  const root = el("div",{class:"agent-picker"});
+  function paint(){
+    const agent = AGENTS.find(a => a.key === active);
+    root.replaceChildren(
+      el("div",{class:"agent-options", role:"group", "aria-label":"Coding agent"},
+        ...AGENTS.map(a => el("button",{class:"agent-option"+(a.key===active ? " is-active" : ""),
+          "aria-pressed":String(a.key===active), onclick:()=>{ active = a.key; paint(); }},
+          el("span",{class:"agent-icon", html:lineIcon(a.icon, 22)}),
+          el("span",{class:"agent-text"}, el("span",{class:"agent-name"}, a.label), el("span",{class:"agent-sub"}, "Add the Review Assist MCP server")),
+          el("span",{class:"agent-radio"})))),
+      agent.command
+        ? el("div",{},
+            el("p",{class:"agent-label"}, "Run this command in your terminal:"),
+            commandBlock(agent.command, () => track("mcp_command_copy", { agent: agent.key })),
+            agent.note ? el("p",{class:"agent-note", html:richHtml(agent.note)}) : null)
+        : el("div",{},
+            el("p",{class:"agent-label"}, "No terminal needed: download the bundle and open it, and Claude Desktop installs the server automatically."),
+            el("a",{class:"btn-primary", href:MCPB_DOWNLOAD, onclick:()=>track("mcpb_download")}, "Download the .mcpb →")),
+      el("p",{class:"agent-note"}, "Your agent uses it to turn the session’s decisions and assumptions into an Intent Document."));
+  }
+  paint();
+  return root;
+}
+
+/** Line icons on a 20px grid, stroked in currentColor so the surrounding text colour, and so
+ *  the theme, paints them. One set, shared by the landing page, the setup flow and the review
+ *  route, so the same idea never gets two different shapes. */
+const LINE_ICONS = {
+  "target": '<circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.4"/><circle cx="10" cy="10" r=".9" fill="currentColor" stroke="none"/>',
+  "warning": '<path d="M10 3.2 17.4 16H2.6Z"/><path d="M10 8.3v3.6"/><circle cx="10" cy="13.9" r=".8" fill="currentColor" stroke="none"/>',
+  "check-circle": '<circle cx="10" cy="10" r="7.2"/><path d="m6.8 10.2 2.2 2.2 4.3-4.6"/>',
+  "check": '<path d="m4.8 10.4 3.4 3.4 7-7.4"/>',
+  "chevron-left": '<path d="m12 5-5 5 5 5"/>',
+  "chevron-right": '<path d="m8 5 5 5-5 5"/>',
+  "terminal": '<path d="m5 7 3 3-3 3"/><path d="M10.5 13.5H15"/>',
+  "branch": '<circle cx="6" cy="4.8" r="1.8"/><circle cx="6" cy="15.2" r="1.8"/><circle cx="14" cy="7" r="1.8"/><path d="M6 6.6v6.8"/><path d="M14 8.8c0 3-4.6 2.4-7.4 5"/>',
+  "sparkle": '<path fill="currentColor" stroke="none" d="M8.5 3c.5 3.6 2.9 6 6.5 6.5-3.6.5-6 2.9-6.5 6.5-.5-3.6-2.9-6-6.5-6.5C5.6 9 8 6.6 8.5 3Z"/><path fill="currentColor" stroke="none" d="M15.5 1.5c.2 1.4 1 2.2 2.5 2.5-1.4.2-2.2 1-2.5 2.5-.2-1.4-1-2.2-2.5-2.5 1.4-.2 2.2-1 2.5-2.5Z"/>',
+  "document": '<path d="M5 2.8h6.5L15 6.3v10.9H5Z"/><path d="M11.5 2.8v3.5H15"/><path d="M7.5 10h5M7.5 13h5"/>',
+  "people": '<circle cx="7.5" cy="7" r="2.8"/><path d="M2.5 16.2c.5-2.7 2.5-4.2 5-4.2s4.5 1.5 5 4.2"/><path d="M12.8 4.5a2.7 2.7 0 0 1 0 5.2"/><path d="M14.4 12.3c1.6.5 2.7 1.8 3.1 3.9"/>',
+  "burst": '<path d="M10 2.5v15M2.5 10h15M4.7 4.7l10.6 10.6M15.3 4.7 4.7 15.3"/>',
+  "desktop": '<rect x="2.5" y="3.5" width="15" height="10" rx="1.5"/><path d="M7 17h6M10 13.5V17"/>',
+  "book": '<path d="M10 5.2C8.4 3.9 6.2 3.5 3.5 3.7v11.6c2.7-.2 4.9.2 6.5 1.5 1.6-1.3 3.8-1.7 6.5-1.5V3.7c-2.7-.2-4.9.2-6.5 1.5Z"/><path d="M10 5.2v11.6"/>',
+  "comment": '<path d="M3.5 4.5h13v9h-7l-3.6 3v-3H3.5Z"/><path d="M7 8.2h6M7 10.8h4"/>',
+  "repo": '<ellipse cx="10" cy="5" rx="6" ry="2.3"/><path d="M4 5v10c0 1.3 2.7 2.3 6 2.3s6-1 6-2.3V5"/><path d="M4 10c0 1.3 2.7 2.3 6 2.3s6-1 6-2.3"/>',
+};
+function lineIcon(name, size = 18){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${LINE_ICONS[name] || ""}</svg>`;
+}
+
+/** GitHub's own mark (Octicons, MIT), for the one place that names the GitHub App. */
+function githubMark(size = 20){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>`;
 }
 
 /** The real logo, supplied as two designed SVGs (light and dark). Both are inlined and
@@ -598,64 +685,37 @@ function renderLanding(){
       // sits there, tilted. Every section on the page shares this one width, header
       // included — nothing here is narrower than what's below it.
       el("div",{class:"mx-auto max-w-[92rem] px-6"},
-      el("section",{class:"grid-field"},
-        el("div",{class:"grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,32rem)_minmax(0,1fr)] lg:items-start lg:gap-12"},
+      el("section",{class:"contour-field"},
+        el("div",{class:"grid grid-cols-1 gap-10 py-8 lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:items-center lg:gap-12 lg:py-16"},
           el("div",{},
-            el("p",{class:"mb-3 inline-flex w-fit items-center rounded-full border border-accent-100 bg-accent-50 px-3 py-1 font-mono text-micro text-accent-700"},
-              "Free, open-source AI code review"),
-            el("h1",{class:"mb-6 text-[2.25rem] leading-tight lg:text-[2.75rem]"},
-              "Review AI-written code ", el("span",{class:"text-accent-600"}, "as fast as agents write it.")),
-            // What the reviewer gets comes first; how it is produced (an MCP server, the
-            // session) is one clause later, for the reader who has decided to care.
-            el("p",{class:"text-[1.05rem] text-ink-700", html: richHtml(
-              "Review Assist puts a **guided review** on the pull requests your coding agent writes: what was asked, the assumptions to check first, what was tested and what wasn’t, and a walkthrough of the diff that says why each change is there.")}),
-            el("p",{class:"mt-3 text-[1.05rem] text-ink-700", html: richHtml(
-              "It is written from the agent’s own session, before that context is lost, and checked against the diff: a change nothing explains gets flagged, not skipped. **Free and open source.**")}),
+            el("p",{class:"mb-4"}, el("span",{class:"free-pill"}, "Free & open source")),
+            el("h1",{class:"promise-title mb-5"}, "AI code review that keeps the reasoning intact."),
+            el("p",{class:"max-w-md text-title text-ink-700"},
+              "Review the reasoning that produced the code."),
             el("div",{class:"mt-6 flex flex-wrap items-center gap-3"},
-              installAppLink("hero"),
-              jumpLink("get-started","btn-ghost","Register the MCP server"),
-              el("a",{class:"btn-ghost", href:REPO_URL}, "View source")),
-            // The install decision is made at the button, so the answer to "what am I
-            // letting in" sits under it rather than four sections down.
+              sampleReviewLink("hero","btn-primary hero-cta","Try a sample review →"),
+              jumpLink("get-started","btn-ghost hero-secondary","Install free")),
             el("p",{class:"mt-3 text-sm text-ink-500"},
-              "Read-only access to code. Writes a check, one comment and a block in the PR description. No database. ",
-              jumpLink("permissions","whitespace-nowrap","What it can access →")),
-
-            // Alongside the guided review rather than under it. The demo tops out around
-            // 455px and the copy above this runs to about 500, so these can't clear the
-            // panel's bottom edge entirely — they overlap its lower half, which is what
-            // keeps the row reading as two columns instead of one column with a tail.
-            el("div",{class:"mt-8 grid grid-cols-3 gap-x-4 gap-y-5"},
-              ...[
-                ["target", "Grounded in your diff", "Every claim is checked against the actual change; anything unexplained gets flagged, not skipped."],
-                ["no-db", "Nothing stored", "Your session stays on your machine. The App reads per request and discards; there is no database."],
-                ["server", "Self-hostable", "Run the GitHub App on your own infrastructure if you would rather nothing pass through a hosted service."],
-              ].map(([icon,t,b]) => el("div",{},
-                el("span",{class:"inline-flex h-9 w-9 items-center justify-center rounded-lg border border-accent-100 bg-accent-50", html: proofIcon(icon)}),
-                el("p",{class:"mt-2 font-medium text-ink-900"}, t),
-                el("p",{class:"mt-1 text-sm text-ink-600"}, b))))),
+              "Free · Open source · No credit card")),
           el("div",{class:"lg:sticky lg:top-24", id:"demo"},
-            el("h2",{class:"eyebrow mb-2"}, "The guided review"),
-            renderDemo(),
+            el("h2",{class:"eyebrow mb-2"}, "Intent Document · a real guided review"),
+            el("div",{class:"promise-panel"}, renderDemo()),
             el("p",{class:"mt-2 text-sm text-ink-500"},
-              "A real Intent Document and the diff it describes, rendered by the viewer your reviewers get. Pick a stop."))),
+              "Session context, linked to the code it explains."))),
 
         // Under both columns, not inside the left one: it qualifies the whole hero, and
         // parking it in the copy column was pushing the proof points past the demo.
-        el("p",{class:"mt-8 font-mono text-micro text-ink-500"},
-          "Listed on the MCP registry · Works with Claude Code and Codex · Apache-2.0"))))),
+        el("div",{class:"mt-8 flex flex-wrap items-center gap-3 border-t border-ink-200 pt-4 text-sm text-ink-600"},
+          el("span",{}, "Session context"), el("span",{class:"text-accent-600"}, "→"),
+          el("span",{}, "Intent Document"), el("span",{class:"text-accent-600"}, "→"),
+          el("span",{}, "Guided review")))))),
 
     // Everything from here down sits on the plain canvas — the wash above is scoped to the
     // header + hero only, so it doesn't bleed into content that should read as plain page.
-    el("div",{class:"mx-auto max-w-[92rem] px-6 pb-16 pt-8"},
-      renderReviewerGets(),
+    el("div",{class:"home-content mx-auto max-w-[92rem] px-6 pb-16 pt-8"},
+      renderReviewSummary(),
       renderInstallSteps(),
-      renderPermissions(),
-
-      el("section",{class:"mb-16"},
-        el("h2",{class:"section-h"}, "Release notes"),
-        el("div",{}, ...RELEASES.slice(0,3).map(releaseRow)),
-        el("p",{class:"mt-4 text-sm"}, el("a",{href:releaseHref()}, "All releases →"))),
+      renderTrust(),
 
       // Text kept byte-for-byte with the FAQPage JSON-LD in <head> — the two describe the
       // same content on the same canonical URL, so they should never drift.
@@ -663,25 +723,114 @@ function renderLanding(){
         el("h2",{class:"section-h mb-5"}, "FAQ"),
         el("div",{class:"grid grid-cols-1 gap-4 lg:grid-cols-2"},
           ...[
-            ["Why is this needed?",
-             "AI agents now write code faster than any team can read it by hand. The context that makes review fast (what was asked, what was tried and abandoned, what was actually verified) disappears the moment the pull request opens. Review Assist captures it at the source: the agent's session becomes an Intent Document, a validator proves it actually covers the diff, and a GitHub App renders it as a guided review on the pull request."],
-            ["How does it work?",
-             "Your agent distills its session into an Intent Document as it commits. Every push, the GitHub App validates that document against the diff and names anything unexplained. Reviewers get a guided walkthrough: assumptions first, then the diff anchored stop by stop. See the [architecture and internals doc](" + REPO_URL + "/blob/main/docs/ARCHITECTURE.md) for how the pieces fit together."],
             ["Is Review Assist free?",
              "Yes. The MCP server and the GitHub App are both free and open source under Apache-2.0. There is no paid tier."],
             ["Is my code stored anywhere?",
              "No. Your session transcript never leaves your machine. The GitHub App has no database: it reads the Intent Document and diff from GitHub per request, holds them in memory for that request, and serves them `private, no-store` to your browser. Nothing is written down, but your code does pass through the hosted service in transit. Self-host the App if that matters to you."],
-            ["Can I self-host it?",
-             "Yes. Review Assist is fully open source. Run the GitHub App on your own infrastructure if you'd rather your diffs never pass through the hosted service, even in transit."],
             ["Which coding agents does it work with?",
              "It ships tested with Claude Code, the Claude desktop app, and Codex. It's a standard MCP server, so any MCP-compatible agent client can register it."],
           ].map(([q,a]) => el("details",{class:"card group p-5"},
             el("summary",{class:"flex list-none items-center justify-between gap-3 font-medium text-ink-900 [&::-webkit-details-marker]:hidden"},
               q,
               el("span",{class:"shrink-0 transition-transform group-open:rotate-180", html: chevronIcon()})),
-            el("p",{class:"mt-3 text-sm text-ink-600", html:richHtml(a)}))))),
+            el("p",{class:"mt-3 text-ink-600", html:richHtml(a)}))))),
 
       siteFooter()));
+}
+
+/** The product model as one picture, matching design/mockups/approved-review-flow.png: a
+ *  coding session becomes an Intent Document, which becomes a guided review. Built as HTML
+ *  rather than one SVG so the text stays real text and the cards stack on a phone instead
+ *  of scrolling sideways. It is one example change told three ways, so the cards agree. */
+function renderReviewSummary(){
+  const icon = (name, cls, size) => el("span",{class:cls, html:lineIcon(name, size)});
+  const term = (cls, ...kids) => el("div",{class:"flow-term-line"+(cls ? " "+cls : "")}, ...kids);
+  const session = el("article",{class:"flow-card flow-session"},
+    el("div",{class:"flow-card-head"},
+      icon("terminal","flow-term-badge",16),
+      el("span",{class:"flow-card-title"}, "Coding session"),
+      el("span",{class:"flow-card-meta"}, "10:24 AM")),
+    el("div",{class:"flow-terminal"},
+      term("", "$ git checkout -b feat/retry-logic"),
+      term("", "$ make test"),
+      term("is-muted", el("span",{class:"flow-term-fail"}), "Tests failed (2) …"),
+      term("", "$ vim src/api/client.py"),
+      term("is-muted", "# add exponential backoff …"),
+      term("", "$ make test"),
+      term("is-ok", icon("check-circle","",14), "All tests passed (248)")),
+    el("div",{class:"flow-session-foot"},
+      icon("branch","text-ink-500",16),
+      el("span",{class:"flex-1"}, "Push to open a PR"),
+      el("span",{class:"flow-branch"}, "feat/retry-logic →")));
+
+  const row = (tone, iconName, title, desc) => sampleReviewLink("flow_row", "flow-row",
+    el("span",{class:"flow-row-icon is-"+tone, html:lineIcon(iconName, 22)}),
+    el("span",{class:"flow-row-text"}, el("span",{class:"flow-row-title"}, title), el("span",{class:"flow-row-desc"}, desc)),
+    icon("chevron-right","flow-row-chevron",18));
+  const doc = el("article",{class:"flow-doc"},
+    el("div",{class:"flow-doc-head"},
+      icon("sparkle","flow-doc-mark",26),
+      el("span",{class:"flow-doc-brand"}, "Review Assist"),
+      el("span",{class:"flow-doc-chip"}, icon("document","",15), "Intent Document")),
+    el("p",{class:"flow-doc-lead"}, "An AI-generated brief that captures the ", el("em",{},"why"), ", what, and how before reviewers look at the code."),
+    el("div",{class:"flow-rows"},
+      row("info","target","Reason for the change","Address transient API failures that cause user-facing errors and retries."),
+      row("warn","warning","Assumptions to challenge","That retries are safe for all endpoints, and won’t mask persistent failures."),
+      row("ok","check-circle","What was verified","Added unit tests for retry behavior, confirmed no regression in existing flows.")));
+
+  const codeLine = (n, text, add) => el("div",{class:"flow-code-line"+(add ? " is-add" : "")},
+    el("span",{class:"flow-code-num"}, String(n)), el("span",{class:"flow-code-sign"}, add ? "+" : ""), text);
+  const check = text => el("li",{}, icon("check","flow-checkbox",12), text);
+  const review = el("article",{class:"flow-card flow-review"},
+    el("div",{class:"flow-card-head"},
+      icon("people","text-accent-600",22),
+      el("span",{class:"flow-card-title"}, "Guided review"),
+      el("span",{class:"flow-card-meta"}, "PR #4821")),
+    el("p",{class:"flow-review-lead"}, "Review with context, not just code."),
+    el("div",{class:"flow-code"},
+      el("div",{class:"flow-code-head"}, el("span",{}, "src/api/client.py"), el("span",{class:"flow-code-link"}, "View file →")),
+      el("div",{class:"flow-code-body"},
+        codeLine(42, "try:"),
+        codeLine(43, "  for i in range(RETRIES):", true),
+        codeLine(44, "    resp = self._request(...)", true),
+        codeLine(45, "    if resp.ok:", true),
+        codeLine(46, "      return resp", true))),
+    sampleReviewLink("flow_check", "flow-check-row",
+      icon("sparkle","text-accent-600",18),
+      el("span",{class:"flex-1"}, "Check this change against the intent"),
+      icon("chevron-right","",16)),
+    el("ul",{class:"flow-checks"},
+      check("Matches the stated reason"), check("Assumptions look sound"), check("Tests cover the behavior")));
+
+  return el("section",{class:"contour-field flow-section mb-16", id:"what-you-get"},
+    el("p",{class:"flow-eyebrow"}, "Review Assist"),
+    el("h2",{class:"flow-title"}, "The reasoning, made reviewable"),
+    el("p",{class:"flow-lead"}, "From a coding session to a clear Intent Document, then a guided review."),
+    el("div",{class:"flow"}, session, flowLink(false), doc, flowLink(true), review),
+    el("div",{class:"flow-more"}, sampleReviewLink("flow_explore", "btn-ghost", "Explore the sample review →")));
+}
+
+/** The connector between two flow cards: a glowing line, a node, and an arrow badge that
+ *  overlaps the Intent Document's edge. The second connector bends down into the review
+ *  card on wide screens; stacked on a phone, both turn to point down. */
+function flowLink(bend){
+  const straight = `<svg class="flow-link-straight" width="72" height="40" viewBox="0 0 72 40" fill="none" aria-hidden="true">
+    <path class="flow-line" d="M0 20H45"/><circle class="flow-node" cx="24" cy="20" r="4"/>
+    <circle class="flow-badge" cx="58" cy="20" r="13"/><path class="flow-arrow" d="M52 20h12m-5-5 5 5-5 5"/></svg>`;
+  const bent = `<svg class="flow-link-bend" width="72" height="64" viewBox="0 0 72 64" fill="none" aria-hidden="true">
+    <path class="flow-line" d="M27 22H36Q42 22 42 28V36Q42 42 48 42H69"/><path class="flow-line" d="m63 37 6 5-6 5"/>
+    <circle class="flow-node" cx="36" cy="22" r="4"/><circle class="flow-node" cx="49" cy="42" r="3"/>
+    <circle class="flow-badge" cx="14" cy="22" r="13"/><path class="flow-arrow" d="M8 22h12m-5-5 5 5-5 5"/></svg>`;
+  return el("div",{class:"flow-link"+(bend ? " is-bend" : ""), html: straight + (bend ? bent : "")});
+}
+
+function renderTrust(){
+  return el("section",{class:"mb-16 border-t border-ink-200 pt-8", id:"permissions"},
+    el("div",{class:"grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"},
+      el("div",{},
+        el("h2",{class:"section-h mb-2"}, "Built for a cautious first try"),
+        el("p",{class:"max-w-2xl text-ink-600"}, "Free and open source. Your session stays on your machine; the App reads the committed document and pull-request diff only when a review is opened.")),
+      el("a",{class:"btn-ghost shrink-0",href:REPO_URL+"/blob/main/docs/ARCHITECTURE.md"}, "Read the architecture →")));
 }
 
 /** The parts of a guided review, each named and shown with an excerpt from the example
@@ -697,11 +846,11 @@ function renderReviewerGets(){
   const conf = CONF[S.assumption.confidence];
 
   return el("section",{class:"mb-16", id:"what-you-get"},
-    el("h2",{class:"section-h mb-2"}, "What a reviewer gets"),
-    el("p",{class:"mb-4 max-w-prose text-ink-600"}, "Six parts, the same on every pull request. The excerpts come from the example pull request in the panel above."),
+    el("h2",{class:"section-h mb-2"}, "The context a diff leaves out"),
+    el("p",{class:"mb-4 max-w-prose text-ink-600"}, "Three signals that let a reviewer spend time on the decision, not reconstructing the session."),
 
     part("Overview",
-      "What was asked, what is out of scope, the approach taken and why, and the alternatives that were tried and dropped.",
+      "What the change is solving, and the approach that led there.",
       el("div",{},
         el("blockquote",{class:"border-l-2 border-ink-300 pl-4 text-ink-800"}, S.problem),
         el("div",{class:"mt-4 border-l-2 border-ink-200 pl-3 text-sm"},
@@ -710,12 +859,12 @@ function renderReviewerGets(){
           el("p",{class:"text-ink-600"}, "Abandoned: " + S.trial.why_abandoned)))),
 
     part("Assumptions to check first",
-      "What the change takes for granted, how sure the agent is, what breaks if it is wrong, and how to check. Accepting or flagging one starts a comment on the pull request.",
+      "The claim that could change the decision, with a concrete way to verify it.",
       el("div",{class:"card"},
         el("div",{class:"flex items-start justify-between gap-3"},
           el("div",{}, el("span",{class:"id-chip mr-2"}, S.assumption.id), el("span",{class:"font-medium"}, S.assumption.assumption)),
           el("span",{class:conf.cls}, conf.label)),
-        el("dl",{class:"mt-2 space-y-1 text-sm text-ink-600"},
+        el("dl",{class:"mt-2 space-y-1 text-ink-700"},
           row("If wrong", S.assumption.impact_if_wrong),
           row("How to verify", S.assumption.how_to_verify)))),
 
@@ -756,39 +905,81 @@ function renderReviewerGets(){
 // The last step, shared by the landing page and the post-install page.
 const OPEN_A_PR = "Ask your agent to write the Intent Document for the branch, and commit it with the change. When the pull request opens, the App posts a check, a summary comment and the link to the guided review, which reviewers open by signing in with GitHub. A pull request without a document gets a neutral check that says so.";
 
-/** Three steps, because that is what it takes: the App alone puts "No Intent Document" on
- *  every pull request, so "install the App and you're done" would be the wrong promise. */
+/** What the App can reach, said the way GitHub's install screen will ask for it. */
+const APP_ACCESS = [
+  ["book", "Read pull request code"],
+  ["comment", "Write review check and comment"],
+  ["repo", "Choose repositories"],
+];
+function githubAppSummary(){
+  return el("div",{class:"gh-app"},
+    el("span",{class:"gh-app-mark", html:githubMark(56)}),
+    el("span",{class:"gh-app-name"}, "GitHub App"),
+    el("ul",{class:"gh-app-access"}, ...APP_ACCESS.map(([icon, text]) =>
+      el("li",{}, el("span",{class:"gh-app-icon", html:lineIcon(icon, 18)}), text))));
+}
+
+/** Setup as three steps (design/mockups/approved-setup-flow.png). The MCP server comes
+ *  first, because the App alone puts "No Intent Document" on every pull request, so
+ *  "install the App and you're done" would be the wrong promise. Each step is one main
+ *  panel, a preview of what comes next, and one primary action. Self-contained: it repaints
+ *  its own DOM, like agentPicker. */
 function renderInstallSteps(){
-  const step = (n, title, aside, body, action) => el("div",{class:"card mt-5 grid grid-cols-1 gap-5 p-5 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] xl:items-start xl:gap-10"},
-    el("div",{},
-      el("div",{class:"flex items-center gap-3"},
-        el("span",{class:"flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-accent-100 bg-accent-50 font-mono text-sm font-semibold text-accent-700"}, n),
-        el("h3",{class:"font-medium text-ink-900"}, title),
-        el("span",{class:"text-sm text-ink-500"}, aside)),
-      el("p",{class:"mt-0.5 text-ink-600", html:richHtml(body)})),
-    action);
+  let at = 0;
+  const picker = agentPicker(); // built once, so the chosen agent survives moving between steps
+  const heading = (text) => el("h3",{class:"setup-h"}, text);
+  const text = (t) => el("p",{class:"setup-text", html:richHtml(t)});
+  const steps = [
+    { label:"Add to your agent",
+      main: () => [heading("Where do you write code?"), picker],
+      aside: () => [heading("Next: connect the GitHub App"), githubAppSummary()],
+      action: () => el("button",{class:"btn-primary setup-cta", onclick:()=>go(1)}, "Continue to GitHub App →") },
+    { label:"Connect GitHub App",
+      main: () => [heading("Install the GitHub App"),
+        text("Choose the repositories it can review. In an organization, an owner may need to approve it."),
+        githubAppSummary(),
+        text("It cannot push commits, and its check is never set to failing. No workflow file, no runner minutes.")],
+      aside: () => [heading("Next: open a pull request"),
+        text("Your agent commits the Intent Document with the change. The App turns it into a guided review on the pull request.")],
+      action: () => el("div",{class:"setup-cta-row"},
+        installAppLink("install_step", "Install the GitHub App →", "btn-primary setup-cta"),
+        el("button",{class:"btn-ghost setup-cta", onclick:()=>go(2)}, "Already installed")) },
+    { label:"Open a PR",
+      main: () => [heading("Open a pull request from an agent session"), text(OPEN_A_PR)],
+      aside: () => [heading("What reviewers get"),
+        text("A guided review that starts with the assumptions that could change the decision, then walks the diff stop by stop.")],
+      action: () => sampleReviewLink("setup", "btn-primary setup-cta", "See a sample review →") },
+  ];
 
-  return el("section",{class:"mb-16", id:"get-started"},
-    el("h2",{class:"section-h mb-4"}, "Install"),
-    el("p",{class:"max-w-prose text-ink-600"}, "Three steps. The first two happen once."),
+  const body = el("div",{});
+  const root = el("section",{class:"setup mb-16", id:"get-started"},
+    el("h2",{class:"setup-title"}, "Set up Review Assist"),
+    el("p",{class:"setup-lead"}, "Connect the session context to your pull requests."),
+    body);
 
-    step("01", "Register the MCP server", "beside your agent",
-      "Never calls a model. It supplies ground truth, enforces the role split — one subagent holds the transcript and cannot submit, one reads the diff cold — and runs five deterministic checks before a word is written.",
-      installTabs()),
-
-    // A summary of GitHub's permission screen stands in for a screenshot of it: a capture
-    // would show whichever account took it, and would go stale the day GitHub restyles.
-    step("02", "Install the GitHub App", "and choose repositories",
-      "GitHub asks which repositories it can see, all or only the ones you pick, and you can change that later. In an organization, an owner may need to approve it. A GitHub App, **not** an Action: no workflow file, no runner minutes.",
-      el("div",{},
-        installAppLink("install_step"),
-        el("p",{class:"mt-3 text-sm text-ink-600"},
-          "GitHub will ask for read access to code and metadata, and read and write access to checks and pull requests. ",
-          jumpLink("permissions","whitespace-nowrap","What each one is for →")))),
-
-    step("03", "Open a pull request", "from an agent session", OPEN_A_PR, null),
-
-    el("p",{class:"mt-5 text-sm"}, el("a",{class:"text-ink-500", href:REPO_URL+"/blob/main/docs/ARCHITECTURE.md"}, "Architecture & internals →")));
+  function go(i){
+    at = i;
+    track("setup_step", { step: i + 1 });
+    paint();
+    if (root.getBoundingClientRect().top < 0) root.scrollIntoView({behavior:"smooth"});
+  }
+  function paint(){
+    const step = steps[at];
+    body.replaceChildren(
+      el("ol",{class:"setup-steps"}, ...steps.map((s, i) => el("li",{class:"setup-step"+(i===at ? " is-active" : i<at ? " is-done" : "")},
+        el("button",{onclick:()=>go(i), "aria-current": i===at ? "step" : null},
+          el("span",{class:"setup-dot", html: i<at ? lineIcon("check", 16) : null}, i<at ? null : String(i + 1)),
+          el("span",{class:"setup-step-label"}, s.label))))),
+      el("div",{class:"setup-panel"},
+        el("div",{class:"setup-main"}, ...step.main()),
+        el("aside",{class:"setup-aside"}, ...step.aside())),
+      el("div",{class:"setup-actions"},
+        step.action(),
+        at < steps.length - 1 ? sampleReviewLink("setup_secondary", "setup-sample", "Try a sample review first") : null,
+        el("p",{class:"setup-foot"}, "Free · Open source · No workflow files · Self-hostable")));
+  }
+  paint();
+  return root;
 }
 
 /** Every claim here is checked against the code or GitHub's own record of the App, because
@@ -851,11 +1042,11 @@ function renderInstalled(){
     siteHeader(null),
     el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
       el("section",{class:"grid-field is-short mb-10"},
-        el("h1",{class:"mb-3 text-[2rem] leading-tight"}, heading),
-        el("p",{class:"text-[1.05rem] text-ink-700"}, lead)),
+        el("h1",{class:"mb-3 text-heading sm:text-display"}, heading),
+        el("p",{class:"text-title text-ink-700"}, lead)),
       el("section",{class:"mb-10"},
         el("h2",{class:"section-h mb-4"}, "Register the MCP server"),
-        installTabs()),
+        agentPicker()),
       el("section",{class:"mb-12"},
         el("h2",{class:"section-h mb-3"}, "Then open a pull request"),
         el("p",{class:"text-ink-700"}, OPEN_A_PR),
@@ -879,11 +1070,11 @@ const DEMO = {
     { id:"T2", role:"core", title:"Redis implementation with 60s TTL",
       what:"Caches successful validations keyed by session token hash; failures are never cached.",
       why:"The shared store is what makes the 60s revocation bound hold across all pods (A1, A2).",
-      attention:"Token is hashed before use as a cache key — review the hash choice; a reversible or truncated key would leak session material into Redis.",
+      attention:"The token is hashed before it becomes a cache key. Review the hash choice: a reversible or truncated key would leak session material into Redis.",
       anchors:[{path:"internal/auth/redis_cache.go", hunk:{old_start:0, old_lines:0, new_start:1, new_lines:74}}] },
     { id:"T3", role:"core", title:"Explicit cache delete on logout",
       what:"Logout handler deletes the cache entry before calling the auth service.",
-      why:"Makes voluntary logout immediate instead of waiting out the TTL (user ask, msg-44).",
+      why:"Makes voluntary logout immediate instead of waiting out the TTL, as the user asked.",
       anchors:[{path:"internal/handlers/logout.go", hunk:{old_start:21, old_lines:4, new_start:21, new_lines:11}}] },
     { id:"T4", role:"incidental", title:"Rename validateSession → revalidateSession",
       what:"Mechanical rename across call sites for accuracy; no behaviour change.",
@@ -929,18 +1120,52 @@ diff --git a/internal/auth/middleware.go b/internal/auth/middleware.go
 `,
 };
 
-// The rest of that same example document, for the labelled excerpts under the hero. Copied
-// as written, like DEMO, so the page claims nothing the format does not actually carry.
+// The rest of that same example document (packages/schema/src/example.json), behind the
+// public sample review. It is one change told consistently: every question, cue and answer
+// points at code the diff actually contains, and no two items ask the same thing.
 const SAMPLE = {
   problem: "Checkout requests intermittently fail with 429s because every request re-validates the session against the auth service; validation must be cached without letting revoked sessions linger.",
+  origin: "emerged_during_session",
+  out_of_scope: ["Moving auth to JWTs (the user deferred it: “not this quarter”)"],
+  requirements: [
+    { text: "Revoked sessions must be unusable within 60s", source: "user request" },
+    { text: "No new infrastructure: use the existing Redis instance", source: "user request" },
+  ],
   trial: { what: "In-process LRU cache in the auth middleware",
+           outcome: "Worked in tests, but each of the 12 pods held its own cache, so a revoked session could outlive the 60s bound.",
            why_abandoned: "Violates the 60s revocation requirement under horizontal scaling" },
+  adopted: { summary: "A shared Redis-backed validation cache with a 60s TTL, plus an explicit delete on logout.",
+             rationale: "One shared cache holds the 60s bound on every pod, it reuses the existing Redis instance, and the logout delete makes voluntary logout immediate rather than TTL-bound." },
+  settled: { id: "A1", confidence: "confirmed_by_user",
+    assumption: "A 60-second revocation lag is acceptable for all session types, including admin sessions.",
+    impact_if_wrong: "Admin sessions would need a separate no-cache path; T2 and T3 would be redesigned.",
+    how_to_verify: "Confirm with the security team that the 60s bound covers privileged sessions." },
   assumption: { id: "A2", confidence: "unverified",
     assumption: "The auth service's /validate response is safe to cache keyed on session token alone (no per-device claims).",
     impact_if_wrong: "Cache key must include device fingerprint; T2 changes, cache hit rate drops.",
     how_to_verify: "Check auth-service response schema for device-scoped fields." },
   note: DEMO.stops.find(s => s.attention).attention,
-  question: { id: "Q1", question: "Should cache entries be invalidated on password change events, or is TTL expiry sufficient?" },
+  // Risk cue: visible in the logout hunk (T3), where the delete runs before Revoke.
+  unresolved: { disposition: "unanswered",
+    question: "If authService.Revoke fails after the cache delete, does logout still report success while the session stays valid?",
+    note: "The handler deletes the cache entry first, then calls Revoke. Nothing in the diff handles a Revoke error, and the author did not answer." },
+  question: { id: "Q1", raised_by: "reviewer_agent",
+    question: "Should cache entries be invalidated on password change events, or is TTL expiry sufficient?",
+    context: "The author considered subscribing to auth events and dropped it for scope. The interview could not settle whether TTL-only expiry meets policy." },
+  // Answered while the change was written; `stop` is the tour stop whose code settles it.
+  resolved: [
+    { stop: 2, question: "Does the 60-second revocation lag hold for admin sessions too?",
+      answer: "Yes. The developer confirmed with the security team that the 60s bound covers privileged sessions (A1)." },
+    { stop: 1, question: "Why not keep the in-process LRU cache that already passed its tests?",
+      answer: "- Each of the 12 pods held its own copy, so a revoked session could outlive the 60s bound.\n- One shared Redis cache gives a single 60s bound on every pod, and the SessionCache interface made the swap a one-file change." },
+    { stop: 2, question: "Can a failed validation be served from the cache?",
+      answer: "No. Only successful validations are cached, so a rejected token always goes back to the auth service." },
+  ],
+  diagrams: [{
+    title: "Token validation with the Redis cache",
+    mermaid: "sequenceDiagram\n    participant C as Client\n    participant MW as Auth middleware\n    participant R as Redis cache\n    participant A as Auth service\n    C->>MW: request with bearer token\n    MW->>R: GET hash(token)\n    alt cache hit (fresh)\n        R-->>MW: valid\n    else miss or expired\n        MW->>A: validate token\n        A-->>MW: valid or rejected\n        MW->>R: SET hash(token), TTL 60s (valid only)\n    end\n    MW-->>C: 200 or 401",
+    caption: "Most requests are answered by the shared cache for up to 60 seconds. Only a miss or an expired entry goes to the auth service, and only a valid result is cached. Logout deletes the entry, so a voluntary logout takes effect at once.",
+  }],
   performed: [
     { kind: "test", description: "Unit tests for cache TTL expiry and logout delete", result: "pass" },
     { kind: "test", description: "Middleware integration test with Redis testcontainer", result: "pass" },
@@ -948,9 +1173,47 @@ const SAMPLE = {
   ],
   not_verified: [
     "Behavior when Redis is unreachable (code falls back to direct validation; no test exercises the fallback)",
-    "Load behavior — the original 429 symptom was not reproduced under load after the fix",
+    "Load behavior: the original 429 symptom was not reproduced under load after the fix",
   ],
 };
+
+/** The same document behind the landing-panel preview, expanded into the normal review
+ * model. Keep this beside DEMO and SAMPLE so every visible claim has one source of truth. */
+function sampleReviewData(){
+  const anchors = DEMO.stops.map((stop, i) => ({
+    id: `H${i + 1}`,
+    path: stop.anchors[0].path,
+    hunk: stop.anchors[0].hunk,
+  }));
+  const byId = n => [anchors[n - 1].id];
+  return {
+    meta: { owner:"sample", repo:"checkout-service", pull:128, title:DEMO.title, head_sha:"sample" },
+    diff: DEMO.diff,
+    document: {
+      schema_version:"0.1",
+      meta: { id:"sample-cache-review", repo:DEMO.repo, generated_at:"2026-01-01T00:00:00.000Z" },
+      problem: { statement:SAMPLE.problem, origin:SAMPLE.origin, user_asks:[], out_of_scope:SAMPLE.out_of_scope },
+      assumptions: [
+        { ...SAMPLE.settled, anchors:byId(2) },
+        { ...SAMPLE.assumption, anchors:byId(2) },
+      ],
+      open_questions: [{ ...SAMPLE.question, anchors:byId(2) }],
+      unresolved: [{ ...SAMPLE.unresolved, anchors:byId(3) }],
+      evaluated: SAMPLE.resolved.map(({ stop, ...r }) => ({ ...r, anchors:byId(stop) })),
+      approach: { requirements:SAMPLE.requirements, trials:[SAMPLE.trial], adopted:SAMPLE.adopted },
+      diagrams: SAMPLE.diagrams,
+      tour: DEMO.stops.map((stop, i) => ({
+        ...stop,
+        anchors:[anchors[i]],
+        provenance:"from_transcript",
+      })),
+      verification: {
+        performed:SAMPLE.performed,
+        not_verified:SAMPLE.not_verified.map((text, i) => i === 0 ? { text, anchors:byId(2) } : text),
+      },
+    },
+  };
+}
 
 const DWELL = 6000;
 let DEMO_STATE = { i: 0, timer: null, auto: true, files: null,
@@ -1098,14 +1361,16 @@ function paintDemo(){
 
 // ---------- site chrome, shared by the landing page and the release notes ----------
 function siteHeader(active){
-  const navLink = (href, label, key) => el("a",{class:"site-nav"+(active===key?" is-active":""), href}, label);
+  const navLink = (href, label, key, extra = "") => el("a",{class:"site-nav"+(active===key?" is-active":"")+extra, href}, label);
   return el("header",{class:"border-b border-ink-200"+(active==="home" ? " hero-wash" : "")},
-    el("div",{class:"mx-auto flex max-w-[92rem] items-center gap-2 px-6 py-3"},
+    el("div",{class:"site-header mx-auto flex max-w-[92rem] items-center gap-1.5 px-4 py-3 sm:gap-2 sm:px-6"},
       el("a",{class:"flex items-center gap-2 font-semibold text-ink-900 hover:no-underline", href:"/"},
         el("span",{class:"inline-flex shrink-0", html: siteLogo(32)}),
-        "Review Assist"),
+        el("span",{class:"site-brand-name"}, "Review Assist")),
       el("span",{class:"flex-1"}),
-      navLink("/","Overview","home"),
+      // The logo already links home, so a phone-width header drops this link to keep the
+      // theme toggle on screen.
+      navLink("/","Overview","home"," site-nav-home"),
       navLink(blogHref(),"Blog","blog"),
       navLink(releaseHref(),"Releases","releases"),
       el("a",{class:"site-nav", href:REPO_URL}, "GitHub"),
@@ -1143,9 +1408,9 @@ function articleRow(a){
     el("div",{class:"p-6"},
       el("div",{class:"mb-3 flex items-baseline gap-2.5"},
         el("span",{class:"tag"}, "Article"),
-        el("span",{class:"ml-auto shrink-0 text-[0.875rem] text-ink-500"}, a.date)),
-      el("h2",{class:"mb-3 text-[1.25rem] leading-tight"}, a.title),
-      el("p",{class:"text-[1rem] leading-relaxed text-ink-600", html:richHtml(a.summary)})));
+        el("span",{class:"ml-auto shrink-0 text-sm text-ink-500"}, a.date)),
+      el("h2",{class:"mb-3 text-title"}, a.title),
+      el("p",{class:"text-base text-ink-600", html:richHtml(a.summary)})));
 }
 function releaseRow(r){
   return el("a",{class:"block border-t border-ink-200 py-3 hover:no-underline", href:releaseHref(r.v)},
@@ -1162,8 +1427,8 @@ function renderBlogIndex(){
     el("main",{class:"blog-main mx-auto px-6 py-16"},
       el("section",{class:"grid-field is-short mb-8"},
         el("p",{class:"eyebrow mb-2"}, "Review Assist blog"),
-        el("h1",{class:"text-[2.25rem] leading-tight"}, "Better reviews for AI-written code"),
-        el("p",{class:"mt-3 text-[1.05rem] text-ink-600"}, "Architecture, practice, and field notes for teams reviewing code at agent speed.")),
+        el("h1",{class:"text-heading sm:text-display"}, "Better reviews for AI-written code"),
+        el("p",{class:"mt-3 text-title text-ink-600"}, "Architecture, practice, and field notes for teams reviewing code at agent speed.")),
       el("section",{class:"article-grid mb-12"}, ...ARTICLES.map(articleRow)),
       siteFooter()));
 }
@@ -1183,7 +1448,7 @@ function renderReleaseIndex(){
     el("main",{class:"mx-auto max-w-3xl px-6 py-16"},
       el("section",{class:"grid-field is-short mb-8"},
         el("p",{class:"eyebrow mb-2"}, "Review Assist releases"),
-        el("h1",{class:"text-[2rem] leading-tight"}, "Release notes"),
+        el("h1",{class:"text-heading sm:text-display"}, "Release notes"),
         el("p",{class:"mt-3 text-ink-600"}, "What changed, what broke, and why it was done that way.")),
       el("section",{class:"mb-12"}, ...RELEASES.map(releaseRow)),
       siteFooter()));
@@ -1219,8 +1484,8 @@ function renderReleasePost(slug){
           el("div",{class:"mb-2 flex items-baseline gap-2.5"},
             el("span",{class:"tag"}, "v"+r.v),
             el("span",{class:"text-sm text-ink-500"}, r.date)),
-          el("h1",{class:"mb-3 text-[1.75rem] leading-tight"}, r.title),
-          el("p",{class:"text-[1.05rem] text-ink-700", html:richHtml(r.summary)})),
+          el("h1",{class:"mb-3 text-heading sm:text-display"}, r.title),
+          el("p",{class:"text-title text-ink-700", html:richHtml(r.summary)})),
         body,
         el("p",{class:"mt-8 border-t border-ink-200 pt-4 text-sm text-ink-500"},
           "Commits for this release: ",
@@ -1250,8 +1515,8 @@ function renderArticle(a){
           el("div",{class:"mb-2 flex items-baseline gap-2.5"},
             el("span",{class:"tag"}, "AI code review"),
             el("span",{class:"text-sm text-ink-500"}, a.date)),
-          el("h1",{class:"mb-3 text-[2rem] leading-tight"}, a.title),
-          el("p",{class:"text-[1.05rem] text-ink-700", html:richHtml(a.summary)})),
+          el("h1",{class:"mb-3 text-heading sm:text-display"}, a.title),
+          el("p",{class:"text-title text-ink-700", html:richHtml(a.summary)})),
         el("figure",{class:"mt-6"},
           el("img",{class:"w-full rounded-lg border border-ink-200", src:a.hero, alt:a.alt, width:"1672", height:"941"}),
           el("figcaption",{class:"mt-2 text-sm text-ink-500"}, a.caption)),
@@ -1363,20 +1628,22 @@ const ARTICLES = [
   {
     slug: "what-a-review-assist-check-means",
     date: "9 Oct 2026",
+    modified: "9 Oct 2026",
     title: "What a green Review Assist check tells you",
-    summary: "A successful PR check means the current coverage count has no unexplained substantive hunks. It does not approve the code or verify every claim in the Intent Document.",
+    summary: "A complete coverage count means each counted hunk has a tour anchor. A green check without a count needs a closer look, and no check approves the code.",
     hero: "/blog/what-a-review-assist-check-means-v3.png",
     alt: "A reviewer inspects a fragile component despite the green coverage light beside the explained diff",
     caption: "Coverage is a map of explanations, not a merge decision.",
     body: [
-      "A successful Review Assist check is a useful signal, but it is a narrow one. It says the App's current coverage count has no unexplained substantive diff hunks. It does not say the change is correct, the tests are sufficient, or the pull request is ready to merge.",
+      "A green Review Assist check is a narrow signal. When it shows a complete count, each counted substantive diff hunk overlaps a tour anchor. A green check without a count does not establish even that: the compare request may have failed. Neither result says the change is correct, the tests are sufficient, or the pull request is ready to merge.",
       "That distinction matters when GitHub puts a green result beside an AI-written PR. Read the count and the Intent Document before making the review decision.",
       { h: "Read the conclusion and the count" },
       "The GitHub App handles opened, synchronized, and reopened pull requests. It reads the committed `.intent/<branch>.json` at the PR head, compares the base and head, and posts a Review Assist check plus a sticky summary comment. Its check is deliberately advisory: a missing or unreadable document gets a neutral result; a document with uncovered substantive hunks also gets neutral. When the computed count has no gap, it reports success.",
       "For example, `4/5 changes explained` means one substantive diff hunk has no overlapping tour anchor. `5/5` means every counted hunk has an anchor. The numerator measures coverage of the diff, not the quality of the explanation. A success result can also have no count when no substantive hunks were counted, so inspect the check title and summary rather than relying on color alone. The current webhook also leaves the count at zero if the GitHub compare request fails. A success without a denominator deserves a manual diff check.",
       { h: "What the check actually measures" },
       "A tour stop in the Intent Document names the files and hunk ranges it explains. The webhook counts a substantive hunk as explained when one of those anchors overlaps it. It excludes the `.intent/` document itself from that coverage count.",
-      "An anchor can exist while its explanation is weak or wrong. The App cannot infer that a claim about a migration, failure path, or user request is true from a line overlap. The local `submit_document` path separately gates document creation on consent, interview evidence, schema, coverage, staleness, cross-references, and redaction lint. The PR webhook recomputes coverage; its green check is not a rerun of all those local gates.",
+      "An anchor can exist while its explanation is weak or wrong. The App cannot infer that a claim about a migration, failure path, or user request is true from a line overlap. The normal reviewer role calls local `submit_document` with `require_interview: true`, so it requires a recorded interview round as well as consent, schema, coverage, staleness, cross-reference, and redaction checks. The tool's interview requirement is optional for other callers. The PR webhook recomputes coverage; its green check is not a rerun of the local gates.",
+      "You can verify the distinction in the [webhook coverage and check code](https://github.com/uditk2/review-assist/blob/b66ea40047673951e36751e05778ebcc79741b8b/apps/github-app/worker/src/webhook.ts#L85-L107), the [submit tool's interview option](https://github.com/uditk2/review-assist/blob/b66ea40047673951e36751e05778ebcc79741b8b/packages/mcp-server/src/index.ts#L1502-L1515), and the [local validator](https://github.com/uditk2/review-assist/blob/b66ea40047673951e36751e05778ebcc79741b8b/packages/validator/src/index.ts#L59-L103).",
       { h: "Use the result to decide where to look" },
       { ul: [
         "If the check is neutral because the document is missing, ask the author to generate and commit the Intent Document for this branch. A malformed document also produces a neutral check.",
@@ -1393,6 +1660,7 @@ const ARTICLES = [
   {
     slug: "where-code-and-transcript-go-in-review-assist",
     date: "8 Oct 2026",
+    modified: "9 Oct 2026",
     title: "Where your code and transcript go in Review Assist",
     summary: "The raw transcript stays local. The Intent Document lives in GitHub. The hosted App sees the diff in transit when a reviewer opens the PR.",
     hero: "/blog/where-code-and-transcript-go-in-review-assist-v3.png",
@@ -1403,7 +1671,7 @@ const ARTICLES = [
       "Here is the short version for Review Assist: its local MCP flow reads the coding transcript on the developer’s machine. It writes a smaller Intent Document into the repository after consent and validation. GitHub stores that document with the PR. The hosted GitHub App fetches the document and diff from GitHub for each review request, handles them in memory, and returns them with private, no-store responses. The raw transcript is not sent to the App, but the diff does pass through it in transit.",
       { h: "The transcript stays in the local authoring flow" },
       "The Author role can read the coding session through a local [conversation spine](/blog/conversation-spine-code-review-context/). The cold Intent Reviewer reads the diff and asks questions, but has no transcript or general file-reading tools. Their questions and answers pass through a local run file under `~/.review-assist/runs/`. That is local state, not a copy of the transcript in the hosted App.",
-      "Before writing `.intent/<branch>.json`, the local submit path checks repository consent, interview evidence, schema, diff coverage, staleness, cross-references, and likely secrets. The MCP server itself does not call a model. Your coding agent’s own model connection is a separate data path, governed by that agent’s configuration and provider; this article is about Review Assist’s data path.",
+      "Before writing `.intent/<branch>.json`, the local submit path checks repository consent, schema, diff coverage, staleness, cross-references, and likely secrets. The normal reviewer role also requests the optional interview gate, which requires at least one recorded round. The MCP server itself does not call a model. Your coding agent’s own model connection is a separate data path, governed by that agent’s configuration and provider; this article is about Review Assist’s data path.",
       { h: "The Intent Document is repository content" },
       "The output is a curated review artifact, not a raw session archive. It can still contain sensitive context: the problem, user asks, assumptions, rejected approaches, tour notes, and verification results. Once committed to `.intent/<branch>.json`, it lives in GitHub under the repository’s access controls and follows the same PR history as the code.",
       "The redaction lint checks document strings for likely credentials and blocks a matching submission. A pattern check cannot prove that every business secret or private detail was removed. Read the generated document before committing it, especially quoted user requests and examples copied from a session. Treat it like any other file you publish to your repository.",
@@ -1411,6 +1679,7 @@ const ARTICLES = [
       "On a pull request event, the GitHub App reads the committed document and diff to post its check and summary. When a signed-in reviewer opens the guided view, the Worker fetches the document and PR diff from GitHub with that reviewer’s token and sends them to the browser. The viewer renders the review there. The Worker has no application database or server-side session store, and its repository-data API responses use Cache-Control: private, no-store.",
       "No server-side storage does not mean no hosted exposure. The Worker receives private repository content for the duration of a request. Static site assets can be cached, but those assets do not contain the PR diff. If your policy forbids even transient handling by the hosted App, self-host the open-source GitHub App and point the review flow at your own infrastructure.",
       "The signed-in reviewer’s GitHub token is kept in an encrypted, HTTP-only, Secure cookie rather than a server-side session table. Review comments, replies, checks, the summary, and the final verdict are durable GitHub records. A reviewer should expect those to remain on the pull request.",
+      "The [Worker request handler](https://github.com/uditk2/review-assist/blob/b66ea40047673951e36751e05778ebcc79741b8b/apps/github-app/worker/src/index.ts#L148-L209) shows what the hosted App fetches; the [session code](https://github.com/uditk2/review-assist/blob/b66ea40047673951e36751e05778ebcc79741b8b/apps/github-app/worker/src/session.ts#L31-L88) shows what the cookie holds.",
       { h: "Check the boundary before using it on a private repo" },
       { ul: [
         "Inspect the proposed .intent/<branch>.json before committing. Look for customer details, internal URLs, prompts, credentials, or statements you would not put in the PR description.",
@@ -1424,6 +1693,7 @@ const ARTICLES = [
   {
     slug: "how-to-add-repository-review-rules-for-ai-prs",
     date: "7 Oct 2026",
+    modified: "9 Oct 2026",
     title: "How to add repository-specific review questions for AI-written PRs",
     summary: "Put the invariants your team learned the hard way in .reviewer/, then check that they become specific questions during AI PR review.",
     hero: "/blog/how-to-add-repository-review-rules-for-ai-prs-v3.png",
@@ -1444,6 +1714,7 @@ const ARTICLES = [
         "**Review rule changes like code.** The folder is repository content, so a pull request can edit it. Review Assist treats it as untrusted reference material and includes `.reviewer/` changes in diff coverage.",
       ] },
       "The tool serves readable `.md`, `.markdown`, and `.txt` files. It lists other file types but does not read them as rules. An empty or absent folder is normal and leaves the baseline interview in place.",
+      "The [folder reader](https://github.com/uditk2/review-assist/blob/b66ea40047673951e36751e05778ebcc79741b8b/packages/mcp-server/src/reviewer-instructions.ts#L25-L193) defines the readable formats, limits, and empty-folder behavior.",
       { h: "Check the question reached the review" },
       "Use a representative PR or test change that triggers the rule. Generate its Intent Document, then inspect the interview and the reviewer's closing findings. For the non-null column example, look for the backfill question, the Author's evidence, and any unresolved verification gap. If the question never appears, make the trigger more explicit and check that the rule file is in a readable format.",
       "The folder does not turn a convention into an automatic failing check. Review Assist's local submission gate still checks schema, coverage, staleness, cross-references, and secret redaction. Repository questions can expose a missing migration or test, but someone still needs to judge the answer and fix the code if the evidence is weak.",
@@ -1453,6 +1724,7 @@ const ARTICLES = [
   {
     slug: "how-to-comment-on-unverified-assumptions-in-ai-prs",
     date: "6 Oct 2026",
+    modified: "9 Oct 2026",
     title: "How to comment on an unverified assumption in an AI-written PR",
     summary: "Find the assumption, tie it to the affected code, and ask for evidence or a change the author can act on.",
     hero: "/blog/how-to-comment-on-unverified-assumptions-in-ai-prs-v3.png",
@@ -1479,11 +1751,13 @@ const ARTICLES = [
       { h: "Make the review decision explicit" },
       "After the tour, Review Assist offers Approve or Request changes. Its draft review body includes the coverage count and IDs you flagged, but it does not turn a flagged assumption into a verdict for you. Write the actual condition for approval in the review body. For the cache example, that could be a logout invalidation test or a documented reason the old token cannot be reused.",
       "If the author pushes a fix, read the new diff and the updated evidence before resolving the discussion. The useful question is whether the assumption is now grounded, not whether the comment has been answered with a reassuring sentence. The [Intent Document specification](https://github.com/uditk2/review-assist/blob/main/SPEC.md) defines the assumption and verification fields; [install Review Assist](/#install) to use them in a guided PR review.",
+      "The [viewer comment controls](https://github.com/uditk2/review-assist/blob/b66ea40047673951e36751e05778ebcc79741b8b/apps/github-app/viewer/index.html#L2417-L2498) show exactly when a draft becomes a GitHub comment.",
     ],
   },
   {
     slug: "how-to-spot-unexplained-changes-in-ai-written-prs",
     date: "5 Oct 2026",
+    modified: "9 Oct 2026",
     title: "How to spot unexplained changes in an AI-written pull request",
     summary: "Use diff coverage to find changes the review narrative missed, then decide what the author needs to explain or fix before approval.",
     hero: "/blog/how-to-spot-unexplained-changes-in-ai-written-prs-v3.png",
@@ -1505,7 +1779,8 @@ const ARTICLES = [
       ] },
       "The answer may call for a new tour stop, a stronger test, or a code fix. Do not turn the coverage count into a target that someone can satisfy with a vague sentence. An anchor only proves that a tour stop overlaps a hunk; a human still has to judge whether its explanation is useful.",
       { h: "Check the boundary of the signal" },
-      "The local validator blocks publication of an Intent Document with an unexplained substantive hunk. It also warns when a tour anchor no longer overlaps a diff hunk, which can point to a stale location. The GitHub App currently reports partial coverage with a **neutral** check, not a failing one. A green coverage check means the hunks are accounted for, not that the implementation has been approved.",
+      "The local validator blocks publication of an Intent Document with an unexplained substantive hunk. It also warns when a tour anchor no longer overlaps a diff hunk, which can point to a stale location. The GitHub App currently reports partial coverage with a **neutral** check, not a failing one. A green check with a nonzero count means those hunks have anchors, not that the implementation has been approved. A green check with no count needs a manual diff check.",
+      "The [validator coverage check](https://github.com/uditk2/review-assist/blob/b66ea40047673951e36751e05778ebcc79741b8b/packages/validator/src/index.ts#L106-L185) and the [webhook check result](https://github.com/uditk2/review-assist/blob/b66ea40047673951e36751e05778ebcc79741b8b/apps/github-app/worker/src/webhook.ts#L283-L315) use these distinct rules.",
       "The document’s own `.intent/` changes are excluded from the coverage count, because a review document should not have to explain itself. Repository rules in `.reviewer/` are ordinary PR changes and remain in scope. The count is about substantive diff hunks, not files, lines, risk, or test quality.",
       { h: "Finish the review beyond coverage" },
       "Once every gap has a real explanation, read the assumptions before the tour. Challenge the ones whose failure would change the design. Then follow the anchored stops and compare each claim with the code. End at verification: separate checks that ran from behavior nobody exercised. This is a practical pull request review checklist for AI-written code, even when the coverage count is already complete.",
@@ -1515,6 +1790,7 @@ const ARTICLES = [
   {
     slug: "conversation-spine-code-review-context",
     date: "4 Oct 2026",
+    modified: "9 Oct 2026",
     title: "The conversation spine: turning an agent session into useful code review context",
     summary: "Reviewers need more than a diff. The spine keeps the decisions, failures, edits, and verification that explain how the code got there.",
     hero: "/blog/conversation-spine-code-review-context-v4.png",
@@ -1525,9 +1801,10 @@ const ARTICLES = [
       "That missing path matters more when an agent wrote the code. For AI code review, the useful context is sitting in the coding session: the user’s request, the agent’s proposal, a rejected approach, a failed command, a scope decision, the test that passed, and the thing nobody verified. By the time the pull request opens, most of that has disappeared.",
       "Review Assist calls the useful path through that session the **conversation spine**. It is not a summary produced by another model. It is a deterministic view of the session that keeps the conversation and marks the important work around it.",
       { h: "Why searching the transcript did not work" },
-      "Agent transcripts are mostly machinery. Across 41 measured sessions in one workspace, the raw transcripts were 85 MB. The actual conversation was a median 4.8% of that data. The rest was tool input, tool output, metadata, and repeated state.",
-      "The first approach was retrieval. The author agent paged through windows and searched for likely terms. On one session it pulled 388 KB across 34 calls and still built an incomplete picture of a conversation that was only 344 KB. Search cost more than reading the conversation, and it could never prove that the missing decision had not been overlooked.",
-      "The spine takes the opposite approach. It reads the session once, keeps the useful sequence, and pages the result without dropping material. In the measured set, 40 of 41 session spines fit in one call. The median was 11,886 tokens.",
+      "Agent transcripts are mostly machinery. Development notes for a sample of 41 sessions in one workspace report 85 MB of raw transcripts, with conversation text at a median 4.8% of each session. The rest was tool input, tool output, metadata, and repeated state. This was an internal sizing sample, not a general benchmark.",
+      "The first approach was retrieval. The author agent paged through windows and searched for likely terms. In one recorded session it pulled 388 KB across 34 calls and still built an incomplete picture of a conversation that was only 344 KB. The retrieved payload was larger than the conversation and still could not rule out a missed decision.",
+      "The spine takes the opposite approach. It walks the session in order, keeps the conversation and selected work events, and pages the result instead of trimming those item types to fit one response. In the measured set, 40 of 41 session spines fit in one call. The median was 11,886 tokens.",
+      "Those measurements and the retained item types are recorded in the [spine implementation notes](https://github.com/uditk2/review-assist/blob/b66ea40047673951e36751e05778ebcc79741b8b/packages/mcp-server/src/spine.ts#L1-L46).",
       { h: "What the spine keeps" },
       "The spine keeps both sides of the conversation. That sounds obvious, but it is easy to get wrong. Roughly two thirds of the prose in the measured sessions came from the agent. A user reply such as “yes, do that” is useless without the proposal it accepts. A reported finding is often on the agent’s side too. Of 23 abandoned approaches found in seven real Intent Documents, 17 came from the agent’s messages.",
       "It also harvests compact evidence from the work around the conversation:",
@@ -1547,7 +1824,7 @@ const ARTICLES = [
       "The coding transcript stays on the developer’s machine. What leaves the process is a curated Intent Document: the problem, requirements, assumptions, adopted approach, rejected alternatives, guided tour, and verification. The human reviewer gets the useful context without receiving a raw log of the developer’s conversation.",
       { h: "Completeness comes from paging, not deletion" },
       "An early version capped the spine at 600 KB and deleted assistant turns when it crossed the limit. That removed the side carrying most of the reasoning and most of the recorded alternatives. It made large sessions look complete when they were not.",
-      "The current design pages the spine on item boundaries. A large session costs more calls, but no category of evidence disappears to make it fit. Oversized individual turns are sliced with their character ranges attached. Every item still points back to its location in the raw transcript.",
+      "The current design pages the spine on item boundaries. A large session costs more calls, but kept conversation turns and event types are not deleted to make one response fit. Tool output is omitted from the spine and remains reachable through transcript indices. Oversized individual turns are sliced with their character ranges attached.",
       { h: "What the reviewer gets in practice" },
       "A reviewer does not see a conversation archive. They see answers to the questions that matter for this change: What was the actual problem? Which constraints shaped the code? What was tried and rejected? Which assumptions could still be wrong? What was verified, and what was not?",
       "That is the job of the conversation spine. It turns a noisy agent session into traceable review context, while keeping the final review focused on the code.",
@@ -1556,6 +1833,7 @@ const ARTICLES = [
   {
     slug: "how-review-assist-architecture-catches-bugs-early",
     date: "3 Oct 2026",
+    modified: "9 Oct 2026",
     title: "How Review Assist’s architecture catches bugs before code review",
     summary: "A two-agent, evidence-gated approach to reviewing AI-generated code while the implementation can still change.",
     hero: "/blog/how-review-assist-architecture-catches-bugs-early-v4.png",
@@ -1563,35 +1841,36 @@ const ARTICLES = [
     caption: "Independent review makes hidden defects visible while the change can still be corrected.",
     body: [
       "AI coding agents can produce a plausible pull request in minutes. The hard part is no longer generating the diff. It is recovering the reasoning behind it: what the agent believed, what it tried, what it verified, and where it is still uncertain.",
-      "Most **AI code review tools** begin after the change exists and inspect the diff as a finished artifact. Review Assist moves part of that scrutiny earlier. Its architecture creates a separate, cold reviewer while the coding session is still active, then refuses to publish the review document unless the evidence and the diff agree.",
+      "A diff-only review begins after the change exists. Review Assist moves part of that scrutiny into the active coding session. It gives a separate, cold reviewer the diff, records the reviewer's questions and the author's answers, and checks the document against the current diff before writing it.",
       { h: "The architectural idea: separate explanation from evaluation" },
       "Review Assist uses two role-locked agents. The Author can read the local coding session and explain the decisions that produced the change. The Intent Reviewer can read the diff, but not the transcript. That boundary is deliberate.",
       "If the same agent both implements and judges the work, it can repeat its own assumptions as if they were evidence. A cold reviewer has to reconstruct the change from what a human reviewer will actually see. Missing migrations, contradictory state, unverified behavior, and unexplained hunks become questions instead of being silently rationalized.",
       { h: "A two-sided interview turns claims into evidence" },
       "The reviewer records questions against the run and receives a question ID for each one. The author answers those IDs from its own role-scoped session. The reviewer then reads the answers back through the server. The resulting Intent Document can distinguish author-attested answers from text supplied by the reviewer.",
+      "The normal reviewer role calls `submit_document` with `require_interview: true`, so that path rejects a run with no recorded interview round. The tool also supports callers that leave the optional flag off; the document's recorded interview counts still show what happened.",
       "This matters because traceability is more useful than confident prose. The review can show which assumptions came from the implementation session, which conclusions came from reading the diff, and which questions remain unresolved.",
       { h: "Repository rules arrive as bounded questions" },
-      "Generic **AI-powered code review** cannot know every invariant your team learned from production incidents. Review Assist lets a repository carry those questions in a `.reviewer/` folder: for example, whether a schema change includes its migration, whether a critical path has the required test, or whether churn in a sensitive directory is intentional.",
-      "Those files cannot override the protocol or weaken validation. They can only add or sharpen questions. That keeps repository-specific knowledge close to the code without turning untrusted pull-request content into instructions with unlimited authority.",
+      "A diff cannot reveal an invariant that exists only in a team's head. Review Assist lets a repository carry those questions in a `.reviewer/` folder: for example, whether a schema change includes its migration, whether a critical path has the required test, or whether churn in a sensitive directory is intentional.",
+      "Those files are served as untrusted reference material. The reviewer role is instructed to use them to add or sharpen questions; their contents cannot change the schema or validator checks. That keeps repository knowledge close to the code without granting it authority over the validation rules.",
       { h: "Five deterministic gates catch drift before publication" },
       "The language-model review is not the final authority. Before Review Assist writes an Intent Document, the MCP server applies repository consent and runs five local checks:",
       { ul: [
         "**Schema.** The document matches the frozen Intent Document format.",
-        "**Coverage.** Every substantive diff hunk is anchored to the guided tour or named as unexplained.",
-        "**Staleness.** The document still describes the current change rather than an older commit.",
-        "**Cross-references.** IDs and links inside the document resolve consistently.",
-        "**Secret redaction.** Likely credentials or sensitive values do not leak into the committed document.",
+        "**Coverage.** Every substantive diff hunk overlaps a guided-tour anchor.",
+        "**Staleness.** The document's recorded head SHA matches the current head.",
+        "**Cross-references.** Assumption dependencies, tour parents, and duplicate IDs are checked.",
+        "**Secret redaction.** Recognized credential patterns are blocked; other sensitive details still need human review.",
       ] },
-      "These checks convert review quality from a suggestion into a gate. A fluent explanation cannot compensate for an uncovered hunk, a stale head, or a malformed reference.",
+      "These checks block specific mechanical failures: an uncovered substantive hunk, a stale head, a malformed reference, or a recognized secret pattern. They do not establish that the explanation is true or the tests are adequate. The [local validator](https://github.com/uditk2/review-assist/blob/b66ea40047673951e36751e05778ebcc79741b8b/packages/validator/src/index.ts#L59-L103) shows the exact checks.",
       { h: "The feedback loop lands while the code can still change" },
-      "The Intent Document is built for the eventual human reviewer, but Review Assist produces another output sooner: the cold reviewer’s closing report. It returns unanswered questions, anything marked not verified, and defects exposed while reading the diff.",
-      "That timing is the practical reason the architecture catches bugs early. Findings do not wait for someone to open the pull request. They return to the active coding session, where the implementation can be corrected and the checks rerun.",
+      "The Intent Document is built for the eventual human reviewer. The cold reviewer role is also instructed to send a closing report to the active coding session: unanswered questions, anything marked not verified, and defects exposed while reading the diff.",
+      "That timing gives the author a chance to fix a finding before opening the pull request, then rerun the checks. The closing report is part of the agent workflow, not one of the deterministic validator checks.",
       { h: "The architecture has already caught its own defects" },
-      "During development, the cold-review pattern found a schema integration bug that 124 passing unit tests had missed: a real run summary contained more fields than the strict document schema allowed, so every submission would fail. The reviewer found it by tracing the actual data across component boundaries, not by inspecting an isolated function.",
-      "A later distillation found four defects in the repository-instructions feature before release, including inconsistent definitions of whether a `.reviewer/` folder was present. These are exactly the bugs that hide between locally correct components.",
+      "The [1.0.5 release note](/releases/1.0.5/) records a cross-component failure: a run summary gained a field, `submit_document` copied the whole summary into a strict schema block, and submissions failed. The fix stamps only the fields the schema declares.",
+      "The [1.0.3 release note](/releases/1.0.3/) records four defects found while distilling the repository-instructions feature, including conflicting definitions of whether a `.reviewer/` folder was present. Both examples are traceable to shipped fixes, not proof that the process catches every bug.",
       { h: "What Review Assist does and does not replace" },
-      "Review Assist does not replace tests, static analysis, security scanning, or human judgment. It addresses a different failure mode: loss of intent and weak challenge of an agent’s assumptions. Its **automated code review** architecture gives the human reviewer a verified map of the change and gives the coding session an earlier chance to fix what a cold reader cannot justify.",
-      "The result is a shorter path from “the agent says it is done” to “the change is ready to review.” [Read the architecture](https://github.com/uditk2/review-assist/blob/main/docs/ARCHITECTURE.md), then let your next coding session produce a guided, verifiable review.",
+      "Review Assist does not replace tests, static analysis, security scanning, or human judgment. It addresses a different failure mode: loss of intent and weak challenge of an agent’s assumptions. Its **automated code review** architecture gives the human reviewer an anchored map of the change and gives the coding session an earlier chance to fix what a cold reader cannot justify.",
+      "The [architecture](https://github.com/uditk2/review-assist/blob/main/docs/ARCHITECTURE.md) shows the role and data boundaries. The implementation's check results still need a human to test the explanation against the code.",
     ],
   },
 ];
@@ -1875,63 +2154,43 @@ function render(){
       STATE.me ? el("span",{class:"tag hidden md:inline-flex"}, "@"+STATE.me) : null,
       themeToggle()));
 
-  const link = (view, label, badge) => el("button",
-    {class:"nav-link"+(STATE.view===view?" is-active":""), onclick:()=>{STATE.view=view;render();}},
-    el("span",{}, label), badge);
+  const route = reviewRoute(doc);
+  const goView = view => { STATE.view=view; render(); };
+  const nav = el("nav",{class:"route-rail"},
+    el("p",{class:"route-rail-h"},"Review route"),
+    el("p",{class:"route-rail-lead"}, "Start with why and what was checked, then what could change the decision."),
+    ...route.map((step, i) => el("button",{
+      class:"route-step"+(STATE.view===step.key ? " is-active" : ""), onclick:()=>goView(step.key)
+    }, el("span",{class:"route-index"}, String(i+1)),
+       el("span",{class:"min-w-0 flex-1"}, el("span",{class:"route-step-title"},step.label),
+          el("span",{class:"route-step-detail"},step.detail)),
+       step.count ? el("span",{class:step.key==="route" ? "tag tag-warn" : "tag"}, String(step.count))
+         : step.total ? el("span",{class:"tag tag-ok", title:"All decided", html:lineIcon("check", 12)}) : null)),
+    cov.unexplained.length ? el("button",{class:"route-step mt-4",onclick:()=>goView("coverage")},
+      el("span",{class:"route-index"}, "!"), el("span",{class:"flex-1 font-medium"}, "Uncovered changes"),
+      el("span",{class:"tag tag-warn"}, String(cov.unexplained.length))) : null,
+    STATE.me ? el("button",{class:"route-step mt-4",onclick:()=>goView("submit")},
+      el("span",{class:"route-index"}, "✓"), el("span",{class:"flex-1 font-medium"}, "Submit review")) : null);
 
-  const goStop = i => { STATE.view="tour"; STATE.stopIndex=i; render(); };
-
-  const nav = el("nav",{class:"rail"},
-    el("p",{class:"eyebrow px-2.5 pb-2"},"Review"),
-    link("overview","Overview"),
-    link("verify","Verification"),
-    cov.unexplained.length ? link("coverage","Uncovered changes", el("span",{class:"ml-auto tag tag-warn"}, cov.unexplained.length)) : null,
-    STATE.me ? link("submit","Submit review", STATE.reviewSubmitted ? el("span",{class:"ml-auto tag tag-ok"}, "sent") : null) : null,
-    el("p",{class:"eyebrow px-2.5 pb-2 pt-5"},"Walkthrough"),
-    // A supporting or incidental stop is dimmed rather than hidden. Every coverage-required
-    // hunk must land in some stop, so hiding one would make a reviewer unable to reach the
-    // code it explains — but a list where churn looks as important as a behaviour change is
-    // how fourteen stops become undifferentiated.
-    //
-    // A core stop with something still uncertain carries a count, because that is where the
-    // walk is worth slowing down.
-    ...STATE.ordered.map((s,i)=>{
-      const core = s.role === "core";
-      const live = liveForStop(doc, stopHunkIds(s));
-      const n = live.assumptions.length + live.unresolved.length + live.questions.length + live.unverified.length;
-      return el("button",
-        {class:"nav-link"+(STATE.view==="tour"&&STATE.stopIndex===i?" is-active":"")+(core?"":" opacity-60"),
-         title: core ? s.title : s.title+" ("+s.role+")", onclick:()=>goStop(i)},
-        el("span",{class:"id-chip"}, s.id),
-        el("span",{class:"truncate"+(core?"":" text-ink-500")}, s.title),
-        n ? el("span",{class:"ml-auto tag tag-warn"}, String(n)) : null);
-    }));
-
-  // The same navigation, as a scrolling strip, for the widths where the rail is hidden.
-  const chip = (view, label, on) => el("button",
-    {class:"chip-link"+(on?" is-active":""), onclick:()=>{STATE.view=view;render();}}, label);
-  const railbar = el("div",{class:"railbar"},
-    el("span",{class:(covOk ? "tag tag-ok" : "tag tag-warn") + " shrink-0 sm:hidden"},
-      covOk ? `${cov.explained}/${cov.total} explained` : `${cov.unexplained.length} uncovered`),
-    chip("overview","Overview", STATE.view==="overview"),
-    chip("verify","Verification", STATE.view==="verify"),
-    cov.unexplained.length ? chip("coverage","Uncovered", STATE.view==="coverage") : null,
-    STATE.me ? chip("submit","Submit", STATE.view==="submit") : null,
-    ...STATE.ordered.map((s,i)=>el("button",
-      {class:"chip-link"+(STATE.view==="tour"&&STATE.stopIndex===i?" is-active":""), onclick:()=>goStop(i)},
-      el("span",{class:"id-chip"}, s.id))));
+  const railbar = el("div",{class:"route-mobile"},
+    ...route.map((step, i) => el("button",{class:STATE.view===step.key ? "is-active" : "", onclick:()=>goView(step.key)},
+      `${i+1}. ${step.label}`, step.count ? ` (${step.count})` : "")),
+    cov.unexplained.length ? el("button",{class:STATE.view==="coverage" ? "is-active" : "",onclick:()=>goView("coverage")}, "Uncovered") : null);
 
   // Prose views keep a reading measure; the code-bearing views get the whole canvas.
   const wide = STATE.view !== "submit";
   const main = el("main",{class:"view"},
     el("div",{class: wide ? "view-wide" : "view-prose"},
-      STATE.view==="overview" ? renderOverview(doc)
+      STATE.view==="route" ? renderReviewRoute(doc)
+      : STATE.view==="overview" ? renderOverview(doc)
+      : STATE.view==="questions" ? renderQuestions(doc)
+      : STATE.view==="diagrams" ? renderDiagrams(doc)
       : STATE.view==="verify" ? renderVerify(doc)
       : STATE.view==="coverage" ? renderCoverage()
       : STATE.view==="submit" ? renderSubmitReview()
       : renderStop()));
 
-  document.getElementById("app").replaceChildren(header, railbar, el("div",{class:"shell"}, nav, main));
+  document.getElementById("app").replaceChildren(header, railbar, el("div",{class:"route-shell"}, nav, main));
   runMermaid();
 }
 
@@ -1943,7 +2202,7 @@ function currentTheme() {
 function themeToggle() {
   const dark = currentTheme() === "dark";
   return el("button",{
-    class:"btn-ghost !px-2.5 !py-1", title:"Toggle light / dark",
+    class:"btn-ghost !px-3 !py-2", title:"Toggle light / dark",
     onclick:()=>{
       const next = dark ? "light" : "dark";
       document.documentElement.setAttribute("data-theme", next);
@@ -2011,7 +2270,8 @@ function labeled(label, ...body){
 }
 
 /**
- * How many anchored items moved to the walkthrough, so the Overview can say so.
+ * How many anchored items moved to the walkthrough, so the Overview can say so. Open
+ * questions are not counted: they all have their own route step.
  *
  * Without this the Overview looks thinner than the document is, and a reader cannot tell
  * whether something was dropped or relocated. Showing the item in both places instead
@@ -2021,21 +2281,121 @@ function movedToStops(doc){
   const anchored = xs => (xs || []).filter(x => (x.anchors || []).length).length;
   const nv = (doc.verification?.not_verified || []).filter(n => typeof n !== "string" && (n.anchors || []).length).length;
   return anchored((doc.assumptions || []).filter(a => (a.confidence || "unverified") === "unverified"))
-    + anchored(doc.unresolved) + anchored(doc.open_questions) + nv;
+    + anchored(doc.unresolved) + nv;
 }
 
-function renderOverview(doc){
-  const p = doc.problem;
-  const f = document.createDocumentFragment();
-  const left = el("div",{class:"ov-main"});
-  const right = el("div",{class:"min-w-0"});
-  left.append(el("section",{class:"grid-field mb-8"},
-    el("p",{class:"eyebrow mb-1"}, p.origin==="emerged_during_session" ? "The problem was defined over the course of the session" : "Problem stated up front"),
-    el("h1",{class:"mb-3"},"Overview"),
-    el("blockquote",{class:"border-l-2 border-ink-300 pl-4 text-[1.05rem] leading-relaxed text-ink-800"}, p.statement)));
+/** The first screen is one review cue and its evidence, not the whole document at once.
+ * Every value here comes from the published Intent Document, so the route stays an aid to
+ * judgement rather than pretending to score the reviewer or prove the code correct. */
+function renderReviewRoute(doc){
+  const openStop = i => { STATE.view="tour"; STATE.stopIndex=i; render(); };
+  const cues = reviewCues(doc);
+  if (!cues.length) {
+    return el("div",{class:"mx-auto max-w-prose py-16"},
+      el("h1",{}, "Nothing needs a decision first"),
+      el("p",{class:"mt-3 text-ink-600"}, "Walk the change to see why each hunk exists."),
+      el("div",{class:"mt-6 flex gap-2"},
+        el("button",{class:"btn-primary",onclick:()=>openStop(0)}, "Walk the change")));
+  }
 
-  if (p.out_of_scope?.length) left.append(section("Out of scope",
-    el("ul",{class:"list-disc space-y-1 pl-5 text-ink-700"}, ...p.out_of_scope.map(x=>el("li",{},x)))));
+  const i = Math.min(STATE.cueIndex, cues.length - 1);
+  const cue = cues[i];
+  const goCue = n => { STATE.cueIndex = n; render(); };
+  const hunk = cue.anchors.find(id => STATE.stopOfHunk?.[id] !== undefined);
+  const stopIndex = hunk === undefined ? 0 : STATE.stopOfHunk[hunk];
+  const stop = hunk === undefined ? null : STATE.ordered[stopIndex];
+
+  const code = el("div",{class:"evidence-code"});
+  if (stop) {
+    for (const hp of hunksForStop(stop, STATE.files)) {
+      code.append(hp.missing
+        ? el("div",{class:"diff"}, el("div",{class:"diff-file"}, hp.path, el("span",{class:"tag tag-warn"}, "no matching change")))
+        : renderHunk(hp.path, hp.hunk));
+    }
+  } else {
+    code.append(el("div",{class:"card text-ink-600"}, "This cue concerns the change as a whole. Walk the diff to inspect the related code."));
+  }
+
+  const pagerBtn = (label, icon, to) => el("button",{class:"cue-page", "aria-label":label,
+    disabled: to < 0 || to >= cues.length ? "" : null, onclick:()=>goCue(to), html:lineIcon(icon, 16)});
+  const relatedLink = label => stop
+    ? el("button",{class:"mt-4 text-sm font-medium text-accent-700",onclick:()=>openStop(stopIndex)}, label)
+    : null;
+
+  // Built through el(), which drops null children. Element.append would print them as "null".
+  let body;
+  if (cue.kind === "assumption") {
+    const a = cue.data;
+    body = [
+      el("p",{class:"id-chip mb-2"}, a.id + " · Assumption"),
+      el("h1",{class:"mb-5 text-heading"}, a.assumption),
+      el("dl",{class:"cue-meta"},
+        el("div",{},el("dt",{},"If wrong"),el("dd",{class:"text-ink-800"},a.impact_if_wrong)),
+        a.how_to_verify ? el("div",{},el("dt",{},"How to verify"),el("dd",{class:"text-ink-800"},a.how_to_verify)) : null),
+      relatedLink(stop && "Related change · "+stop.id+" "+stop.title+" →"),
+      decisionControl("assumption", a),
+    ];
+  } else {
+    body = [
+      el("p",{class:"id-chip mb-2"}, "Unresolved question"),
+      el("h1",{class:"mb-5 text-heading"}, cue.data.question),
+      cue.data.note ? el("p",{class:"text-ink-700"},cue.data.note) : null,
+      relatedLink("Open the related change →"),
+      decisionControl("unresolved", cue.data),
+    ];
+  }
+
+  const card = el("section",{class:"cue-card evidence-text"},
+    el("div",{class:"mb-4 flex items-center justify-between gap-3"},
+      el("div",{class:"cue-pager"},
+        pagerBtn("Previous risk cue", "chevron-left", i - 1),
+        el("p",{class:"eyebrow"}, `Risk cue ${i + 1} of ${cues.length}`),
+        pagerBtn("Next risk cue", "chevron-right", i + 1)),
+      el("span",{class:"tag tag-warn"}, cue.kind === "assumption" ? "unverified" : "needs attention")),
+    ...body);
+
+  // The route is a sequence: Continue visits every cue, then starts the walkthrough at its
+  // first stop so no stop is skipped. "Related change" is the jump to this cue's own code.
+  const hasNext = i < cues.length - 1;
+  const after = nextRouteStep(doc, "route");
+  const f = document.createDocumentFragment();
+  f.append(el("div",{class:"evidence-split cue-grid"}, card, code));
+  f.append(routeBar(
+    hasNext ? `risk cue ${i + 2} of ${cues.length}` : after.label,
+    continueButton(() => hasNext ? goCue(i + 1) : after.go())));
+  return f;
+}
+
+/** The why of the change as four equal panels, two to a row on a wide screen: the problem
+ *  beside the approach, then the requirements beside what was tried and dropped. Half the
+ *  width each fills the screen while every line stays at a reading measure. Items about the
+ *  whole change that still need a decision follow in the same grid. */
+function renderOverview(doc){
+  const p = doc.problem, ap = doc.approach;
+  const panel = (title, ...body) => el("section",{class:"ov-panel"}, el("h2",{class:"ov-panel-h"}, title), ...body);
+  const f = document.createDocumentFragment();
+
+  f.append(el("header",{class:"grid-field ov-head"},
+    el("p",{class:"eyebrow mb-1"}, p.origin==="emerged_during_session" ? "The problem was defined over the course of the session" : "Problem stated up front"),
+    el("h1",{}, "Overview")));
+
+  f.append(el("div",{class:"ov-grid"},
+    panel("The problem",
+      el("p",{class:"ov-problem"}, p.statement),
+      p.out_of_scope?.length ? el("div",{class:"ov-scope"},
+        el("p",{class:"ov-label"}, "Out of scope"),
+        el("ul",{class:"ov-list"}, ...p.out_of_scope.map(x => el("li",{}, x)))) : null),
+    panel("Approach",
+      points(ap.adopted.summary, "text-ink-800"),
+      labeled("Rationale.", points(ap.adopted.rationale, "text-ink-700"))),
+    ap.requirements?.length ? panel(`Requirements (${ap.requirements.length})`,
+      el("ul",{class:"ov-list"}, ...ap.requirements.map(r =>
+        el("li",{}, r.text, r.source ? el("span",{class:"text-ink-400"}, ` (${r.source})`) : null)))) : null,
+    ap.trials?.length ? panel(`Considered and rejected (${ap.trials.length})`,
+      ...ap.trials.map(t => el("div",{class:"ov-trial"},
+        el("p",{class:"font-medium text-ink-900"}, t.what),
+        el("p",{class:"mt-1 text-ink-700"}, "Outcome: " + t.outcome),
+        el("p",{class:"mt-1 text-ink-700"}, "Dropped because: " + t.why_abandoned)))) : null));
 
   // Only the UNVERIFIED assumptions are reading. `grounded_in_code` and `confirmed_by_user`
   // are settled — 40 of the 68 in this repo's own documents, and mostly the agent scoping
@@ -2049,137 +2409,178 @@ function renderOverview(doc){
   const liveAssumptions = (doc.assumptions || []).filter(a =>
     (a.confidence || "unverified") === "unverified" && !(a.anchors || []).length);
   const moved = movedToStops(doc);
-  if (moved) left.append(el("p",{class:"mb-6 text-sm text-ink-500"},
+  if (moved) f.append(el("p",{class:"mt-5 text-sm text-ink-500"},
     moved + " more " + (moved===1?"item is":"items are") + " attached to walkthrough stops, shown where the code is."));
-  if (liveAssumptions.length){
-    const sec = section("Assumptions");
-    sec.append(el("p",{class:"-mt-2 mb-3 text-sm text-ink-500"},"About the change as a whole, and unverified. If any is wrong, the change likely needs rework."));
-    for (const a of liveAssumptions){
+
+  // Raised and not settled. `unanswered` leads deliberately. Measured across 32 runs, 67 of
+  // 279 diff-provoked questions got no reply at all, and they include a secret blast radius
+  // and an unpinned image. An unanswered question about a code risk means the risk was never
+  // considered, which makes it the strongest finding here rather than the weakest.
+  const DISPOSITION = {
+    unanswered: ["Never answered", "tag tag-warn", "Nobody considered this."],
+    escalated: ["Asked for your eyes", "tag tag-warn", "The developer wants a human to look here."],
+    accepted_partial: ["Known and shipped", "tag", "A risk the developer took knowingly."],
+  };
+  const order = { unanswered: 0, escalated: 1, accepted_partial: 2 };
+  const globalUnresolved = (doc.unresolved || []).filter(u => !(u.anchors || []).length)
+    .sort((a,b) => (order[a.disposition] ?? 9) - (order[b.disposition] ?? 9));
+
+  const wholeChange = [
+    ...globalUnresolved.map(u => {
+      const [label, cls, gloss] = DISPOSITION[u.disposition] || ["Unsettled", "tag", ""];
+      return el("div",{class:"ov-panel"},
+        el("div",{class:"flex items-start justify-between gap-3"},
+          el("span",{class:"font-medium"}, u.question),
+          el("span",{class:"shrink-0"}, el("span",{class:cls}, label), hunkChips((u.anchors || []).filter(Boolean)))),
+        gloss ? el("p",{class:"mt-1.5 text-sm text-ink-500"}, gloss) : null,
+        u.note ? points(u.note, "mt-2 text-ink-700") : null,
+        decisionControl("unresolved", u));
+    }),
+    ...liveAssumptions.map(a => {
       const conf = CONF[a.confidence] || CONF.unverified;
-      const state = STATE.acks[a.id];
-      sec.append(el("div",{class:"card mb-3"},
+      return el("div",{class:"ov-panel"},
         el("div",{class:"flex items-start justify-between gap-3"},
           el("div",{}, el("span",{class:"id-chip mr-2"},a.id), el("span",{class:"font-medium"}, a.assumption)),
           el("span",{class:"shrink-0"}, el("span",{class:conf.cls}, conf.label), hunkChips(a.anchors))),
-        el("dl",{class:"mt-2 space-y-1 text-sm text-ink-600"},
+        el("dl",{class:"mt-2 space-y-1 text-ink-700"},
           row("If wrong", a.impact_if_wrong),
           a.how_to_verify ? row("How to verify", a.how_to_verify) : null),
-        el("div",{class:"mt-3 flex gap-2"},
-          el("button",{class:"btn-ghost"+(state==="accept"?" is-on":""), onclick:()=>assumeAction(a,"accept")}, "Accept"),
-          el("button",{class:"btn-ghost"+(state==="flag"?" is-on":""), onclick:()=>assumeAction(a,"flag")}, "Flag for discussion")),
-        STATE.composer==="assume:"+a.id ? renderGlobalComposer("assume:"+a.id, STATE.composerSeed) : null,
-        STATE.posted["assume:"+a.id] ? el("p",{class:"mt-2 text-sm text-ink-500"}, "\u2713 Posted to the PR discussion.") : null));
-    }
-    right.append(sec);
-  }
+        decisionControl("assumption", a));
+    }),
+  ];
+  if (wholeChange.length) f.append(el("section",{class:"mt-10"},
+    el("h2",{class:"section-h ov-wide"}, "About the whole change"),
+    el("p",{class:"mb-4 text-sm text-ink-500"}, "Unverified, and not tied to one hunk. If any is wrong, the change likely needs rework."),
+    el("div",{class:"ov-grid"}, ...wholeChange)));
 
-  const globalQuestions = (doc.open_questions || []).filter(q => !(q.anchors || []).length);
-  if (globalQuestions.length){
-    const sec = section("Open questions");
-    for (const q of globalQuestions) sec.append(el("div",{class:"card mb-3"},
-      el("div",{class:"flex items-start justify-between gap-3"},
-        el("div",{}, el("span",{class:"id-chip mr-2"},q.id), el("span",{class:"font-medium"}, q.question)),
-        hunkChips(q.anchors)),
-      q.context ? el("p",{class:"mt-1.5 text-sm text-ink-600"}, q.context) : null));
-    right.append(sec);
-  }
+  // Open questions, answered questions and diagrams each have a route step of their own.
+  const next = routeNextBar(doc, "overview");
+  if (next) f.append(next);
+  return f;
+}
 
-  // Raised and not settled, open by default and ahead of the lookup.
-  //
-  // `unanswered` leads deliberately. Measured across 32 runs, 67 of 279 diff-provoked
-  // questions got no reply at all, and they include a secret blast radius and an unpinned
-  // image. An unanswered question about a code risk means the risk was never considered,
-  // which makes it the strongest finding here rather than the weakest.
-  const globalUnresolved = (doc.unresolved || []).filter(u => !(u.anchors || []).length);
-  if (globalUnresolved.length){
-    const DISPOSITION = {
-      unanswered: ["Never answered", "tag tag-warn", "Nobody considered this."],
-      escalated: ["Asked for your eyes", "tag tag-warn", "The developer wants a human to look here."],
-      accepted_partial: ["Known and shipped", "tag", "A risk the developer took knowingly."],
-    };
-    const order = { unanswered: 0, escalated: 1, accepted_partial: 2 };
-    const sorted = [...globalUnresolved].sort((a,b) => (order[a.disposition] ?? 9) - (order[b.disposition] ?? 9));
-    const sec = section("Raised and not settled");
-    for (const u of sorted){
-      const [label, cls, gloss] = DISPOSITION[u.disposition] || ["Unsettled", "tag", ""];
-      const anchors = (u.anchors || []).filter(Boolean);
-      sec.append(el("div",{class:"card mb-3"},
-        el("div",{class:"flex items-start justify-between gap-3"},
-          el("span",{class:"font-medium"}, u.question),
-          el("span",{class:"shrink-0"},
-            el("span",{class:cls}, label),
-            hunkChips(anchors))),
-        gloss ? el("p",{class:"mt-1.5 text-sm text-ink-500"}, gloss) : null,
-        u.note ? points(u.note, "mt-2 text-sm text-ink-700") : null));
-    }
-    right.append(sec);
-  }
+/** How to read a diagram of this kind, from the first word of its Mermaid source. */
+function diagramGuide(src){
+  const kind = String(src || "").trim().split(/\s/)[0];
+  if (kind === "sequenceDiagram") return "Read it top to bottom: each arrow is one call or reply, in the order it happens. A labelled box (alt, opt, loop) holds the steps that only run in that case.";
+  if (/^(flowchart|graph)$/.test(kind)) return "Follow the arrows: each box is a step or a component, and each arrow is what passes between them.";
+  if (/^stateDiagram/.test(kind)) return "Each box is a state, and each arrow is the event that moves from one to the next.";
+  if (kind === "erDiagram") return "Each box is a table or entity, and each line says how many of one relate to the other.";
+  if (kind === "classDiagram") return "Each box is a type with its fields, and each line shows how two types relate.";
+  return null;
+}
 
-  // Already evaluated: a lookup, closed by default.
-  //
-  // An answered, grounded question is no longer a question, so it is not in the reading
-  // path. But a reviewer who arrives holding the same question should find it settled
-  // instead of spending minutes re-deriving the answer — and the anchors take them to the
-  // hunk that settles it rather than to a paragraph about it.
-  if (doc.evaluated?.length){
-    const sec = section("Already evaluated");
-    const body = el("div",{});
-    for (const e of doc.evaluated){
-      const anchors = (e.anchors || []).filter(Boolean);
-      body.append(el("div",{class:"card mb-3"},
+/** Diagram comments are PR-level comments behind a marker naming the diagram, so the thread
+ *  under each diagram reads back from the PR itself. */
+const diagramMark = key => `<!-- review-assist:diagram ${key} -->`;
+function diagramComments(key){
+  return (STATE.discussion || []).filter(c => String(c.body || "").includes(diagramMark(key))).map(c => ({ ...c,
+    text: String(c.body).replace(diagramMark(key), "").replace(/^\s*\*\*On diagram [^\n]*\*\*\s*/, "").trim() }));
+}
+
+/** The rendered diagram, full screen. Esc closes it, like any modal dialog. */
+function expandDiagram(canvas, title){
+  const svg = canvas.querySelector("svg");
+  if (!svg) return;
+  const copy = svg.cloneNode(true);
+  copy.removeAttribute("style"); copy.removeAttribute("height"); copy.setAttribute("width", "100%");
+  const dlg = el("dialog",{class:"diagram-dialog", "aria-label":title},
+    el("div",{class:"diagram-dialog-head"},
+      el("h2",{}, title),
+      el("button",{class:"btn-ghost", onclick:()=>dlg.close()}, "Close")),
+    el("div",{class:"diagram-dialog-body"}, copy));
+  dlg.addEventListener("close", () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
+/** Each diagram at full width: what it shows (its caption) and how to read it above the
+ *  picture, and its discussion below, where a reviewer can comment on it. */
+function renderDiagrams(doc){
+  const diagrams = doc.diagrams || [];
+  const f = document.createDocumentFragment();
+  f.append(el("h1",{class:"mb-1"}, "Diagrams"));
+  f.append(el("p",{class:"mb-8 text-ink-500"}, "How the change fits together. Comment on a diagram to ask about the design it shows."));
+  diagrams.forEach((d, i) => {
+    const key = "D" + (i + 1);
+    const canvas = el("figure",{class:"diagram-canvas"}, el("pre",{class:"mermaid"}, d.mermaid));
+    canvas.append(el("button",{class:"diagram-expand", onclick:()=>expandDiagram(canvas, d.title)}, "Expand"));
+    const thread = diagramComments(key);
+    const guide = diagramGuide(d.mermaid);
+    f.append(el("section",{class:"diagram", id:"diagram-" + key},
+      el("div",{class:"diagram-head"},
+        el("p",{class:"eyebrow"}, `Diagram ${i + 1} of ${diagrams.length}`),
+        el("h2",{class:"diagram-title"}, d.title),
+        d.caption ? el("p",{class:"diagram-caption"}, d.caption) : null,
+        guide ? el("p",{class:"diagram-guide"}, guide) : null),
+      canvas,
+      el("div",{class:"diagram-thread"},
+        el("p",{class:"text-sm font-medium text-ink-700"},
+          thread.length ? `${thread.length} comment${thread.length === 1 ? "" : "s"}` : "No comments yet"),
+        ...thread.map(c => el("div",{class:"diagram-comment"},
+          el("p",{class:"mb-1 text-sm text-ink-500"}, el("span",{class:"font-medium text-ink-800"}, "@" + c.user),
+            c.sample ? " · sample, not posted" : c.at ? " · " + new Date(c.at).toLocaleDateString() : ""),
+          points(c.text, "text-ink-800"))),
+        STATE.composer === "diagram:" + key
+          ? renderGlobalComposer("diagram:" + key, "", t => `${diagramMark(key)}\n**On diagram ${key}: ${d.title}**\n\n${t}`)
+          : el("button",{class:"btn-ghost", onclick:()=>{ STATE.composer = "diagram:" + key; render(); }}, "Comment on this diagram"))));
+  });
+  const next = routeNextBar(doc, "diagrams");
+  if (next) f.append(next);
+  return f;
+}
+
+/** A link to the walkthrough stop whose code a question concerns, or null when none of
+ *  its hunk ids belongs to a stop. */
+function seeAtStop(anchors){
+  const hunk = (anchors || []).find(id => STATE.stopOfHunk?.[id] !== undefined);
+  const stopIndex = hunk === undefined ? -1 : STATE.stopOfHunk[hunk];
+  const stop = STATE.ordered[stopIndex];
+  return stop ? el("button",{class:"mt-3 text-sm font-medium text-accent-700", onclick:()=>{STATE.view="tour";STATE.stopIndex=stopIndex;render();}},
+    `See it at ${stop.id} · ${stop.title} →`) : null;
+}
+
+/** Every question, at the end of the route where the reviewer is about to decide: first
+ *  what the session left open, then what it asked and answered. An answered question is
+ *  not reading, but a reviewer holding the same question should find it settled here,
+ *  with the code that settles it, instead of re-deriving the answer. */
+function renderQuestions(doc){
+  const qs = doc.open_questions || [];
+  const resolved = doc.evaluated || [];
+  const f = document.createDocumentFragment();
+  f.append(el("h1",{class:"mb-1"}, "Open questions"));
+  f.append(el("p",{class:"mb-6 text-ink-500"}, qs.length
+    ? "What the session could not settle. Weigh these before you decide."
+    : "The session left no open questions."));
+  const list = el("div",{class:"max-w-prose space-y-3"});
+  for (const q of qs){
+    list.append(el("div",{class:"card"},
+      el("div",{}, el("span",{class:"id-chip mr-2"}, q.id), el("span",{class:"font-medium"}, q.question)),
+      q.context ? el("p",{class:"mt-1.5 text-ink-600"}, q.context) : null,
+      seeAtStop(q.anchors),
+      decisionControl("question", q)));
+  }
+  f.append(list);
+
+  if (resolved.length){
+    f.append(el("section",{class:"mt-10 max-w-prose"},
+      el("h2",{class:"section-h"}, `Resolved during the session (${resolved.length})`),
+      el("p",{class:"mb-4 text-sm text-ink-500"}, "Asked and answered while the change was written. Check here before raising one of your own."),
+      el("div",{class:"space-y-3"}, ...resolved.map(e => el("div",{class:"card"},
         el("div",{class:"flex items-start justify-between gap-3"},
           el("span",{class:"font-medium"}, e.question),
-          // Plain labels, not links. `evaluated.anchors` are hunk ids from the diff the
-          // interview ran against, while a stored tour stop's anchors are path plus line
-          // ranges — so there is nothing here to match them to. A clickable chip that
-          // could not navigate would be worse than a label that does not pretend to.
-          hunkChips(anchors)),
-        points(e.answer, "mt-2 text-sm text-ink-700")));
-    }
-    const d = el("details",{class:"mt-1"});
-    d.append(el("summary",{class:"cursor-pointer text-sm text-ink-600"},
-      doc.evaluated.length + " question" + (doc.evaluated.length===1?"":"s") + " asked during the session and answered — check here before raising one of your own"));
-    d.append(body);
-    sec.append(d);
-    right.append(sec);
+          el("span",{class:"tag tag-ok shrink-0"}, "resolved")),
+        el("div",{class:"mt-2"}, points(e.answer, "text-ink-700")),
+        seeAtStop(e.anchors))))));
   }
-
-  const ap = doc.approach;
-  const asec = section("Approach");
-  asec.append(points(ap.adopted.summary, "text-ink-800"));
-  asec.append(labeled("Rationale.", points(ap.adopted.rationale, "text-ink-700")));
-  if (ap.requirements?.length) asec.append(subsection(`Requirements (${ap.requirements.length})`,
-    el("ul",{class:"mt-2 list-disc space-y-1 pl-5 text-ink-700"}, ...ap.requirements.map(r=>
-      el("li",{}, r.text, r.source ? el("span",{class:"text-ink-400"}, " — "+r.source) : null)))));
-  if (ap.trials?.length) asec.append(subsection(`Considered and rejected (${ap.trials.length})`,
-    el("div",{class:"mt-2 space-y-3"}, ...ap.trials.map(t=>el("div",{class:"border-l-2 border-ink-200 pl-3"},
-      el("p",{}, el("span",{class:"font-medium"},"Tried. "), t.what),
-      el("p",{class:"text-sm text-ink-600"}, "Outcome — "+t.outcome),
-      el("p",{class:"text-sm text-ink-600"}, "Abandoned — "+t.why_abandoned))))));
-  left.append(asec);
-
-  if (doc.diagrams?.length){
-    const dsec = section("Diagrams");
-    for (const d of doc.diagrams){
-      dsec.append(el("figure",{class:"mb-5"},
-        el("figcaption",{class:"mb-1.5 text-sm font-medium text-ink-700"}, d.title),
-        el("pre",{class:"mermaid overflow-x-auto rounded-lg border border-ink-200 bg-ink-50 p-3 text-center"}, d.mermaid),
-        d.caption ? el("p",{class:"mt-1 text-sm text-ink-500"}, d.caption) : null));
-    }
-    left.append(dsec);
-  }
-
-  f.append(el("div",{class:"ov-split"}, left, right));
-  f.append(el("div",{class:"mt-8 flex items-center gap-3 border-t border-ink-200 pt-6"},
-    el("button",{class:"btn-primary", onclick:()=>{STATE.view="tour";STATE.stopIndex=0;render();}}, "Start walkthrough"),
-    el("span",{class:"text-sm text-ink-500"}, `${STATE.ordered.length} stops`)));
+  const next = routeNextBar(doc, "questions");
+  if (next) f.append(next);
   return f;
 }
 
 function section(title, ...body){ return el("section",{class:"mb-8"}, el("h2",{class:"section-h"}, title), ...body); }
 function row(k,v){ return el("div",{class:"flex gap-2"}, el("dt",{class:"shrink-0 text-ink-500"}, k+":"), el("dd",{}, v)); }
 function subsection(title, body){ return el("div",{class:"mt-3 border-t border-ink-200 pt-3"}, el("h3",{class:"text-sm font-medium text-ink-600"}, title), body); }
-function ackBtn(id,kind,label,state){ return el("button",{class:"btn-ghost"+(state===kind?" is-on":""), onclick:()=>{STATE.acks[id]= state===kind?null:kind; render();}}, label); }
 
 /**
  * Everything still uncertain that belongs to THIS stop.
@@ -2248,34 +2649,31 @@ function renderLiveHere(doc, ids, role){
       el("div",{class:"flex items-start justify-between gap-3"},
         el("span",{class:"font-medium"}, u.question),
         el("span",{class:cls}, label)),
-      u.note ? points(u.note, "mt-2 text-sm text-ink-700") : null));
+      u.note ? points(u.note, "mt-2 text-ink-700") : null,
+      decisionControl("unresolved", u)));
   }
 
   for (const a of live.assumptions){
-    const state = STATE.acks[a.id];
     box.append(el("div",{class:"card mb-3"},
       el("div",{class:"flex items-start justify-between gap-3"},
         el("div",{}, el("span",{class:"id-chip mr-2"}, a.id), el("span",{class:"font-medium"}, a.assumption)),
         el("span",{class:"tag tag-warn"},"unverified")),
-      el("dl",{class:"mt-2 space-y-1 text-sm text-ink-600"},
+      el("dl",{class:"mt-2 space-y-1 text-ink-700"},
         row("If wrong", a.impact_if_wrong),
         a.how_to_verify ? row("How to verify", a.how_to_verify) : null),
-      el("div",{class:"mt-3 flex gap-2"},
-        ackBtn(a.id,"accept","Accept",state),
-        ackBtn(a.id,"flag","Flag for discussion",state)),
-      STATE.composer==="assume:"+a.id ? renderGlobalComposer("assume:"+a.id, STATE.composerSeed) : null,
-      STATE.posted["assume:"+a.id] ? el("p",{class:"mt-2 text-sm text-ink-500"},"\u2713 Posted to the PR discussion.") : null));
+      decisionControl("assumption", a)));
   }
 
   for (const q of live.questions){
     box.append(el("div",{class:"card mb-3"},
       el("div",{}, el("span",{class:"id-chip mr-2"}, q.id), el("span",{class:"font-medium"}, q.question)),
-      q.context ? el("p",{class:"mt-1.5 text-sm text-ink-600"}, q.context) : null));
+      q.context ? el("p",{class:"mt-1.5 text-ink-600"}, q.context) : null,
+      decisionControl("question", q)));
   }
 
   if (live.unverified.length){
     box.append(subsection("Never exercised",
-      el("ul",{class:"mt-1 space-y-1.5 text-sm"}, ...live.unverified.map(x=>el("li",{class:"flex items-start gap-2 text-ink-700"},
+      el("ul",{class:"mt-1 space-y-1.5"}, ...live.unverified.map(x=>el("li",{class:"flex items-start gap-2 text-ink-700"},
         el("span",{class:"select-none text-warn-fg"},"\u2014"), el("span",{}, x.text))))));
   }
 
@@ -2286,7 +2684,7 @@ function renderLiveHere(doc, ids, role){
     d.append(el("summary",{class:"cursor-pointer text-sm text-ink-600"},
       live.evaluated.length + " question" + (live.evaluated.length===1?"":"s") + " about this hunk already asked and answered"));
     for (const e of live.evaluated) d.append(el("div",{class:"card mt-2"},
-      el("p",{class:"font-medium"}, e.question), points(e.answer, "mt-2 text-sm text-ink-700")));
+      el("p",{class:"font-medium"}, e.question), points(e.answer, "mt-2 text-ink-700")));
     box.append(d);
   }
   return box;
@@ -2296,7 +2694,7 @@ function renderStop(){
   const s = STATE.ordered[STATE.stopIndex];
   const total = STATE.ordered.length;
   const f = document.createDocumentFragment();
-  const prose = el("div",{class:"stop-prose"});
+  const prose = el("div",{class:"evidence-text"});
   prose.append(el("section",{},
     el("div",{class:"mb-2 flex flex-wrap items-center gap-2 text-sm text-ink-500"},
       el("span",{}, `Stop ${STATE.stopIndex+1} of ${total}`),
@@ -2316,29 +2714,41 @@ function renderStop(){
 
   prose.append(renderLiveHere(STATE.data.document, stopHunkIds(s), s.role));
 
-  const code = el("div",{class:"stop-code"});
+  const code = el("div",{class:"evidence-code"});
   for (const hp of hunksForStop(s, STATE.files)){
     if (hp.missing){ code.append(el("div",{class:"diff"}, el("div",{class:"diff-file"}, hp.path, el("span",{class:"tag tag-warn"},"no matching change")))); continue; }
     code.append(renderHunk(hp.path, hp.hunk));
   }
 
-  const last = STATE.stopIndex===total-1;
-  prose.append(el("div",{class:"mt-8 flex justify-between border-t border-ink-200 pt-6"},
-    el("button",{class:"btn-ghost", disabled: STATE.stopIndex===0?"":null, onclick:()=>{if(STATE.stopIndex>0){STATE.stopIndex--;render();}}}, "Previous"),
-    last && STATE.me
-      ? el("button",{class:"btn-primary", onclick:()=>{STATE.view="submit";render();}}, "Finish review")
-      : el("button",{class:"btn-ghost", disabled: last?"":null, onclick:()=>{if(!last){STATE.stopIndex++;render();}}}, "Next")));
+  // The last stop hands over to the next route step rather than ending the review there.
+  const following = STATE.ordered[STATE.stopIndex + 1];
+  const forward = following
+    ? { label: `${following.id} · ${following.title}`, go: () => { STATE.stopIndex++; render(); } }
+    : nextRouteStep(STATE.data.document, "tour");
 
-  f.append(el("div",{class:"stop-split"}, prose, code));
+  f.append(el("div",{class:"evidence-split"}, prose, code));
+  f.append(routeBar(forward ? forward.label : "end of the walkthrough",
+    el("button",{class:"btn-ghost", disabled: STATE.stopIndex===0?"":null, onclick:()=>{if(STATE.stopIndex>0){STATE.stopIndex--;render();}}}, "Previous"),
+    forward ? continueButton(forward.go) : null));
   return f;
 }
 
 // ---------- submit review (approve / request changes) ----------
+/** The review body: the coverage line, then the pending decisions grouped by what the
+ *  author has to do about them. Asks @mention the PR's author, so GitHub notifies them. */
 function reviewSeed(){
   const cov = STATE.coverage;
-  const flagged = Object.entries(STATE.acks).filter(([,v])=>v==="flag").map(([k])=>k);
-  const lines = [`Reviewed via guided walkthrough — ${cov.explained} of ${cov.total} changes explained.`];
-  if (flagged.length) lines.push(`Assumptions flagged for discussion: ${flagged.join(", ")}.`);
+  const author = STATE.data.meta.author;
+  const lines = [`Reviewed via guided walkthrough: ${cov.explained} of ${cov.total} changes explained.`];
+  const group = (d, heading) => {
+    const items = Object.values(STATE.decisions).filter(x => x.d === d);
+    if (!items.length) return;
+    lines.push("", heading, ...items.map(x =>
+      `- ${x.ref ? "**" + x.ref + "** " : ""}${x.text}${x.note?.trim() ? "\n  " + x.note.trim() : ""}`));
+  };
+  group("block", "**Blocks merge**");
+  group("ask", `**Questions for ${author ? "@" + author : "the author"}**`);
+  group("accept", "**Accepted or closed as known**");
   return lines.join("\n");
 }
 function renderSubmitReview(){
@@ -2366,30 +2776,43 @@ function renderSubmitReview(){
       covOk ? `${cov.explained} of ${cov.total} changes explained`
             : `${cov.unexplained.length} change${cov.unexplained.length>1?"s":""} uncovered`)));
 
-  const ta = el("textarea",{class:"rev-textarea", rows:"5"});
+  // A "Blocks merge" decision makes Request changes the main action. It is a suggestion,
+  // not a lock: the reviewer can still approve.
+  const blocking = Object.values(STATE.decisions).filter(x => x.d === "block").length;
+  if (blocking) f.append(el("p",{class:"note mb-4 text-sm"},
+    `${blocking} item${blocking === 1 ? "" : "s"} marked Blocks merge, so Request changes is suggested.`));
+
+  const ta = el("textarea",{class:"rev-textarea", rows:"8"});
   ta.value = reviewSeed();
   const status = el("span",{class:"rev-status"});
-  const btnApprove = el("button",{class:"btn-primary"}, "Approve");
-  const btnChanges = el("button",{class:"btn-ghost"}, "Request changes");
+  const btnApprove = el("button",{class: blocking ? "btn-ghost" : "btn-primary"}, "Approve");
+  const btnChanges = el("button",{class: blocking ? "btn-primary" : "btn-ghost"}, "Request changes");
+  const btnComment = el("button",{class:"btn-ghost"}, "Send without a verdict");
+  const buttons = [btnApprove, btnChanges, btnComment];
   const submit = async (event)=>{
-    const body = ta.value.trim();
-    if (event==="REQUEST_CHANGES" && !body){ status.textContent = "Say what needs to change."; ta.focus(); return; }
-    btnApprove.setAttribute("disabled","disabled"); btnChanges.setAttribute("disabled","disabled");
+    const text = ta.value.trim();
+    if (event==="REQUEST_CHANGES" && !text){ status.textContent = "Say what needs to change."; ta.focus(); return; }
+    if (event==="COMMENT" && !text){ status.textContent = "Write something to send."; ta.focus(); return; }
+    buttons.forEach(b => b.setAttribute("disabled","disabled"));
     status.textContent = "Submitting…";
     try {
+      // The marker goes on at send time, outside the editable text, so editing the summary
+      // can never change what is recorded.
+      const body = text + decisionsMarker();
       const r = await fetch("/api/review",{method:"POST",headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ owner:m.owner, repo:m.repo, pull:m.pull, event, body, commit_id:m.head_sha })});
       const data = await r.json().catch(()=>({}));
-      if (r.ok){ STATE.reviewSubmitted = data.review; render(); return; }
-      status.textContent = data.error || "Failed — try again.";
+      if (r.ok){ recordSentDecisions(); STATE.reviewSubmitted = data.review; render(); return; }
+      status.textContent = data.error || "Failed. Try again.";
     } catch(e){ status.textContent = String(e); }
-    btnApprove.removeAttribute("disabled"); btnChanges.removeAttribute("disabled");
+    buttons.forEach(b => b.removeAttribute("disabled"));
   };
   btnApprove.addEventListener("click", ()=>submit("APPROVE"));
   btnChanges.addEventListener("click", ()=>submit("REQUEST_CHANGES"));
+  btnComment.addEventListener("click", ()=>submit("COMMENT"));
   f.append(el("div",{},
     ta,
-    el("div",{class:"rev-actions"}, btnApprove, btnChanges, status)));
+    el("div",{class:"rev-actions"}, ...buttons, status)));
   return f;
 }
 
@@ -2554,30 +2977,125 @@ async function replyComment(commentId, body){
   } catch(e){ return { ok:false, error:String(e) }; }
 }
 
-// ---------- Stage C: global (PR-level) comments for non-line items ----------
-function assumeAction(a, kind){
-  const on = STATE.acks[a.id]===kind;
-  if (on){ STATE.acks[a.id]=null; if (STATE.composer==="assume:"+a.id) STATE.composer=null; }
-  else {
-    STATE.acks[a.id]=kind;
-    STATE.composer="assume:"+a.id;
-    STATE.composerSeed = (kind==="flag"
-      ? `\ud83d\udea9 Flagging assumption ${a.id} for discussion: \u201c${a.assumption}\u201d.\n\n`
-      : `\u2705 Accepting assumption ${a.id}: \u201c${a.assumption}\u201d.\n\n`);
-  }
+// ---------- decisions on assumptions, open questions and unsettled items ----------
+// One click records a decision; nothing has to be written. Decisions wait in this browser,
+// like a pending GitHub review, then go out together in the review body, so ten decisions
+// are one notification rather than ten comments. The review carries a marker that is read
+// back on load, so every reviewer sees what was decided and by whom, with no database.
+const DECISION_KINDS = ["accept", "ask", "block"];
+const decisionLabel = (d, kind) =>
+  d === "accept" ? (kind === "assumption" ? "Accept" : "Known, close it") : d === "ask" ? "Ask the author" : "Blocks merge";
+const decisionPast = (d, kind) =>
+  d === "accept" ? (kind === "assumption" ? "Accepted" : "Closed as known") : d === "ask" ? "Asked the author" : "Marked Blocks merge";
+const DECISION_MARK = /<!-- review-assist:decisions (\{[^]*?\}) -->/;
+
+/** A stable key for anything a reviewer decides on: its own id when it has one, otherwise
+ *  a short hash of its text, because unsettled items carry no id. */
+function decisionKey(item){
+  if (item.id) return item.id;
+  let h = 5381;
+  for (const c of String(item.question || "")) h = ((h << 5) + h + c.charCodeAt(0)) >>> 0;
+  return "U-" + h.toString(36);
+}
+const isDecided = key => !!(STATE.decisions[key] || STATE.recorded[key]);
+
+// Pending decisions are a per-viewer draft, so browser storage is the right home until the
+// review is sent; every read and write tolerates storage being unavailable.
+const decisionStoreKey = () => { const m = STATE.data?.meta; return m ? `ra-decisions:${m.owner}/${m.repo}#${m.pull}` : null; };
+function loadDecisions(){
+  try { return JSON.parse(localStorage.getItem(decisionStoreKey()) || "{}") || {}; } catch { return {}; }
+}
+function saveDecisions(){
+  try { localStorage.setItem(decisionStoreKey(), JSON.stringify(STATE.decisions)); } catch {}
+}
+
+function decide(kind, item, d){
+  const key = decisionKey(item);
+  const cur = STATE.decisions[key];
+  if (cur && cur.d === d) { delete STATE.decisions[key]; if (STATE.noteOpen === key) STATE.noteOpen = null; }   // a second click clears it
+  else STATE.decisions[key] = { ...cur, d, kind, ref: item.id || null, text: item.assumption || item.question || "" };
+  saveDecisions();
   render();
 }
-function renderGlobalComposer(key, seed){
+
+/** The decision control, identical wherever the item appears (risk cue, stop, overview,
+ *  questions), so a decision made in one place shows in all of them. */
+function decisionControl(kind, item){
+  const key = decisionKey(item);
+  const mine = STATE.decisions[key];
+  const rec = STATE.recorded[key];
+  const current = mine?.d ?? rec?.d ?? null;
+  let note = null;
+  if (mine && STATE.noteOpen === key) {
+    note = el("textarea",{class:"rev-textarea", rows:"2", placeholder:"Optional: why, or what you need from the author"});
+    note.value = mine.note || "";
+    note.addEventListener("input", () => { STATE.decisions[key].note = note.value; saveDecisions(); });
+    setTimeout(() => note.focus(), 0);
+  }
+  const status = mine
+    ? el("p",{class:"decision-status"},
+        STATE.me ? "Saved. It posts with your review. " : "Saved in this browser. ",
+        el("button",{class:"decision-note-link", onclick:()=>{ STATE.noteOpen = STATE.noteOpen === key ? null : key; render(); }},
+          mine.note?.trim() ? "Edit note" : "Add a note"))
+    : rec ? el("p",{class:"decision-status"}, `${decisionPast(rec.d, kind)} by @${rec.by}`)
+    : null;
+  return el("div",{class:"decision"},
+    el("div",{class:"decision-buttons", role:"group", "aria-label": "Your decision" + (item.id ? " on " + item.id : "")},
+      ...DECISION_KINDS.map(d => el("button",{
+        class:"decision-btn is-" + d + (current === d ? " is-on" : ""), "aria-pressed": String(current === d),
+        onclick:()=>decide(kind, item, d)}, decisionLabel(d, kind)))),
+    status, note);
+}
+
+function decisionsMarker(){
+  const ds = Object.fromEntries(Object.entries(STATE.decisions).map(([k, v]) => [k, v.d]));
+  return Object.keys(ds).length ? `\n\n<!-- review-assist:decisions ${JSON.stringify(ds)} -->` : "";
+}
+/** Once the review is on GitHub, its decisions are the record: move them out of the draft. */
+function recordSentDecisions(){
+  for (const [k, v] of Object.entries(STATE.decisions)) STATE.recorded[k] = { d: v.d, by: STATE.me, at: new Date().toISOString() };
+  STATE.decisions = {};
+  saveDecisions();
+}
+
+/** Decisions already sent (from review bodies, latest wins) and the PR-level comments that
+ *  diagrams read their threads from. */
+async function loadDiscussion(){
+  const m = STATE.data?.meta; if (!m) return;
+  try {
+    const r = await fetch(`/api/discussion?owner=${encodeURIComponent(m.owner)}&repo=${encodeURIComponent(m.repo)}&pull=${m.pull}`);
+    if (!r.ok) return;
+    const { reviews = [], comments = [] } = await r.json();
+    STATE.recorded = {};
+    for (const rv of [...reviews].sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
+      const mark = DECISION_MARK.exec(rv.body || "");
+      if (!mark) continue;
+      let ds; try { ds = JSON.parse(mark[1]); } catch { continue; }
+      for (const [k, d] of Object.entries(ds)) if (DECISION_KINDS.includes(d)) STATE.recorded[k] = { d, by: rv.user, at: rv.at };
+    }
+    STATE.discussion = comments;
+  } catch {}
+}
+
+// ---------- Stage C: global (PR-level) comments for non-line items ----------
+/** A PR-level comment box. `decorate` wraps the text before it is posted (a diagram adds the
+ *  marker its thread is read back by). The posted comment is echoed into STATE.discussion so
+ *  it shows at once. On the public sample there is nobody signed in, so it stays local. */
+function renderGlobalComposer(key, seed = "", decorate = t => t){
   const ta = el("textarea",{class:"rev-textarea", rows:"3", placeholder:"Add a comment for the PR discussion\u2026"});
   ta.value = seed || "";
-  const status = el("span",{class:"rev-status"});
+  const status = el("span",{class:"rev-status"}, STATE.me ? "" : "This is a sample: on a real pull request, this posts to the PR discussion.");
   const submit = el("button",{class:"btn-primary"}, "Post to PR");
   submit.addEventListener("click", async ()=>{
     const text = ta.value.trim(); if (!text) return;
+    const body = decorate(text);
+    if (!STATE.me){
+      STATE.discussion.push({ user:"you", at:null, body, sample:true }); STATE.composer=null; render(); return;
+    }
     submit.setAttribute("disabled","disabled"); status.textContent="Posting\u2026";
-    const res = await postIssueComment(text);
-    if (res.ok){ STATE.posted[key]=true; STATE.composer=null; render(); }
-    else { submit.removeAttribute("disabled"); status.textContent = res.error || "Failed \u2014 try again."; }
+    const res = await postIssueComment(body);
+    if (res.ok){ STATE.discussion.push({ user:STATE.me, at:new Date().toISOString(), body }); STATE.composer=null; render(); }
+    else { submit.removeAttribute("disabled"); status.textContent = res.error || "Failed. Try again."; }
   });
   const cancel = el("button",{class:"btn-ghost", onclick:()=>{ STATE.composer=null; render(); }}, "Cancel");
   const wrap = el("div",{class:"rev-composer mt-2"}, ta, el("div",{class:"rev-actions"}, submit, cancel, status));
@@ -2623,6 +3141,8 @@ function renderVerify(doc){
   if (unexercised.length) cols.append(section("Not verified",
     el("ul",{class:"space-y-1.5"}, ...unexercised.map(n=>el("li",{class:"flex items-start gap-2 text-ink-700"},
       el("span",{class:"select-none text-warn-fg"},"—"), el("span",{}, n.text), hunkChips(n.anchors))))));
+  const next = routeNextBar(doc, "verify");
+  if (next) f.append(next);
   return f;
 }
 

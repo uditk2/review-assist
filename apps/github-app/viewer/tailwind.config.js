@@ -47,6 +47,18 @@ export default {
         border: "var(--warn-border)",
       },
     },
+    // The only sizes available: each is a token from src/brand.css, with Carbon's line height
+    // for that step. Defined at the theme level rather than under `extend`, so Tailwind's
+    // default scale (text-xs, text-lg, ...) is not generated and cannot drift in beside it.
+    fontSize: {
+      micro: ["var(--text-micro)", { lineHeight: "1.33" }],
+      sm: ["var(--text-sm)", { lineHeight: "1.43" }],
+      base: ["var(--text-base)", { lineHeight: "1.5" }],
+      title: ["var(--text-title)", { lineHeight: "1.4" }],
+      heading: ["var(--text-heading)", { lineHeight: "1.29" }],
+      display: ["var(--text-display)", { lineHeight: "1.2" }],
+      hero: ["var(--text-hero)", { lineHeight: "1.2" }],
+    },
     fontFamily: {
       sans: ['"IBM Plex Sans"', "system-ui", "sans-serif"],
       mono: ['"IBM Plex Mono"', "ui-monospace", "monospace"],
@@ -54,11 +66,6 @@ export default {
     extend: {
       borderRadius: { md: "6px" },
       maxWidth: { prose: "72ch" },
-      fontSize: {
-        micro: ["0.75rem", { lineHeight: "1rem" }],
-        sm: ["0.8125rem", { lineHeight: "1.25rem" }],
-        base: ["0.9375rem", { lineHeight: "1.6" }],
-      },
     },
   },
   plugins: [],

@@ -69,12 +69,13 @@ export default {
       if (path === "/api/comments/reply" && request.method === "POST") return handleReplyComment(request, env);
       if (path === "/api/issue-comment" && request.method === "POST") return handleIssueComment(request, env);
       if (path === "/api/review" && request.method === "POST") return handleSubmitReview(request, env);
+      if (path === "/api/discussion" && request.method === "GET") return handleListDiscussion(request, url, env);
     } catch (e) {
       return json({ error: (e as Error).message }, 500, true);
     }
 
     // Everything else: the static viewer SPA (edge-cacheable, no repo content).
-    return cacheableAsset(await env.ASSETS.fetch(request));
+    return cacheableAsset(await env.ASSETS.fetch(request), url.hostname);
   },
 };
 
@@ -185,6 +186,7 @@ async function handleDocument(request: Request, url: URL, env: Env): Promise<Res
     base: { sha: string };
     number: number;
     title: string;
+    user?: { login: string };
   };
 
   // 2. Intent document from the head ref: .intent/<branch>.json.
@@ -207,7 +209,8 @@ async function handleDocument(request: Request, url: URL, env: Env): Promise<Res
 
   return json(
     {
-      meta: { owner, repo, pull: pr.number, title: pr.title, head_sha: pr.head.sha },
+      // author: the PR's opener, so a reviewer's "Ask the author" can @mention them.
+      meta: { owner, repo, pull: pr.number, title: pr.title, head_sha: pr.head.sha, author: pr.user?.login ?? null },
       document,
       diff,
       document_missing: document === null,
@@ -336,7 +339,35 @@ async function handleIssueComment(request: Request, env: Env): Promise<Response>
   return json({ comment: data }, 201, true);
 }
 
+/** GET the PR's submitted reviews and PR-level comments, trimmed to what the viewer reads
+ *  back: who wrote it, when, and the body. Decisions on assumptions and questions travel in
+ *  a review body, and diagram comments in an issue comment, each behind an HTML-comment
+ *  marker, so GitHub itself is the record and the App still keeps no database. */
+async function handleListDiscussion(request: Request, url: URL, env: Env): Promise<Response> {
+  const session = await currentSession(request, env);
+  if (!session) return json({ error: "unauthenticated" }, 401, true);
+  const owner = url.searchParams.get("owner");
+  const repo = url.searchParams.get("repo");
+  const pull = url.searchParams.get("pull");
+  if (!owner || !repo || !pull) return json({ error: "owner, repo, pull required" }, 400, true);
+  const [reviewsRes, commentsRes] = await Promise.all([
+    ghUser(session.token, `/repos/${owner}/${repo}/pulls/${pull}/reviews?per_page=100`),
+    ghUser(session.token, `/repos/${owner}/${repo}/issues/${pull}/comments?per_page=100`),
+  ]);
+  if (!reviewsRes.ok) return json({ error: `reviews fetch failed (${reviewsRes.status})` }, reviewsRes.status, true);
+  if (!commentsRes.ok) return json({ error: `comments fetch failed (${commentsRes.status})` }, commentsRes.status, true);
+  type Item = { id: number; body?: string | null; user?: { login: string }; submitted_at?: string; created_at?: string; html_url: string };
+  const trim = (x: Item, at: string | undefined) => ({
+    id: x.id, user: x.user?.login ?? "unknown", at: at ?? null, body: x.body ?? "", html_url: x.html_url,
+  });
+  const reviews = ((await reviewsRes.json()) as Item[]).map((r) => trim(r, r.submitted_at));
+  const comments = ((await commentsRes.json()) as Item[]).map((c) => trim(c, c.created_at));
+  return json({ reviews, comments }, 200, true);
+}
+
 /** Submit the review verdict (approve / request changes) as the signed-in reviewer.
+ *  COMMENT sends the review without a verdict: a reviewer can ask the author something
+ *  before deciding.
  *  Merge is deliberately NOT offered here — branch protection, merge queues and merge
  *  method live on GitHub; the viewer concludes the *review*, not the merge. */
 async function handleSubmitReview(request: Request, env: Env): Promise<Response> {
@@ -349,12 +380,12 @@ async function handleSubmitReview(request: Request, env: Env): Promise<Response>
   if (!owner || !repo || !pull || !event) {
     return json({ error: "owner, repo, pull, event required" }, 400, true);
   }
-  if (event !== "APPROVE" && event !== "REQUEST_CHANGES") {
-    return json({ error: "event must be APPROVE or REQUEST_CHANGES" }, 400, true);
+  if (event !== "APPROVE" && event !== "REQUEST_CHANGES" && event !== "COMMENT") {
+    return json({ error: "event must be APPROVE, REQUEST_CHANGES or COMMENT" }, 400, true);
   }
-  // GitHub requires a body for REQUEST_CHANGES; it's optional for APPROVE.
-  if (event === "REQUEST_CHANGES" && !body?.trim()) {
-    return json({ error: "a body is required when requesting changes" }, 400, true);
+  // GitHub requires a body for REQUEST_CHANGES and COMMENT; it's optional for APPROVE.
+  if (event !== "APPROVE" && !body?.trim()) {
+    return json({ error: "a body is required unless approving" }, 400, true);
   }
   const res = await ghUser(session.token, `/repos/${owner}/${repo}/pulls/${pull}/reviews`, {
     method: "POST",
@@ -412,10 +443,12 @@ function json(body: unknown, status = 200, noStore = false): Response {
  * live within seconds rather than up to a day, and a missed purge still self-heals in
  * one day rather than staying stale forever (nothing here is filename-hashed).
  */
-function cacheableAsset(res: Response): Response {
+function cacheableAsset(res: Response, hostname: string): Response {
   if (res.status !== 200) return res;
   const headers = new Headers(res.headers);
-  headers.set("Cache-Control", "public, max-age=86400, must-revalidate");
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
+  // Rebuilds must be visible immediately during local development.
+  headers.set("Cache-Control", local ? "no-store" : "public, max-age=86400, must-revalidate");
   return new Response(res.body, { status: res.status, headers });
 }
 

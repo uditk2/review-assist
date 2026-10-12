@@ -19,8 +19,8 @@
   body {
     @apply bg-canvas text-ink-900 font-sans text-base;
   }
-  h1 { @apply text-[1.5rem] font-semibold tracking-[-0.01em] text-ink-900; }
-  h2 { @apply text-[1.0625rem] font-semibold text-ink-900; }
+  h1 { @apply text-heading font-semibold tracking-[-0.01em] text-ink-900; }
+  h2 { @apply text-title font-semibold text-ink-900; }
   a { @apply text-accent-700 no-underline hover:underline; }
 }
 
@@ -31,7 +31,7 @@
 
   .card { @apply rounded-md border border-ink-200 bg-surface p-4; }
 
-  .btn { @apply inline-flex items-center gap-2 rounded-md border px-3.5 py-2 text-sm font-medium transition-colors; }
+  .btn { @apply inline-flex items-center gap-2 rounded-md border px-3.5 py-2 text-sm font-medium transition-colors hover:no-underline; }
   .btn-primary { @apply btn border-accent-600 bg-accent-600 text-white hover:bg-accent-700 hover:border-accent-700; }
   .btn-ghost { @apply btn border-ink-200 bg-surface text-ink-700 hover:bg-ink-50; }
   .btn-ghost.is-on { @apply border-accent-600 text-accent-700 bg-accent-50; }
@@ -50,15 +50,23 @@
   .diff { @apply overflow-hidden rounded-md border border-ink-200; }
   .diff-file { @apply flex items-center justify-between border-b border-ink-200 bg-ink-50 px-3 py-1.5 font-mono text-micro text-ink-600; }
   .diff-body { @apply overflow-x-auto py-1; }
-  .diff-line { @apply block whitespace-pre px-3 font-mono text-[12.5px] leading-[1.5]; }
+  .diff-line { @apply block whitespace-pre px-3 font-mono text-micro leading-[1.5]; }
   .diff-line.is-add { @apply bg-ok-line text-ok-strong; }
   .diff-line.is-del { @apply bg-danger-line text-danger-fg; }
   .diff-line.is-ctx { @apply text-ink-500; }
   .diff-line.is-hunk { @apply bg-ink-50 text-ink-500; }
 
   /* Site chrome: the landing page and the release notes share one header. */
-  .site-nav { @apply rounded-md px-2 py-1 font-mono text-micro tracking-[0.02em] text-ink-600 hover:bg-ink-100 hover:text-ink-900 hover:no-underline; }
+  .site-nav { @apply rounded-md px-2.5 py-2 font-mono text-sm tracking-[0.01em] text-ink-600 hover:bg-ink-100 hover:text-ink-900 hover:no-underline; }
   .site-nav.is-active { @apply font-medium text-ink-900; }
+  @media (max-width: 44rem) {
+    .site-brand-name { display: none; }
+    .site-header { gap: .25rem; }
+    .site-nav { padding-left: .45rem; padding-right: .45rem; }
+  }
+  @media (max-width: 30rem) {
+    .site-nav-home { display: none; }
+  }
 
 .blog-main { width: 100%; max-width: 68rem; }
 .article-grid {
@@ -77,7 +85,7 @@
 }
 
   /* Inline code inside authored prose — quieter than a diff line. */
-  .code-inline { @apply rounded border border-ink-200 bg-ink-50 px-1 py-px font-mono text-[0.85em] text-ink-700; }
+  .code-inline { @apply rounded border border-ink-200 bg-ink-50 px-1 py-px font-mono text-ink-700; }
 
   .section-h { @apply relative mb-3 border-b border-ink-200 pb-1.5; }
   .section-h::after {
@@ -143,6 +151,18 @@
       linear-gradient(180deg, var(--wash-top) 0%, var(--canvas) 92%);
   }
 
+  /* The first decision should be effortless to spot and tap. This modifier stays scoped to
+     the hero: install and in-product actions retain their quieter, compact treatment. */
+  .hero-cta { @apply h-12 min-w-44 box-border justify-center px-5 py-3 text-base shadow-sm; }
+  .hero-secondary { @apply h-12 min-w-44 box-border justify-center px-4 py-3 text-base; }
+  @media (max-width: 39.9375rem) {
+    .hero-cta, .hero-secondary { @apply flex-1 justify-center; }
+  }
+
+  /* Landing section headings, one step up from the review's: 20px on a phone, 28px wide. */
+  .home-content h2 { @apply text-title sm:text-heading; }
+  .home-content h3 { @apply text-title; }
+
   /* Landing demo: the viewer's own chrome, shrunk to a panel. */
   /* The four stops differ in length (316px to 453px at desktop width), so the panel used
      to resize under the reader as autoplay advanced, shoving the rest of the page down
@@ -179,37 +199,273 @@
   .railbar { @apply sticky top-[57px] z-10 flex gap-1.5 overflow-x-auto border-b border-ink-200 bg-canvas px-4 py-2 lg:hidden; }
   .chip-link { @apply flex shrink-0 items-baseline gap-1.5 rounded border border-ink-200 bg-surface px-2 py-1 text-sm text-ink-600; }
   .chip-link.is-active { @apply border-accent-600 bg-accent-50 font-medium text-ink-900; }
-  .view { @apply min-w-0 flex-1 px-4 py-6 md:px-8 lg:px-10; }
+  /* pb-24 keeps the last line of a step clear of the fixed .route-next bar. */
+  .view { @apply min-w-0 flex-1 px-4 py-6 pb-24 md:px-8 lg:px-10; }
   /* Prose keeps its measure; only code is allowed the full width. */
   .view-prose { @apply max-w-prose; }
   .view-wide { @apply w-full; }
-  /* A stop is prose plus code: the prose sticks at its measure, the diff takes the rest. */
-  .stop-split { @apply grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] xl:gap-10; }
-  .stop-prose { @apply min-w-0 max-w-prose xl:max-w-none xl:sticky xl:top-[73px]; }
-  .stop-code { @apply min-w-0 space-y-3; }
-  /* Same reason as .stop-prose: the single-column fallback still needs a measure. */
-  .ov-main { @apply min-w-0 max-w-prose xl:max-w-none; }
-  /* Narrative left, self-contained cards right — only once the rail has room to spare. */
-/* 32rem and 34rem are the measured optimum; do not widen them to close the gutter.
-     Measured in a browser with Range.getClientRects(): 32rem gives the 15px prose ~74
-     characters per line and 34rem gives the 13px card bodies ~74 (the dt label eats
-     ~60px of the track). Typographic research puts the comfortable band at 50-75 cpl,
-     optimum ~66, so both sit at its top edge already.
-
-     Three attempts to reclaim the gutter all measured worse and were reverted: 40rem
-     on the left read 93 cpl, letting the right take 1fr ran the card bodies to 112-142,
-     and pinning it to 42rem starved the left to 397px at 1500. Two columns held to a
-     reading measure cannot also fill a 1920px display. The gutter is the cost of the
-     measure.
-
-     The remainder now banks to the right rather than splitting: the columns are
-     left-aligned, so the rail, the header and both tracks share one left edge and
-     nothing shifts sideways as the window grows. That is a deliberate call, not an
-     oversight — it is the same choice a documentation shell makes. Do not "fix" it by
-     widening the tracks; see the measurements above. */
-  .ov-split { @apply grid grid-cols-1 items-start justify-start gap-8 xl:grid-cols-[minmax(0,32rem)_minmax(0,34rem)] xl:gap-12; }
+  /* Reading beside code, shared by a risk cue and a walkthrough stop so moving between them
+     never changes the column widths. 34rem holds 15px prose near 74 characters per line
+     (the measure the overview panels use too); the code takes the rest but never less than
+     24rem, so on a 1280px screen the reading column gives way first. The text sticks at its
+     measure while a long diff scrolls past it. */
+  .evidence-split { @apply grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,34rem)_minmax(24rem,1fr)] xl:gap-8; }
+  .evidence-text { @apply min-w-0 max-w-prose self-start xl:sticky xl:top-[77px] xl:max-w-none; }
+  .evidence-code { @apply min-w-0 space-y-3 self-start; }
+  /* Overview panels. Measured with Range.getClientRects(), 32-34rem holds 15px prose at
+     about 74 characters per line, the top of the comfortable 50-75 band; wider tracks read
+     at 93-142. A single column held to that measure left half of a 1920px screen empty, so
+     the overview is a grid of equal panels instead, two to a row from 1280px, each capped
+     at 72ch inside. More panels fill the width; no line gets longer. */
+  .ov-head { @apply mb-6; }
+  .ov-grid { @apply grid max-w-[100rem] grid-cols-1 gap-5 xl:grid-cols-2; }
+  .ov-wide { @apply max-w-[100rem]; }
+  .ov-panel { @apply min-w-0 rounded-xl border border-ink-200 bg-surface p-5 sm:p-6; }
+  .ov-panel > * { max-width: 72ch; }
+  /* One body size in every panel; titles step up to 20px and labels down to 14px. */
+  .ov-panel .ov-panel-h { @apply mb-3 text-title font-semibold text-ink-900; }
+  .ov-problem { @apply text-ink-800; }
+  .ov-scope { @apply mt-5 border-t border-ink-200 pt-4; }
+  .ov-label { @apply mb-1.5 text-sm font-medium text-ink-600; }
+  .ov-list { @apply list-disc space-y-1.5 pl-5 text-ink-700; }
+  .ov-trial + .ov-trial { @apply mt-4 border-t border-ink-200 pt-4; }
   .ver-split { @apply grid grid-cols-1 items-start justify-start gap-8 xl:grid-cols-[minmax(0,30rem)_minmax(0,30rem)] xl:gap-12; }
+
+  /* PR route: the prerendered landing markup stays hidden while the review boots. */
+  html[data-route="pr"] [data-prerendered] { display: none; }
+
+  /* Line comments: selection, the + affordance, threads and the composer. */
+  .rev-line { position: relative; }
+  .rev-line.is-sel { box-shadow: inset 3px 0 0 var(--accent-600); @apply bg-accent-50; }
+  .rev-range { @apply mb-1 text-micro text-ink-500; }
+  .rev-add { @apply absolute right-1 top-0 flex h-full cursor-pointer items-center border-0 bg-transparent px-2 font-bold text-ink-400 opacity-0 transition-opacity hover:text-accent-600; }
+  .rev-line:hover .rev-add { @apply opacity-100; }
+  .rev-thread { @apply my-2 rounded-lg border border-ink-200 bg-ink-50 px-3 py-2; }
+  .rev-comment { @apply border-b border-ink-200 py-1.5 last-of-type:border-b-0; }
+  .rev-meta { @apply mb-0.5 flex items-center gap-2 text-sm text-ink-500; }
+  .rev-author { @apply font-semibold text-ink-700; }
+  .rev-link { @apply ml-auto text-ink-400 no-underline hover:text-accent-600; }
+  .rev-body { @apply whitespace-pre-wrap text-base text-ink-800; }
+  .rev-reply-toggle { @apply mt-1.5 cursor-pointer border-0 bg-transparent p-0 text-sm text-ink-500 hover:text-accent-600; }
+  .rev-composer { @apply my-2; }
+  /* 16px also stops iOS zooming the page when the box takes focus. */
+  .rev-textarea { @apply box-border w-full resize-y rounded-lg border border-ink-300 bg-canvas px-2.5 py-2 font-sans text-base text-ink-800; }
+  .rev-actions { @apply mt-2 flex items-center gap-2; }
+  .rev-status { @apply text-sm text-ink-500; }
 
   .note { @apply rounded-md border border-warn-border bg-warn-bg px-3.5 py-3 text-ink-800; }
   .rule { @apply border-t border-ink-200; }
+
+  /* The landing page earns attention with one promise and a live product cue. The lines
+     are atmosphere only: they should never compete with code or copy. */
+  .contour-field { position: relative; isolation: isolate; }
+  .contour-field::before {
+    content: "";
+    position: absolute;
+    inset: -8rem 0 -3rem;
+    z-index: -1;
+    opacity: .52;
+    background-image: repeating-radial-gradient(ellipse at var(--contour-at, 62% 48%), transparent 0 1.15rem, var(--grid-line) 1.2rem 1.26rem, transparent 1.32rem 2.45rem);
+    mask-image: linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent);
+  }
+  .promise-title { @apply max-w-[13ch] text-display font-semibold leading-[.98] tracking-[-.045em] text-ink-900 sm:text-hero; }
+  .promise-panel { @apply overflow-hidden rounded-xl border border-ink-200 bg-surface p-3 shadow-sm; }
+  .promise-panel-code { @apply mt-3 overflow-hidden rounded-lg border border-ink-200 bg-ink-900 text-ink-100; }
+  .free-pill { @apply inline-flex rounded-full border border-accent-100 bg-accent-50 px-3 py-1 text-sm font-medium text-accent-700; }
+  /* ---- "The reasoning, made reviewable" (design/mockups/approved-review-flow.png) ----
+     Three cards joined by connectors: stacked and centred on narrow screens, one row from
+     1280px, where the Intent Document is the visual centre. Selectors that set type carry
+     two classes so .home-content's p/h2/h3 sizes do not override them. */
+  .flow-section { --contour-at: 50% 62%; @apply py-6; }
+  .flow-section .flow-eyebrow { @apply mb-3 font-mono text-sm font-medium tracking-[0.04em] text-accent-600; }
+  .flow-section .flow-title { @apply max-w-[22ch] text-heading font-semibold leading-[1.05] tracking-[-0.03em] text-ink-900 sm:text-display; }
+  .flow-section .flow-lead { @apply mt-4 max-w-2xl text-base text-ink-600 sm:text-title; }
+  .flow { @apply mx-auto mt-10 grid max-w-xl grid-cols-1; }
+  .flow-more { @apply mt-8; }
+
+  .flow-card { @apply rounded-2xl border border-ink-200 bg-surface p-5; box-shadow: 0 24px 48px -32px var(--lift), 0 0 0 1px var(--lift-rim); }
+  .flow-card-head { @apply mb-4 flex items-center gap-3; }
+  .flow-card .flow-card-title { @apply flex-1 text-base font-semibold text-ink-900; }
+  .flow-card .flow-card-meta { @apply font-mono text-micro text-ink-500; }
+
+  .flow-term-badge { @apply inline-flex h-7 w-7 items-center justify-center rounded-md text-white; background: var(--terminal-bg); }
+  .flow-terminal { @apply overflow-hidden rounded-xl px-4 py-3.5 font-mono text-micro leading-[2]; background: var(--terminal-bg); color: #e3edf6; }
+  .flow-term-line { @apply overflow-hidden text-ellipsis whitespace-pre; }
+  .flow-term-line > span { @apply mr-2 inline-flex align-[-2px]; }
+  .flow-term-line.is-muted { color: #8ea3b6; }
+  .flow-term-line.is-ok { color: #8cdfb0; }
+  .flow-term-fail { @apply h-2 w-2 rounded-sm; background: #8ea3b6; vertical-align: 1px !important; }
+  .flow-session-foot { @apply mt-4 flex items-center gap-2 text-sm text-ink-600; }
+  .flow-branch { @apply whitespace-nowrap rounded-full bg-accent-50 px-3 py-1.5 text-sm text-accent-700; }
+
+  .flow-doc { @apply relative z-0 rounded-[1.25rem] p-6 sm:p-7; background: var(--spot-bg); color: #f3f8fc;
+    border: 1px solid var(--spot-rim);
+    box-shadow: 0 0 0 1px var(--spot-rim), 0 0 36px -2px var(--spot-glow), 0 32px 64px -32px var(--lift); }
+  .flow-doc-head { @apply mb-4 flex flex-wrap items-center gap-3; }
+  .flow-doc-mark { @apply inline-flex; color: #7cc4f2; }
+  .flow-doc .flow-doc-brand { @apply flex-1 whitespace-nowrap text-title font-semibold; }
+  .flow-doc-chip { @apply inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm; color: #dcebf7; border: 1px solid rgba(124,196,242,.45); background: rgba(124,196,242,.10); }
+  .flow-doc .flow-doc-lead { @apply mb-5 text-base; color: #c9d8e6; }
+  .flow-doc-lead em { color: #f3f8fc; }
+  .flow-rows { @apply grid gap-3; }
+  .flow-row { @apply flex items-center gap-4 rounded-xl p-4 transition-colors hover:no-underline; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.10); }
+  .flow-row:hover { background: rgba(255,255,255,.08); border-color: rgba(124,196,242,.45); }
+  .flow-row-icon { @apply inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full; }
+  .flow-row-icon.is-info { color: #7cc4f2; background: rgba(124,196,242,.14); }
+  .flow-row-icon.is-warn { color: #f2bd54; background: rgba(242,189,84,.14); }
+  .flow-row-icon.is-ok { color: #7dd5c0; background: rgba(125,213,192,.14); }
+  .flow-row-text { @apply min-w-0 flex-1; }
+  .flow-row-title { @apply block text-base font-semibold; color: #f3f8fc; }
+  .flow-row-desc { @apply mt-1 block text-sm leading-snug; color: #a9bccd; }
+  .flow-row-chevron { @apply inline-flex shrink-0; color: #a9bccd; }
+
+  .flow-review .flow-review-lead { @apply mb-4 text-base text-ink-600; }
+  .flow-code { @apply overflow-hidden rounded-xl border border-ink-200; }
+  .flow-code-head { @apply flex items-center justify-between gap-3 border-b border-ink-200 bg-ink-50 px-4 py-2.5 font-mono text-micro text-ink-700; }
+  .flow-code-link { @apply whitespace-nowrap font-sans text-micro text-accent-700; }
+  .flow-code-body { @apply overflow-x-auto py-1.5 font-mono text-micro leading-[1.95]; }
+  .flow-code-line { @apply flex w-max min-w-full whitespace-pre pr-4 text-ink-700; }
+  .flow-code-line.is-add { @apply bg-ok-line text-ok-strong; }
+  .flow-code-num { @apply w-8 shrink-0 select-none pr-2.5 text-right text-ink-400; }
+  .flow-code-sign { @apply w-4 shrink-0 select-none; }
+  .flow-check-row { @apply mt-4 flex items-center gap-2.5 rounded-lg border border-accent-100 bg-accent-50 px-3.5 py-2.5 text-sm font-medium text-ink-900 hover:border-accent-600 hover:no-underline; }
+  .flow-check-row > span { @apply inline-flex; }
+  .flow-checks { @apply mt-3 grid gap-2.5 px-1 text-base text-ink-700; }
+  .flow-checks li { @apply flex items-center gap-3; }
+  .flow-checkbox { @apply inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded bg-accent-600 text-white; }
+
+  /* Connectors: a line, a node, and an arrow badge that overlaps the Intent Document's edge.
+     The glow is a drop-shadow on the whole <svg>, so no filter id has to be unique. */
+  .flow-link { @apply relative z-10 flex h-16 items-center justify-center; }
+  .flow-link svg { overflow: visible; filter: drop-shadow(0 0 4px var(--spot-glow)); }
+  .flow-link-straight { transform: rotate(90deg); }
+  .flow-link-bend { display: none; }
+  .flow-line { stroke: var(--flow-line); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .flow-node { fill: var(--surface); stroke: var(--flow-line); stroke-width: 2.5; }
+  .flow-badge { fill: var(--surface); stroke: var(--flow-line); stroke-opacity: .45; stroke-width: 1.5; }
+  .flow-arrow { stroke: var(--flow-line); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  @media (min-width: 80rem) {
+    .flow { @apply mt-14 max-w-none items-center; grid-template-columns: minmax(0,1.08fr) 4.5rem minmax(0,1.42fr) 4.5rem minmax(0,1.04fr); }
+    .flow-link { height: auto; }
+    .flow-link-straight { transform: translateX(14px); }
+    .flow-link.is-bend .flow-link-straight { display: none; }
+    .flow-link-bend { display: block; transform: translate(-14px, 10px); }
+  }
+
+  /* ---- Setup (design/mockups/approved-setup-flow.png) ---- */
+  .setup .setup-title { @apply text-center text-heading font-semibold tracking-[-0.02em] text-ink-900 sm:text-display; }
+  .setup .setup-lead { @apply mt-2 text-center text-base text-ink-600 sm:text-title; }
+  .setup-steps { @apply mx-auto mt-8 grid max-w-3xl grid-cols-3; }
+  .setup-step { @apply relative flex justify-center; }
+  .setup-step + .setup-step::before { content: ""; @apply absolute top-5 h-px bg-ink-300; left: calc(-50% + 1.75rem); right: calc(50% + 1.75rem); }
+  .setup-step.is-done + .setup-step::before { @apply bg-accent-600; }
+  .setup-step button { @apply flex flex-col items-center gap-2 rounded-md px-2 py-1 text-ink-500; }
+  .setup-dot { @apply flex h-10 w-10 items-center justify-center rounded-full border border-ink-300 bg-surface font-mono text-base font-medium text-ink-600; }
+  .setup-step-label { @apply text-center text-sm; }
+  .setup-step.is-active .setup-dot { @apply border-accent-600 bg-accent-600 text-white; }
+  .setup-step.is-active .setup-step-label { @apply font-medium text-accent-700; }
+  .setup-step.is-done .setup-dot { @apply border-accent-600 text-accent-600; }
+  .setup-panel { @apply mt-8 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]; }
+  .setup-main, .setup-aside { @apply min-w-0 rounded-xl border border-ink-200 bg-surface p-5 sm:p-7; }
+  .setup .setup-h { @apply mb-5 text-title font-semibold text-ink-900 sm:text-heading; }
+  .setup .setup-aside .setup-h { @apply text-title sm:text-title; }
+  .setup .setup-text { @apply mt-3 text-base text-ink-600; }
+  .setup .setup-text + .gh-app, .setup .gh-app + .setup-text { @apply mt-6; }
+  .setup-actions { @apply mt-8 flex flex-col items-center gap-3; }
+  .setup-cta { @apply h-12 justify-center px-6 text-base; }
+  .setup-cta-row { @apply flex flex-wrap items-center justify-center gap-3; }
+  .setup-sample { @apply text-base font-medium text-accent-700 underline underline-offset-4; }
+  .setup .setup-foot { @apply text-sm text-ink-500; }
+
+  /* Agent picker: shared by the setup flow and the post-install page. */
+  .agent-options { @apply grid grid-cols-1 gap-3 sm:grid-cols-3; }
+  .agent-option { @apply flex items-center gap-3 rounded-xl border border-ink-200 bg-surface p-3.5 text-left transition-colors hover:border-accent-600; }
+  .agent-option.is-active { @apply border-accent-600 bg-accent-50; box-shadow: 0 0 0 1px var(--accent-600); }
+  .agent-icon { @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-ink-200 bg-ink-50 text-ink-800; }
+  .agent-option.is-active .agent-icon { @apply border-transparent text-white; background: var(--terminal-bg); }
+  .agent-text { @apply min-w-0 flex-1; }
+  .agent-name { @apply block font-semibold text-ink-900; }
+  .agent-sub { @apply mt-0.5 block text-sm leading-snug text-ink-500; }
+  .agent-radio { @apply h-[18px] w-[18px] shrink-0 self-start rounded-full border-2 border-ink-300; }
+  .agent-option.is-active .agent-radio { @apply border-accent-600; box-shadow: inset 0 0 0 3px var(--surface), inset 0 0 0 9px var(--accent-600); }
+  .agent-picker .agent-label { @apply mb-2 mt-6 text-base text-ink-800; }
+  .agent-picker .agent-note { @apply mt-3 text-sm text-ink-500; }
+  .command-block { @apply flex items-center gap-3 rounded-xl px-4 py-3; background: var(--terminal-bg); }
+  .command-block code { @apply min-w-0 flex-1 font-mono text-sm [overflow-wrap:anywhere]; color: #e3edf6; }
+  .command-copy { @apply inline-flex h-9 min-w-[2.25rem] shrink-0 items-center justify-center rounded-lg px-2 font-mono text-micro; color: #a9bccd; background: rgba(255,255,255,.06); }
+  .command-copy:hover { color: #ffffff; background: rgba(255,255,255,.12); }
+
+  .gh-app { @apply flex flex-col items-center text-center; }
+  .gh-app-mark { @apply inline-flex text-ink-900; }
+  .gh-app-name { @apply mt-2 text-base font-semibold text-ink-900; }
+  .gh-app-access { @apply mt-5 grid w-full gap-3 text-left; }
+  .gh-app-access li { @apply flex items-center gap-3 text-base text-ink-700; }
+  .gh-app-icon { @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-50 text-accent-700; }
+
+  /* Shared route primitives. The desktop rail and mobile strip draw from the same data so
+     the order never drifts when new review states are added. */
+  /* clip, not hidden: it stops a masthead's decorative grid from widening the page without
+     turning the shell into a scroll container, so sticky children keep working. */
+  .route-shell { @apply flex min-h-[calc(100vh-57px)] w-full overflow-x-clip; }
+  .route-rail { @apply sticky top-[57px] hidden h-[calc(100vh-57px)] w-72 shrink-0 overflow-y-auto border-r border-ink-200 p-4 lg:block; }
+  .route-rail-h { @apply mb-1 px-3 text-base font-semibold text-ink-900; }
+  .route-rail-lead { @apply mb-4 px-3 text-sm text-ink-500; }
+  .route-step { @apply flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left text-ink-600 hover:bg-ink-50; }
+  .route-step.is-active { @apply bg-accent-50 text-ink-900; }
+  .route-step-title { @apply block text-base font-medium leading-snug text-ink-800; }
+  .route-step.is-active .route-step-title { @apply font-semibold text-ink-900; }
+  .route-step-detail { @apply mt-1 block text-sm leading-snug text-ink-500; }
+  .route-index { @apply mt-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-ink-300 font-mono text-sm; }
+  .route-step.is-active .route-index { @apply border-accent-600 bg-accent-600 text-white; }
+  .route-mobile { @apply sticky top-[57px] z-10 flex gap-2 overflow-x-auto border-b border-ink-200 bg-canvas px-4 py-2 lg:hidden; }
+  .route-mobile button { @apply shrink-0 rounded-full border border-ink-200 bg-surface px-3.5 py-2 text-sm text-ink-600; }
+  .route-mobile button.is-active { @apply border-accent-600 bg-accent-50 font-medium text-ink-900; }
+  .cue-card { @apply rounded-xl border border-ink-200 bg-surface p-5; }
+  .cue-meta { @apply grid gap-3 border-y border-ink-200 py-4; }
+  .cue-meta > div { @apply grid grid-cols-[7.5rem_1fr] gap-3; }
+  .cue-meta dt { @apply font-medium text-ink-600; }
+  /* Diagrams: each at full width, with what it shows and how to read it above the picture
+     and its discussion below. Expand opens it full screen in a modal dialog. */
+  .diagram { @apply mb-14 max-w-5xl scroll-mt-24; }
+  .diagram-head { @apply mb-4 max-w-prose; }
+  .diagram .diagram-title { @apply mt-1 text-title font-semibold text-ink-900; }
+  .diagram .diagram-caption { @apply mt-2 text-base text-ink-800; }
+  .diagram .diagram-guide { @apply mt-2 text-sm text-ink-500; }
+  .diagram-canvas { @apply relative m-0 overflow-x-auto rounded-xl border border-ink-200 bg-surface px-6 pb-6 pt-12; }
+  .diagram-canvas .mermaid { @apply m-0 flex justify-center bg-transparent font-sans text-sm text-ink-500; }
+  .diagram-canvas svg { max-width: 100%; height: auto; }
+  .diagram-expand { @apply btn absolute right-3 top-3 border-ink-200 bg-surface px-2.5 py-1 text-ink-600 hover:bg-ink-50; }
+  .diagram-thread { @apply mt-4 max-w-prose space-y-3; }
+  .diagram-comment { @apply rounded-lg border border-ink-200 bg-surface px-4 py-3; }
+  .diagram-dialog { @apply rounded-xl border border-ink-200 bg-surface p-0 text-ink-900; width: min(96vw, 90rem); max-height: 92vh; }
+  .diagram-dialog::backdrop { background: rgba(10, 18, 28, .55); }
+  .diagram-dialog-head { @apply sticky top-0 flex items-center justify-between gap-4 border-b border-ink-200 bg-surface px-5 py-3; }
+  .diagram-dialog-body { @apply p-6; }
+
+  /* Decision control: one click records a decision, a second click clears it, and the note
+     is optional. Each outcome takes its semantic colour only once chosen. */
+  .decision { @apply mt-4; }
+  .decision-buttons { @apply flex flex-wrap gap-2; }
+  .decision-btn { @apply btn border-ink-200 bg-surface text-ink-700 hover:bg-ink-50; }
+  .decision-btn.is-accept.is-on { @apply border-ok-border bg-ok-bg text-ok-strong; }
+  .decision-btn.is-ask.is-on { @apply border-accent-600 bg-accent-50 text-accent-700; }
+  .decision-btn.is-block.is-on { @apply border-warn-border bg-warn-bg text-warn-fg; }
+  .decision-status { @apply mt-2 text-sm text-ink-500; }
+  .decision-note-link { @apply font-medium text-accent-700 hover:underline; }
+  .decision .rev-textarea { @apply mt-2; }
+  .cue-pager { @apply flex items-center gap-1.5; }
+  .cue-page { @apply inline-flex h-7 w-7 items-center justify-center rounded-md border border-ink-200 bg-surface text-ink-600 hover:bg-ink-50 disabled:pointer-events-none disabled:opacity-40; }
+  /* Bleeds to the edges of .view, so its margins mirror .view's padding. */
+  /* Fixed to the bottom of the window, so Continue never moves as a step's content grows or
+     shrinks. On wide screens it starts where the rail ends (.route-rail is w-72), and its
+     padding mirrors .view's so its text lines up with the content above it. */
+  .route-next { @apply fixed bottom-0 left-0 right-0 z-20 flex items-center justify-between gap-4 border-t border-ink-200 bg-canvas px-4 pt-3 md:px-8 lg:left-72 lg:px-10; padding-bottom: max(.75rem, env(safe-area-inset-bottom)); }
+  .route-next-actions { @apply ml-auto flex items-center gap-2; }
+  .route-next p { @apply hidden text-base text-ink-600 sm:block; }
+  .route-next strong { @apply text-ink-900; }
+  @media (max-width: 39.9375rem) {
+    .cue-card { @apply p-4; }
+    .cue-meta > div { @apply grid-cols-1 gap-0.5; }
+    .cue-grid .evidence-code .diff-body { max-height: 16rem; }
+  }
 }
