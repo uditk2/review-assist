@@ -257,13 +257,15 @@
   .rule { @apply border-t border-ink-200; }
 
   /* The landing page earns attention with one promise and a live product cue. The lines
-     are atmosphere only: they should never compete with code or copy. */
+     are atmosphere only: they should never compete with code or copy. The field reaches
+     8rem above its section, over the site header, so it must not take clicks. */
   .contour-field { position: relative; isolation: isolate; }
   .contour-field::before {
     content: "";
     position: absolute;
     inset: -8rem 0 -3rem;
     z-index: -1;
+    pointer-events: none;
     opacity: .52;
     background-image: repeating-radial-gradient(ellipse at var(--contour-at, 62% 48%), transparent 0 1.15rem, var(--grid-line) 1.2rem 1.26rem, transparent 1.32rem 2.45rem);
     mask-image: linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent);
