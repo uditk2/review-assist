@@ -132,7 +132,8 @@ What was actually exercised.
 3. **Coverage** — union of all `tour[].anchors` vs the actual diff hunks; report
    `unexplained[]` (in diff, not in doc) and `dangling[]` (in doc, not in diff).
    Configurable threshold; default: any unexplained non-whitespace hunk fails.
-4. **Cross-references** — `assumptions[].depends`, `tour[].why` refs, `parent` ids resolve.
+4. **Cross-references** — tour-stop ids in `assumptions[].depends` and every `tour[].parent`
+   resolve; tour, assumption and open-question ids are unique.
 5. **Redaction lint** — secret patterns (keys, tokens, connection strings) in any free-text
    field fail hard.
 
@@ -159,13 +160,17 @@ One component, one principle: a single stateless, self-hostable GitHub App that 
 validates every PR (via webhook) and renders the guided-review experience. No browser
 extension, no CI action required.
 
-### 6.1 GitHub App — webhook validation (enforcement + fallback)
-- On every `pull_request` event the App runs the same checks as the CLI: schema, staleness
-  (head SHA), coverage, cross-refs, redaction lint. It writes a Checks API result and a
-  sticky summary comment with an "Open guided review →" link.
+### 6.1 GitHub App — webhook coverage check (advisory + fallback)
+- On `pull_request` opened, synchronize and reopened, the App reads the committed document at
+  the PR head and recounts **coverage** against the base...head diff. It writes a Checks API
+  result and a sticky summary comment with an "Open guided review →" link. The check is
+  neutral when the document is missing or unreadable or leaves a substantive hunk
+  unexplained, and success otherwise.
+- The App does not rerun schema, staleness, cross-reference or redaction checks. Those run
+  locally, at submit, before the document is written (§4).
 - Zero config: no workflow file, no secrets, no runner minutes — installing the App on a
   repo is the entire setup. The check is non-blocking by default.
-- The `review-assist` CLI remains available for teams that prefer to run the same checks
+- The `review-assist` CLI remains available for teams that want the full §4 checks in CI
   on their own runners/self-hosted CI.
 
 ### 6.2 GitHub App — guided review viewer (experience)
@@ -190,7 +195,8 @@ extension, no CI action required.
     optimizations: ETag/conditional requests against GitHub; optionally, public-repo
     renders keyed by immutable commit SHA (post-v1).
 - **Open source and self-hostable:** single stateless container + the operator's own
-  GitHub App registration. Hosted instance is a convenience, not a requirement.
+  GitHub App registration ([setup](docs/SELF_HOSTING.md)). Hosted instance is a convenience,
+  not a requirement.
 - Distributed via GitHub Marketplace (Apps listing).
 
 ### 6.3 Explicitly rejected alternatives (recorded for posterity)

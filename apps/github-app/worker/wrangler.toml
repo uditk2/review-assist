@@ -41,6 +41,9 @@ binding = "ASSETS"
 #   GITHUB_CLIENT_ID      — OAuth client id of your GitHub App
 #   GITHUB_CLIENT_SECRET  — OAuth client secret
 #   SESSION_SECRET        — random 32+ byte string; derives the AES-GCM session key
+#   GITHUB_APP_ID         — numeric App id; signs the JWT for installation tokens
+#   GITHUB_APP_PRIVATE_KEY — the App's private key (PEM); without it no check is posted
+#   GITHUB_WEBHOOK_SECRET — the App's webhook secret; without it every webhook is a 401
 # Optional:
 #   GA_API_SECRET         — Measurement Protocol secret for the GA4 web stream below.
 #                           Unset, the Worker reports nothing (see src/analytics.ts).

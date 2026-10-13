@@ -21,7 +21,7 @@
 
 ---
 
-AI agents write code faster than anyone can read diffs — and the context that makes
+AI agents write code faster than anyone can read diffs. The context that makes
 review fast (what was asked, what was assumed, what was tried and abandoned, what was
 tested) is thrown away the moment the PR opens. Review Assist captures it at the source:
 an agent's session becomes an **Intent Document**, a validator proves it actually covers
@@ -32,15 +32,15 @@ transcript never leaves your machine. The app has no database: it reads the docu
 diff from GitHub per request with the reviewer's own token, keeps them in memory for the
 length of that request, and serves them `private, no-store` to a viewer that renders in
 the reviewer's browser. Nothing is written down, but your code does pass through the
-service in transit — if that matters to you, self-host it.
+service in transit. If that matters to you, [self-host it](docs/SELF_HOSTING.md).
 
 ## Install
 
-Two one-time installs — the MCP server on the developer's side, the GitHub App on the repo's.
+Two one-time installs: the MCP server on the developer's side, the GitHub App on the repo's.
 
 **1. Register the MCP server with your agent** (so it can author Intent Documents).
 Claude Code and Codex keep separate configs, so registering with one does not register
-with the other — run the section(s) you use.
+with the other. Run the section(s) you use.
 
 ### Claude Code
 
@@ -48,7 +48,7 @@ with the other — run the section(s) you use.
 claude mcp add -s user review-assist -- npx -y review-assist-mcp
 ```
 
-The CLI and the VS Code extension share this one `-s user` config — but only when the
+The CLI and the VS Code extension share this one `-s user` config, but only when the
 extension inherits your shell's `PATH` (launched via `code .`, not the Dock). Launched
 from the Dock, GUI apps on macOS get just `/usr/bin:/bin:/usr/sbin:/sbin`, so `npx`
 isn't found and the server shows *not connected* with no error. Register without `npx`
@@ -73,21 +73,21 @@ npm install -g review-assist-mcp
 codex mcp add review-assist -- "$(which node)" "$(npm root -g)/review-assist-mcp/dist/index.js"
 ```
 
-(Skip `npm install -g` if you already ran it for Claude Code — one global install
+(Skip `npm install -g` if you already ran it for Claude Code. One global install
 serves both extensions; each still needs its own `mcp add`.)
 
-Claude desktop app — one-click, no terminal:
+Claude desktop app (one click, no terminal):
 [download the `.mcpb`](https://github.com/uditk2/review-assist/releases/latest/download/review-assist-mcp.mcpb)
 and open it.
 
 **2. [Install the GitHub App →](https://github.com/apps/review-assist-guided-review)**
 
-One click. Read-only code + PR comments, no workflow files — it adds the automatic
+One click. Read-only code + PR comments, no workflow files. It adds the automatic
 check on every PR, the summary comment, and the guided-review viewer.
 
 ## Update
 
-Only relevant if you used the global-install form above (`npm install -g`) — `npx -y`
+Only relevant if you used the global-install form above (`npm install -g`). `npx -y`
 resolves to the latest release on every launch by itself.
 
 ```bash
@@ -107,7 +107,7 @@ rm -rf ~/.review-assist                    # consent decisions and local run sta
 ## How it works
 
 <p align="center">
-  <img src="docs/how-it-works.svg" alt="How it works, in three steps. 1 Code, on your machine: your agent writes the change and an Intent Document that explains it — the ask, the assumptions, a tour of the diff — committed alongside the code; the transcript never leaves the machine. 2 Validate, on GitHub with no code stored: a GitHub App proves the document covers the diff (schema, staleness, cross-refs, redaction), reports coverage such as 5 of 5 changes explained, and posts an Open guided review link on the pull request. 3 Review, in the reviewer's browser: check the assumptions first — flagging one posts it to the PR discussion — then take the anchored tour and approve or request changes; the verdict posts to the pull request as you, and merging stays on GitHub." width="620">
+  <img src="docs/how-it-works.svg" alt="How it works, in three steps. 1 Code, on your machine: your agent writes the change and an Intent Document that explains it (the ask, the assumptions, a tour of the diff), committed alongside the code; the transcript never leaves the machine. 2 Validate: before the document is written, the local validator checks schema, coverage, staleness, cross-references and likely secrets; on the pull request, the GitHub App recounts coverage, reports it such as 5 of 5 changes explained, and posts an Open guided review link, with no code stored. 3 Review, in the reviewer's browser: read what was verified and the open assumptions first, then take the anchored tour; mark each item accepted, a question for the author, or blocking, and approve or request changes; the verdict and your notes post to the pull request as you, and merging stays on GitHub." width="620">
 </p>
 
 ### Teaching it your repository's questions
@@ -125,8 +125,10 @@ a change that must travel with its migration, a directory whose churn is never i
 Markdown, committed with the code, reviewed like anything else. The reviewer reads the
 folder after the diff and before its first question, so what you write there lands in round
 one. It adds questions and sharpens the ones the diff provoked; it cannot add a schema
-field, relax a check, or excuse the interview. Most repositories need none, and an absent
-folder changes nothing. This repo has [its own](.reviewer/README.md).
+field or relax a check, which are code, and it is framed as reference material so it
+should not excuse the interview (that part is prompt framing, not enforcement). Most
+repositories need none, and an absent folder changes nothing. This repo has
+[its own](.reviewer/README.md).
 
 ## Architecture
 
@@ -142,20 +144,20 @@ durable piece of review state. The application reacts to `pull_request` events a
 the check as its bot identity, then serves the guided review, reading and writing GitHub
 as the signed-in reviewer.
 
-The two-agent distillation — author and reviewer as separate role-locked contexts, and the
-tools each one may reach — is a component-level view, kept in
+The two-agent distillation (author and reviewer as separate role-locked contexts, and the
+tools each one may reach) is a component-level view, kept in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) along with the full route list.
 
 ## Developing
 
 | Path | Component |
 |---|---|
-| [`packages/schema`](packages/schema) | The format — JSON Schema (draft 2020-12) + TypeScript types |
+| [`packages/schema`](packages/schema) | The format: JSON Schema (draft 2020-12) + TypeScript types |
 | [`packages/validator`](packages/validator) | `review-assist` CLI + library: the five checks and the Markdown renderer |
 | [`packages/mcp-server`](packages/mcp-server) | MCP server that drives distillation and gatekeeps submissions |
 | [`apps/github-app/worker`](apps/github-app/worker) | Stateless Cloudflare Worker: OAuth broker + thin GitHub proxy |
 | [`apps/github-app/viewer`](apps/github-app/viewer) | Client-side guided-review viewer |
-| [`SPEC.md`](SPEC.md) | The frozen design: the document's six sections and the five checks |
+| [`SPEC.md`](SPEC.md) | The design: the document's six sections and the five checks |
 
 ```bash
 npm install
@@ -178,10 +180,10 @@ Architecture and internals: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 Issues and pull requests are welcome. If the guided review reads wrong on one of your
 pull requests, [open an issue](https://github.com/uditk2/review-assist/issues) with the
-Intent Document and the diff that produced it — that pair is usually enough to reproduce.
-Proposals to change the format itself are worth raising as an issue first, since
-[`SPEC.md`](SPEC.md) is deliberately frozen and any change ripples through the validator,
-the viewer, and every document already committed.
+Intent Document and the diff that produced it. That pair is usually enough to reproduce.
+Proposals to change the format itself are worth raising as an issue first, since a
+change to [`SPEC.md`](SPEC.md) ripples through the validator, the viewer, and every document
+already committed.
 
 Before opening a pull request, run the checks under [Developing](#developing); CI runs the
 same build, typecheck, tests, and example validation.
