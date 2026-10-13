@@ -20,7 +20,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { findAuthoringSessions } from "./footprint.js";
 import { readIndex, recordContexts, resumePoint, scoreContexts } from "./contexts.js";
-import { Handoff } from "./handoff.js";
+import { Handoff, answerWaitMs, holdForAnswer } from "./handoff.js";
 import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -130,6 +130,9 @@ function textResult(text: string, isError = false) {
  *
  * Override with REVIEW_ASSIST_MAX_RESULT_BYTES when a client is known to allow more.
  */
+/** How long a waiting get_answers call is held; see `answerWaitMs` in ./handoff.ts. */
+const ANSWER_WAIT_MS = answerWaitMs();
+
 function maxResultBytes(): number {
   const v = Number(process.env.REVIEW_ASSIST_MAX_RESULT_BYTES);
   return Number.isFinite(v) && v >= 2_000 ? Math.floor(v) : DEFAULT_PAGE_BYTES;
@@ -1248,7 +1251,12 @@ registerTool(
     "where the interview reaches you — you do NOT need answers relayed as text, and you must not " +
     "paraphrase a summary into the document when the verbatim answer is here. Each round carries " +
     "`answered_by`: only `author` is attested, `reviewer` is your own transcription, and `null` means " +
-    "nobody has answered yet. Paged: follow `next_cursor` until there is none.",
+    "nobody has answered yet. Paged: follow `next_cursor` until there is none." +
+    (ANSWER_WAIT_MS > 0
+      ? ` While questions are still unanswered, a call without a cursor waits on the server for up to ` +
+        `${Math.round(ANSWER_WAIT_MS / 1000)}s and returns as soon as an answer lands, so call it again ` +
+        "straight away: there is nothing to gain by pausing first."
+      : ""),
   {
     run_id: z.string().describe("Run handle from compute_diff."),
     only_answered: z
@@ -1258,9 +1266,24 @@ registerTool(
     cursor: z.string().optional().describe("`next_cursor` from the previous page. Omit to start at the beginning."),
     max_bytes: z.number().int().min(2_000).optional().describe("Byte budget for this page. Defaults to the server's ceiling."),
   },
-  async ({ run_id, only_answered, cursor, max_bytes }) => {
-    const run = getRun(run_id);
+  async ({ run_id, only_answered, cursor, max_bytes }, extra) => {
+    let run = getRun(run_id);
     if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    // A waiting call is held here rather than answered at once, so the reviewer polls about once
+    // a minute instead of every few seconds. Only the first page: a cursor means it is reading.
+    if (!cursor) {
+      const progress = () => {
+        const r = getRun(run_id);
+        if (!r) return undefined;
+        const s = summarizeRun(r);
+        return {
+          answered: runRounds(r).filter((x) => x.answer.length > 0).length,
+          outstanding: s.unanswered + s.standing_unanswered,
+        };
+      };
+      await holdForAnswer(progress, { waitMs: ANSWER_WAIT_MS, signal: extra?.signal });
+      run = getRun(run_id) ?? run;
+    }
     const all = runRounds(run);
     const wanted = (only_answered ?? false) ? all.filter((r) => r.answer.length > 0) : all;
     const page = pageRounds(
@@ -1320,7 +1343,10 @@ registerTool(
         (author_seen
           ? `The author IS working on this run — last call ${Math.round(author_quiet_ms / 1000)}s ago. ` +
             "It answers a whole batch in one call, and it reads the entire session first, which on a " +
-            "long one is several minutes before the first answer appears. Wait."
+            "long one is several minutes before the first answer appears. " +
+            (ANSWER_WAIT_MS > 0
+              ? `Call get_answers again: each call already waits up to ${Math.round(ANSWER_WAIT_MS / 1000)}s for an answer.`
+              : "Wait.")
           : "The author has not called this run yet. If it was dispatched it is still choosing a " +
             "transcript; if it was not, nothing will arrive.");
     }

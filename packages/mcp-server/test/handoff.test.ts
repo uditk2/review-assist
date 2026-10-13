@@ -17,7 +17,16 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { Handoff, STALL_POLLS, STALL_MS, STALL_MS_AFTER_ACTIVITY, patienceFor } from "../src/handoff.js";
+import {
+  Handoff,
+  STALL_POLLS,
+  STALL_MS,
+  STALL_MS_AFTER_ACTIVITY,
+  patienceFor,
+  ANSWER_WAIT_MS,
+  answerWaitMs,
+  holdForAnswer,
+} from "../src/handoff.js";
 
 /** A controllable clock: a stall measured in minutes is otherwise untestable by waiting. */
 function at(start = 1_000_000) {
@@ -198,5 +207,54 @@ describe("patience for the answer batch", () => {
     tick(STALL_MS);
     for (let i = 1; i < STALL_POLLS; i++) v = handoff.notePoll(RUN, 0, 23);
     expect(v.stalled).toBe(true);
+  });
+});
+
+// The reviewer has no way to sleep, so it called get_answers every 10 to 20 seconds while it
+// waited. The call is now held on the server instead, about a minute between calls.
+describe("holding a waiting get_answers call", () => {
+  /** A clock that only moves when the hold sleeps, so a 50s wait runs instantly. */
+  function clock() {
+    let t = 0;
+    return { now: () => t, sleep: async (ms: number) => void (t += ms) };
+  }
+
+  it("waits the full time when nothing changes", async () => {
+    const c = clock();
+    const held = await holdForAnswer(() => ({ answered: 2, outstanding: 4 }), { waitMs: 50_000, ...c });
+    expect(held).toBe(50_000);
+  });
+
+  it("returns as soon as an answer lands, so a fast author is not slowed", async () => {
+    const c = clock();
+    const held = await holdForAnswer(() => ({ answered: c.now() >= 6_000 ? 3 : 2, outstanding: 4 }), {
+      waitMs: 50_000,
+      ...c,
+    });
+    expect(held).toBe(6_000);
+  });
+
+  it("does not hold when nothing is outstanding", async () => {
+    const c = clock();
+    expect(await holdForAnswer(() => ({ answered: 6, outstanding: 0 }), { waitMs: 50_000, ...c })).toBe(0);
+  });
+
+  it("stops when the run disappears or the caller cancels", async () => {
+    const c = clock();
+    const gone = await holdForAnswer(() => (c.now() >= 4_000 ? undefined : { answered: 0, outstanding: 6 }), {
+      waitMs: 50_000,
+      ...c,
+    });
+    expect(gone).toBe(4_000);
+    const abort = new AbortController();
+    abort.abort();
+    expect(await holdForAnswer(() => ({ answered: 0, outstanding: 6 }), { waitMs: 50_000, signal: abort.signal, ...c })).toBe(0);
+  });
+
+  it("stays under the 60s that clients cut a tool call off at", () => {
+    expect(ANSWER_WAIT_MS).toBeLessThan(60_000);
+    expect(answerWaitMs({})).toBe(ANSWER_WAIT_MS);
+    expect(answerWaitMs({ REVIEW_ASSIST_ANSWER_WAIT_MS: "0" })).toBe(0);
+    expect(answerWaitMs({ REVIEW_ASSIST_ANSWER_WAIT_MS: "nonsense" })).toBe(ANSWER_WAIT_MS);
   });
 });
