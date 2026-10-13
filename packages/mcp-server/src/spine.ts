@@ -8,9 +8,10 @@
  * entire conversation is 344 KB. Search was costing more than reading everything and
  * returning less.
  *
- * So it reads everything. The spine of 40 of those 41 sessions fits in a single call —
+ * So it reads everything. The spine of 40 of those 41 sessions fit in a single call —
  * median 11,886 tokens — and being complete, it removes the failure mode retrieval can
- * never rule out: an answer the author simply did not find.
+ * never rule out: an answer the author simply did not find. (Measured before paging. At
+ * the default 20,000-byte page a median spine is now about three calls; see Paging.)
  *
  * What it keeps and why:
  *
