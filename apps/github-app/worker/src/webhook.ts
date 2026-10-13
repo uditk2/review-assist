@@ -92,38 +92,69 @@ async function process(payload: PrEvent, installationId: number, origin: string,
     "application/vnd.github.raw+json"
   );
   const docMissing = !docRes.ok;
-  let doc: IntentDoc | null = null;
+  let parsed: unknown = null;
   if (!docMissing) {
     try {
-      doc = JSON.parse(await docRes.text());
+      parsed = JSON.parse(await docRes.text());
     } catch {
-      doc = null;
+      parsed = null;
     }
   }
 
-  // 2. Diff (base...head) for coverage.
-  let cov = { total: 0, explained: 0 };
-  if (doc) {
+  // 2. Diff (base...head) for coverage. Fetched outside readDocument so a network failure
+  //    stays a network failure and is not reported as an unreadable document.
+  let diff: string | null = null;
+  if (parsed) {
     const diffRes = await gh(`/repos/${owner}/${repo}/compare/${pr.base.sha}...${headSha}`, "application/vnd.github.diff");
-    if (diffRes.ok) cov = computeCoverage(await diffRes.text(), doc);
+    if (diffRes.ok) diff = await diffRes.text();
   }
+  const read = readDocument(docMissing, parsed, diff, viewerLink);
 
   // 3. Sticky comment (upsert) + Check Run, as the app bot.
-  await upsertComment(gh, token, owner, repo, pr.number, commentBody(doc, cov, viewerLink, docMissing || !doc));
-  await createCheck(token, owner, repo, headSha, cov, viewerLink, docMissing || !doc);
+  await upsertComment(gh, token, owner, repo, pr.number, read.comment);
+  await createCheck(token, owner, repo, headSha, read.cov, viewerLink, read.state);
 
   // 4. Populate the PR description from the committed doc. If the body is empty we
   //    set it; otherwise we manage a marked block and leave the author's prose intact.
-  if (doc) await upsertPrBody(gh, token, owner, repo, pr.number, intentSection(doc, viewerLink));
+  if (read.prSection) await upsertPrBody(gh, token, owner, repo, pr.number, read.prSection);
 
   // 5. Activation, as far as the App can see it: a review posted, a pull request with no
-  //    document (App installed, MCP server not in use), or one whose document would not
-  //    parse, which is a broken run rather than a missing one. Last, so an event means the
+  //    document (App installed, MCP server not in use), or one whose document could not be
+  //    read, which is a broken run rather than a missing one. Last, so an event means the
   //    posts above went through. Counts and the PR action only, no names.
-  const outcome = doc ? "review_posted" : docMissing ? "review_no_document" : "review_invalid_document";
-  await reportEvent(env, installationId, outcome, doc
-    ? { trigger: payload.action, changes_total: cov.total, changes_explained: cov.explained }
+  const outcome = read.state === "found" ? "review_posted" : read.state === "missing" ? "review_no_document" : "review_invalid_document";
+  await reportEvent(env, installationId, outcome, read.state === "found"
+    ? { trigger: payload.action, changes_total: read.cov.total, changes_explained: read.cov.explained }
     : { trigger: payload.action });
+}
+
+export type DocState = "found" | "missing" | "unreadable";
+
+/**
+ * Everything the App derives from the document, or the reason it cannot. Nothing here
+ * validates the schema, and the renderers assume its types: `tour: {}` or `assumptions: {}`
+ * throws. That throw used to escape to the waitUntil catch, so the PR got no check and no
+ * comment at all, which reads as "the App is not installed". A document that is there but
+ * cannot be read now says so, with a neutral check like a missing one.
+ */
+export function readDocument(
+  missing: boolean,
+  parsed: unknown,
+  diff: string | null,
+  link: string
+): { state: DocState; cov: { total: number; explained: number }; comment: string; prSection: string | null } {
+  const none = { total: 0, explained: 0 };
+  if (missing) return { state: "missing", cov: none, comment: commentBody(null, none, link, "missing"), prSection: null };
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const doc = parsed as IntentDoc;
+    try {
+      const cov = diff === null ? none : computeCoverage(diff, doc);
+      return { state: "found", cov, comment: commentBody(doc, cov, link, "found"), prSection: intentSection(doc, link) };
+    } catch {
+      // Falls through: a wrong-typed field is the same failure as malformed JSON.
+    }
+  }
+  return { state: "unreadable", cov: none, comment: commentBody(null, none, link, "unreadable"), prSection: null };
 }
 
 // ---- signature -------------------------------------------------------------
@@ -226,8 +257,11 @@ function computeCoverage(diff: string, doc: IntentDoc): { total: number; explain
 
 // ---- comment + check -------------------------------------------------------
 
-function commentBody(doc: IntentDoc | null, cov: { total: number; explained: number }, link: string, missing: boolean): string {
-  if (missing || !doc) {
+function commentBody(doc: IntentDoc | null, cov: { total: number; explained: number }, link: string, state: DocState): string {
+  if (state === "unreadable") {
+    return `${MARKER}\n### 📋 Review Assist\nThis PR has an \`.intent/<branch>.json\`, but it is not a readable Intent Document (it does not parse, or a field has the wrong type). Regenerate it from your coding session and commit it, and this comment will turn into a guided review.\n`;
+  }
+  if (state === "missing" || !doc) {
     return `${MARKER}\n### 📋 Review Assist\nNo Intent Document was found for this PR (\`.intent/<branch>.json\`). Generate one from your coding session and commit it, and this comment will turn into a guided review.\n`;
   }
   const problem = (doc.problem?.statement ?? "").trim();
@@ -298,17 +332,21 @@ async function createCheck(
   headSha: string,
   cov: { total: number; explained: number },
   link: string,
-  missing: boolean
+  state: DocState
 ): Promise<void> {
-  // Comment-only rollout: never "failure". Missing/uncovered → neutral; full coverage → success.
-  const conclusion = missing ? "neutral" : cov.total > 0 && cov.explained < cov.total ? "neutral" : "success";
-  const title = missing
+  // Comment-only rollout: never "failure". Missing/unreadable/uncovered → neutral; full coverage → success.
+  const conclusion = state !== "found" ? "neutral" : cov.total > 0 && cov.explained < cov.total ? "neutral" : "success";
+  const title = state === "missing"
     ? "No Intent Document"
+    : state === "unreadable"
+    ? "Intent Document could not be read"
     : cov.total > 0
     ? `${cov.explained}/${cov.total} changes explained`
     : "Intent Document found";
-  const summary = missing
+  const summary = state === "missing"
     ? `No \`.intent/<branch>.json\` on this PR. Generate one to get a guided review.`
+    : state === "unreadable"
+    ? `\`.intent/<branch>.json\` is on this PR but is not a readable Intent Document. Regenerate it to get a guided review.`
     : `[Open the guided review →](${link})`;
   await fetch(`${GH_API}/repos/${owner}/${repo}/check-runs`, {
     method: "POST",
