@@ -125,4 +125,10 @@ Read-only against git apart from writing `.intent/`. Transcripts never leave the
 only the distilled document does. Set `REVIEW_ASSIST_REPO`, or pass `repo` per call, when
 the server spans multiple repositories.
 
+While the reviewer waits for answers, `get_answers` holds each call on the server for up
+to 50s and returns as soon as an answer lands, so the reviewer polls about once a minute.
+`REVIEW_ASSIST_ANSWER_WAIT_MS` changes the hold (`0` turns it off). It is read when the
+server starts, so restart your client after changing it, and lower it if your client cuts
+tool calls off in less than 50s, or every held call will time out instead of answering.
+
 Apache-2.0 · [github.com/uditk2/review-assist](https://github.com/uditk2/review-assist)

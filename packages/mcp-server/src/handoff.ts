@@ -38,9 +38,10 @@
  * Polls with no progress before the response may stop encouraging the wait.
  *
  * Two, not eight, now that a waiting call is held for up to ANSWER_WAIT_MS. Eight was sized
- * for a reviewer calling every 10 to 20 seconds, about two minutes; eight HELD calls are
- * about seven, which is how long an author that was never dispatched took to report. Two
- * held calls are about 100s, past STALL_MS, so time decides again, as this gate intends.
+ * for a reviewer calling every 10 to 20 seconds, a couple of minutes; eight HELD calls are
+ * about seven, which is how long an author that was never dispatched took to report. With
+ * held calls about 53s apart (measured live), silence passes STALL_MS between the second
+ * and third, so the verdict lands on the third call, about two and a half minutes in.
  */
 export const STALL_POLLS = 2;
 
@@ -110,12 +111,13 @@ export function answerWaitMs(env: NodeJS.ProcessEnv = process.env): number {
 }
 
 export interface AnswerProgress {
-  answered: number;
+  /** Changes whenever any answer is added or replaced, not only when the count moves. */
+  answers: string;
   outstanding: number;
 }
 
 /**
- * Wait until a new answer lands, nothing is outstanding, the run disappears, the caller
+ * Wait until an answer lands or changes, nothing is outstanding, the run disappears, the caller
  * cancels, or `waitMs` passes, whichever comes first. `read` rereads the run each tick.
  *
  * Returns how long it held. The stall verdict is unchanged by this: it is measured in time,
@@ -135,7 +137,7 @@ export async function holdForAnswer(
   while (now() < deadline && !opts.signal?.aborted) {
     await sleep(Math.min(tick, deadline - now()));
     const cur = read();
-    if (!cur || cur.answered !== start.answered || cur.outstanding === 0) break;
+    if (!cur || cur.answers !== start.answers || cur.outstanding === 0) break;
   }
   return now() - began;
 }

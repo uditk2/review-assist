@@ -20,6 +20,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { findAuthoringSessions } from "./footprint.js";
 import { readIndex, recordContexts, resumePoint, scoreContexts } from "./contexts.js";
+import { createHash } from "node:crypto";
 import { Handoff, answerWaitMs, holdForAnswer } from "./handoff.js";
 import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -118,6 +119,9 @@ function textResult(text: string, isError = false) {
   return { content: [{ type: "text" as const, text }], isError };
 }
 
+/** How long a waiting get_answers call is held; see `answerWaitMs` in ./handoff.ts. */
+const ANSWER_WAIT_MS = answerWaitMs();
+
 /**
  * Ceiling on the bytes a single tool result may carry.
  *
@@ -130,9 +134,6 @@ function textResult(text: string, isError = false) {
  *
  * Override with REVIEW_ASSIST_MAX_RESULT_BYTES when a client is known to allow more.
  */
-/** How long a waiting get_answers call is held; see `answerWaitMs` in ./handoff.ts. */
-const ANSWER_WAIT_MS = answerWaitMs();
-
 function maxResultBytes(): number {
   const v = Number(process.env.REVIEW_ASSIST_MAX_RESULT_BYTES);
   return Number.isFinite(v) && v >= 2_000 ? Math.floor(v) : DEFAULT_PAGE_BYTES;
@@ -1277,7 +1278,7 @@ registerTool(
         if (!r) return undefined;
         const s = summarizeRun(r);
         return {
-          answered: runRounds(r).filter((x) => x.answer.length > 0).length,
+          answers: createHash("sha1").update(JSON.stringify(runRounds(r).map((x) => [x.q_id, x.answer]))).digest("hex"),
           outstanding: s.unanswered + s.standing_unanswered,
         };
       };

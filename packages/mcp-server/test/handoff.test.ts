@@ -221,13 +221,13 @@ describe("holding a waiting get_answers call", () => {
 
   it("waits the full time when nothing changes", async () => {
     const c = clock();
-    const held = await holdForAnswer(() => ({ answered: 2, outstanding: 4 }), { waitMs: 50_000, ...c });
+    const held = await holdForAnswer(() => ({ answers: "a", outstanding: 4 }), { waitMs: 50_000, ...c });
     expect(held).toBe(50_000);
   });
 
   it("returns as soon as an answer lands, so a fast author is not slowed", async () => {
     const c = clock();
-    const held = await holdForAnswer(() => ({ answered: c.now() >= 6_000 ? 3 : 2, outstanding: 4 }), {
+    const held = await holdForAnswer(() => ({ answers: c.now() >= 6_000 ? "b" : "a", outstanding: 4 }), {
       waitMs: 50_000,
       ...c,
     });
@@ -236,30 +236,44 @@ describe("holding a waiting get_answers call", () => {
 
   it("does not hold when nothing is outstanding", async () => {
     const c = clock();
-    expect(await holdForAnswer(() => ({ answered: 6, outstanding: 0 }), { waitMs: 50_000, ...c })).toBe(0);
+    expect(await holdForAnswer(() => ({ answers: "a", outstanding: 0 }), { waitMs: 50_000, ...c })).toBe(0);
   });
 
   it("stops when the run disappears or the caller cancels", async () => {
     const c = clock();
-    const gone = await holdForAnswer(() => (c.now() >= 4_000 ? undefined : { answered: 0, outstanding: 6 }), {
+    const gone = await holdForAnswer(() => (c.now() >= 4_000 ? undefined : { answers: "", outstanding: 6 }), {
       waitMs: 50_000,
       ...c,
     });
     expect(gone).toBe(4_000);
     const abort = new AbortController();
     abort.abort();
-    expect(await holdForAnswer(() => ({ answered: 0, outstanding: 6 }), { waitMs: 50_000, signal: abort.signal, ...c })).toBe(0);
+    expect(await holdForAnswer(() => ({ answers: "", outstanding: 6 }), { waitMs: 50_000, signal: abort.signal, ...c })).toBe(0);
   });
 
-  it("reports an author that was never dispatched within about two minutes, not seven", () => {
-    // Held calls arrive about a minute apart. The gate used to be eight polls, which at
-    // that cadence was seven minutes of waiting for an author that was never going to come.
+  it("reports an author that was never dispatched on the third held call, not the eighth", () => {
+    // Held calls arrived 52 to 54s apart in a live run. The gate used to be eight polls,
+    // which at that cadence was seven minutes of waiting for an author never coming.
     const { handoff, tick } = at();
+    const GAP = 53_000;
     handoff.notePoll(RUN, 0, 6);
-    tick(ANSWER_WAIT_MS + 10_000);
-    const v = handoff.notePoll(RUN, 0, 6);
-    expect(v.stalled).toBe(true);
-    expect(v.stalled_ms).toBeLessThan(2 * 60_000);
+    tick(GAP);
+    expect(handoff.notePoll(RUN, 0, 6).stalled).toBe(false);
+    tick(GAP);
+    const third = handoff.notePoll(RUN, 0, 6);
+    expect(third.stalled).toBe(true);
+    // Three held calls of up to ANSWER_WAIT_MS each: about two and a half minutes in all.
+    expect(third.stalled_ms + ANSWER_WAIT_MS).toBeLessThan(3 * 60_000);
+  });
+
+  it("releases a held call when an answer is replaced, not only when the count moves", async () => {
+    let t = 0;
+    const held = await holdForAnswer(() => ({ answers: t >= 8_000 ? "revised" : "first", outstanding: 2 }), {
+      waitMs: 50_000,
+      now: () => t,
+      sleep: async (ms: number) => void (t += ms),
+    });
+    expect(held).toBe(8_000);
   });
 
   it("stays under the 60s that clients cut a tool call off at", () => {
