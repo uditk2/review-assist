@@ -77,6 +77,62 @@ export function patienceFor(outstanding: number): number {
   return STALL_MS_AFTER_ACTIVITY + STALL_MS_PER_QUESTION * Math.max(0, outstanding);
 }
 
+/**
+ * How long a waiting `get_answers` call is held before it returns with nothing new.
+ *
+ * The reviewer has no clock and no way to sleep, so left alone it calls `get_answers` again
+ * the moment its turn ends: every 10 to 20 seconds, each call a tool round trip and a reread
+ * of the same "still waiting". Holding the call on the server turns that into about one call
+ * a minute, and the call returns as soon as an answer lands, so a fast author is not slowed.
+ *
+ * 50s rather than 60 because 60s is where clients cut a tool call off: Codex's default
+ * `tool_timeout_sec`, and the MCP SDK's default request timeout some hosts use. With the
+ * reviewer's own turn on top, 50s held is still roughly a minute between calls.
+ * REVIEW_ASSIST_ANSWER_WAIT_MS overrides it; 0 answers immediately.
+ */
+export const ANSWER_WAIT_MS = 50_000;
+
+/** How often a held call rereads the run. The answers arrive from another call, on disk. */
+export const ANSWER_WAIT_TICK_MS = 2_000;
+
+export function answerWaitMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.REVIEW_ASSIST_ANSWER_WAIT_MS;
+  if (raw === undefined || raw.trim() === "") return ANSWER_WAIT_MS;
+  const v = Number(raw);
+  return Number.isFinite(v) && v >= 0 ? Math.floor(v) : ANSWER_WAIT_MS;
+}
+
+export interface AnswerProgress {
+  answered: number;
+  outstanding: number;
+}
+
+/**
+ * Wait until a new answer lands, nothing is outstanding, the run disappears, the caller
+ * cancels, or `waitMs` passes, whichever comes first. `read` rereads the run each tick.
+ *
+ * Returns how long it held. The stall verdict is unchanged by this: it is measured in time,
+ * and a held call simply lets that time pass in one call instead of five.
+ */
+export async function holdForAnswer(
+  read: () => AnswerProgress | undefined,
+  opts: { waitMs: number; tickMs?: number; signal?: AbortSignal; now?: () => number; sleep?: (ms: number) => Promise<void> }
+): Promise<number> {
+  const now = opts.now ?? Date.now;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const tick = opts.tickMs ?? ANSWER_WAIT_TICK_MS;
+  const start = read();
+  const began = now();
+  if (!start || start.outstanding === 0 || opts.waitMs <= 0) return 0;
+  const deadline = began + opts.waitMs;
+  while (now() < deadline && !opts.signal?.aborted) {
+    await sleep(Math.min(tick, deadline - now()));
+    const cur = read();
+    if (!cur || cur.answered !== start.answered || cur.outstanding === 0) break;
+  }
+  return now() - began;
+}
+
 interface PollState {
   answered: number;
   polls: number;
