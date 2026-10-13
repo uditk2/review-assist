@@ -167,11 +167,11 @@ const releases = home.releases;
 // A silent console: this run only reads ARTICLES, and without one jsdom prints its "Not
 // implemented: window.scrollTo" as a stack trace. render("/blog/") below runs the same page
 // and fails the build on any real script error.
-const articles = JSON.parse(new JSDOM(template, {
+const { articles, author } = JSON.parse(new JSDOM(template, {
   url: RENDER_ORIGIN + "/blog/",
   runScripts: "dangerously",
   virtualConsole: new VirtualConsole(),
-}).window.eval("JSON.stringify(ARTICLES.map(a => ({ slug: a.slug, title: a.title, summary: a.summary, date: a.date, modified: a.modified, hero: a.hero })))"));
+}).window.eval("JSON.stringify({ author: ARTICLE_AUTHOR, articles: ARTICLES.map(a => ({ slug: a.slug, title: a.title, summary: a.summary, date: a.date, modified: a.modified, hero: a.hero })) })"));
 const index = await render("/blog/");
 await write("/blog/", page({
   path: "/blog/",
@@ -197,7 +197,8 @@ for (const a of articles) {
       datePublished: isoDate(a.date),
       dateModified: isoDate(a.modified ?? a.date),
       url: ORIGIN + path,
-      author: { "@type": "Organization", name: "Review Assist", url: ORIGIN + "/" },
+      // A person, because a person wrote it; the organization publishes it.
+      author: { "@type": "Person", name: author.name, url: author.url },
       publisher: { "@type": "Organization", name: "Review Assist", url: ORIGIN + "/" },
     },
   }));
