@@ -251,6 +251,17 @@ describe("holding a waiting get_answers call", () => {
     expect(await holdForAnswer(() => ({ answered: 0, outstanding: 6 }), { waitMs: 50_000, signal: abort.signal, ...c })).toBe(0);
   });
 
+  it("reports an author that was never dispatched within about two minutes, not seven", () => {
+    // Held calls arrive about a minute apart. The gate used to be eight polls, which at
+    // that cadence was seven minutes of waiting for an author that was never going to come.
+    const { handoff, tick } = at();
+    handoff.notePoll(RUN, 0, 6);
+    tick(ANSWER_WAIT_MS + 10_000);
+    const v = handoff.notePoll(RUN, 0, 6);
+    expect(v.stalled).toBe(true);
+    expect(v.stalled_ms).toBeLessThan(2 * 60_000);
+  });
+
   it("stays under the 60s that clients cut a tool call off at", () => {
     expect(ANSWER_WAIT_MS).toBeLessThan(60_000);
     expect(answerWaitMs({})).toBe(ANSWER_WAIT_MS);

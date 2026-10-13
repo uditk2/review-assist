@@ -34,8 +34,15 @@
  * server process, not of the run, and persisting it would mean a disk write per poll.
  */
 
-/** Polls with no progress before the response may stop encouraging the wait. */
-export const STALL_POLLS = 8;
+/**
+ * Polls with no progress before the response may stop encouraging the wait.
+ *
+ * Two, not eight, now that a waiting call is held for up to ANSWER_WAIT_MS. Eight was sized
+ * for a reviewer calling every 10 to 20 seconds, about two minutes; eight HELD calls are
+ * about seven, which is how long an author that was never dispatched took to report. Two
+ * held calls are about 100s, past STALL_MS, so time decides again, as this gate intends.
+ */
+export const STALL_POLLS = 2;
 
 /**
  * Silence that counts as the author having returned, when it has NEVER called this run.
