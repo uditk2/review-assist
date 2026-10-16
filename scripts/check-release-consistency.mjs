@@ -34,6 +34,13 @@ for (const p of server.packages ?? []) {
   }
 }
 
+// 1.0.6 to 1.0.9 reached npm with no release note. The publish workflow now writes the
+// note into the release commit, so the version on main always has one.
+const notes = read("apps/github-app/viewer/releases.json");
+if (!notes.some((r) => r.v === pkg.version)) {
+  problems.push(`apps/github-app/viewer/releases.json has no entry for ${pkg.version}`);
+}
+
 // The registry verifies ownership by matching this against the published package.
 eq(pkg.mcpName, server.name, "package.json mcpName vs server.json name");
 if (!/^io\.github\.[^/]+\/.+/.test(server.name ?? "")) {

@@ -2,6 +2,7 @@
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { inlineReleaseNotes } from "../apps/github-app/viewer/build/release-notes.mjs";
 
 const viewerDir = fileURLToPath(new URL("../apps/github-app/viewer/", import.meta.url));
 const viewer = viewerDir + "index.html";
@@ -70,6 +71,6 @@ const server = createServer((req, res) => {
     } catch { /* fall through to index */ }
   }
   res.setHeader("Content-Type", "text/html");
-  res.end(readFileSync(viewer, "utf8"));
+  res.end(inlineReleaseNotes(readFileSync(viewer, "utf8")));
 });
 server.listen(8787, () => console.log("mock viewer on http://localhost:8787"));

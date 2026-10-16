@@ -37,6 +37,9 @@ jobs:
           # the push below needs a branch to land on, or only the tag gets pushed and
           # main keeps the old version.
           ref: ${{ github.ref_name }}
+          # Full history and tags: the release note is built from the commits since the
+          # previous tag, and a shallow clone has neither, so it would describe one commit.
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -81,6 +84,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           node scripts/sync-version.mjs
+          # The note goes in the release commit itself, built from the commits the release
+          # ships, so no version reaches npm without one. 1.0.6 to 1.0.9 shipped with none.
+          node apps/github-app/viewer/build/release-notes.mjs add --version "$V"
           git add -A
           git commit -m "release(mcp-server): v$V"
           # Annotated, not lightweight: `git push --follow-tags` below only pushes
@@ -175,8 +181,14 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" review-assist-mcp.mcpb --clobber
           else
-            gh release create "$TAG" review-assist-mcp.mcpb \
-              --title "$TAG" --generate-notes
+            # The same note the site shows at /releases/<version>/. GitHub's generated
+            # notes are the fallback for a release_only rerun of a version that has none.
+            if node apps/github-app/viewer/build/release-notes.mjs markdown "${TAG#v}" > release-notes.md; then
+              notes=(--notes-file release-notes.md)
+            else
+              notes=(--generate-notes)
+            fi
+            gh release create "$TAG" review-assist-mcp.mcpb --title "$TAG" "${notes[@]}"
           fi
 
       - name: Pack only (dry run)

@@ -1,0 +1,442 @@
+[
+  {
+    "v": "1.0.10",
+    "date": "12 Oct 2026",
+    "title": "Quiet the prerender's window.scrollTo stack trace",
+    "summary": "The run that reads the article list executed the blog page with jsdom's default console, so jsdom's \"Not implemented: window.scrollTo\" printed as a stack trace in every build and deploy log and read like a failure.",
+    "body": [
+      "It now gets a silent console; render(\"/blog/\") right after it runs the same page and still fails the build on any real script error.",
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**Let clicks through the landing page's contour lines.** The contour field behind the hero reaches 8rem above its section, over the site header, and took every click there: Overview, Blog, Releases, GitHub and the theme toggle did nothing. It is decoration only, so it no longer takes pointer events."
+        ]
+      }
+    ]
+  },
+  {
+    "v": "1.0.9",
+    "date": "12 Oct 2026",
+    "title": "No changes since 1.0.8",
+    "summary": "This version republished 1.0.8 as it was.",
+    "body": []
+  },
+  {
+    "v": "1.0.8",
+    "date": "12 Oct 2026",
+    "title": "Fix what the distillation found in its own handoff fix",
+    "summary": "The first two-sided distillation this repo has produced reviewed the change that made it possible, and found four defects in it. Three were confirmed against the code here; the fourth the reviewer experienced first-hand.",
+    "body": [
+      {
+        "h": "One: the new messages could not print in the window they were for"
+      },
+      "summarizeRun drops unanswered SEEDED questions from `rounds`, so `unanswered` is 0 for any run whose only outstanding questions are the standing six — which is every run before the reviewer records a batch. get_answers branched on that before either new string, so the reviewer was told \"That is every round, and all of them are answered\" while six were unanswered, and neither the stall warning nor the \"the author is working\" reassurance was reachable. The reviewer confirmed it live: no author_seen signal at all until it recorded 17 questions, at which point the message appeared and worked.",
+      "So the count that decides all of this is now `unanswered + standing_unanswered`, which is what the reviewer is actually waiting for.",
+      {
+        "h": "Two: patience was sized against the wrong quantity"
+      },
+      "The flat 420s was justified by one run taking 9m52s END TO END. That is not the largest gap between two author calls, and the gap that matters is the answer batch itself: the author answers a whole batch in ONE call, so there is no contact from the moment it starts composing until the answers land, and that stretch grows with the number of questions.",
+      "The reviewer hit it. It asked 17 on top of the standing 6, the author went quiet for 426s composing 23 answers, crossed 420s, and was told STOP POLLING — the same false negative, one step further on, and again with the perverse direction: a thorough reviewer asks more, which lengthens the batch, which makes the cliff likelier. Being careful was punished.",
+      "Patience now scales with what is being waited for: 420s plus 45s per outstanding question. The 426s gap passes at any realistic batch size, and a crashed author is still eventually given up on.",
+      {
+        "h": "Three: the overwrite guard broke the documented correction cycle"
+      },
+      "Comparing head SHAs refuses the flow reviewer.md prescribes — commit the document, fix a finding, the branch moves because committing moved it, compute_diff again, resubmit — because the committed file then holds the old head. It fires from a branch's SECOND commit onward, not only on main, and the remedy it printed (\"put this change on its own branch\") is unusable when it already is, sending every post-commit correction to `overwrite: true` — the flag the guard exists to keep rare.",
+      "The test is now which RUN wrote the file. `document_path` is exact: a resubmit from the same run is a correction however far the branch has moved, and a file written by another run, or by a person, is not this run's to replace. Ancestry was the other candidate and fails the opposite way — it allows drift but on a long-lived branch waves through two distillations at successive points, which is the overwrite this is for.",
+      "FOUR, and smaller:",
+      {
+        "ul": [
+          "The guard tested one end of a range its comment called a range. Same head with a different base is a different run describing a different change, and it wrote silently. Both ends now.",
+          "`existing_interview` echoed a PR-editable file's contents unbounded into a response. Every other response here is bounded because a 234KB one once spilled to disk and took a run_id with it. Now a short summary, defensively read.",
+          "answer_questions was the only heartbeat that fired before the run was known to exist. A call naming a run that does not exist is not evidence of an author working on one that does.",
+          "styles.css was stale again: 62aeec7 added a `.rule` class and the CSS was not rebuilt, 55 bytes. The author predicted this failure from reading the diff, with no shell, and it is this repo's commonest CI break for the second time in three days."
+        ]
+      },
+      "The document that found all this is committed with it.",
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**Stop the reviewer abandoning a working author, and stop clobbering a document.** Two failures from dogfooding the distillation on this repo's own commits. Both were found by running it, not by reading it.",
+          "**Let the author's whole read count as working, and stop paying twice.** Three findings from the distillation's own review of the handoff fix. All three are the same shape: the fix was right about what to do and wrong about where the boundaries were.",
+          "**Redesign the guided review and landing page from the approved mocks.** The guided review becomes a route: Overview, Diagrams, Verification, Risk cues, Walk the change, Open questions, then Submit. Every step ends in one fixed Continue bar, so navigation never moves as content changes."
+        ]
+      }
+    ]
+  },
+  {
+    "v": "1.0.7",
+    "date": "6 Oct 2026",
+    "title": "Show the reviewer what is still live, and keep the settled as a lookup",
+    "summary": "Two changes that both come down to not spending a reviewer's minute on something with nothing left to decide.",
+    "body": [
+      {
+        "h": "The front page is now the live set"
+      },
+      "Measured across the eleven documents in .intent/: 68 assumptions, of which 30 are grounded_in_code and 10 confirmed_by_user. Those 40 are settled, and they are mostly the agent scoping the DOCUMENT rather than describing the code — \"Cloudflare is a deployment detail and should not appear in this view\" is not a thing anyone reviews. All 68 were rendered in one list under \"review these first\", with confidence demoted to an italic aside, which was not enough to tell them apart.",
+      "So only the 28 unverified ones are rendered, and the confidence label goes with them: in a list where everything is unverified there is nothing left to distinguish. What was never exercised (98 entries across those eleven documents, live by definition) moves up from being the last thing before the footer to its own section ahead of the tour.",
+      {
+        "h": "Answered questions are kept, out of the reading path"
+      },
+      "A question that has been answered and grounded is no longer a question, and an interview can produce any number of them. But discarding them is worse than useless: a reviewer re-derives an answer somebody already has. Across 32 runs on disk there are 188 such answers, 5.9 per document, and they read exactly like a reviewer's own questions — whether a dispatch input is restricted to a known list, whether the deployed Compose version supports a flag that was used.",
+      "They reached the document as a COUNT in meta.interview and nowhere else. Now the server stamps them into `evaluated`, collapsed behind a disclosure, to be consulted on arrival at the same question. The server stamps it for the same reason it stamps meta.interview: a section an agent could write by hand is one it could invent.",
+      "Selection is structural, no text matching. `seeded` is out — the standing six ask for the plan, the verbatim asks, the trials, the assumptions, the incidental files and what was run, and their answers already ARE the document's own fields, so including them would say everything twice. Unanswered and unresolved are out: an open question belongs on the front page as a live finding.",
+      "InterviewRound gains `anchors`, recorded by the reviewer when it composes the question, because that is the only moment anyone knows which hunk raised it. Of 188 diff-provoked questions already on disk, 73 name a hunk in their prose and the rest name none, so this is forward-only by agreement rather than back-filled badly.",
+      "The anchors render as plain labels in the viewer, not links: evaluated anchors are hunk ids, while a stored tour stop's anchors are a path plus line ranges, so there is nothing to match them to. A chip that could not navigate would be worse than a label that does not pretend to.",
+      "The filter is repeated in three renderers rather than shared. The worker is a standalone bundle and the viewer has no module step, so neither can import the validator; the worker's renderer already carried a \"mirrors renderPrDescription\" comment. The predicate is one line, and stamping a flag into the schema instead was not worth changing the format's public contract for a reduction available today.",
+      "ALSO: the cross-session lookup, reworked into two explicit steps.",
+      "Step 1 narrows by file. Step 2 attributes by content, and it is the step that answers: a session that wrote a line put it in a tool INPUT, while one that read the file got it back in a tool OUTPUT. On commit 05c90a4, matching 30 added lines, the session committed the next day scores 30/30 authored and 0 observed while three others score 0 authored against 19 to 30 observed. Step 1 cannot tell them apart. On 2ceb8ca, step 2 overturned step 1's top candidate, which had authored 1 line of 15.",
+      "The parsers gained `attribution()` for this, kept off ParsedEntry because the spine parses every entry and would otherwise carry a copy of every tool result it exists to elide. The earlier edited/mentioned split is gone: step 2 supersedes it, and it barely existed anyway, since spine.ts has zero Edit-tool writes across every session on disk.",
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**Improve blog cards and article artwork.**",
+          "**Find other sessions that touched review hunks.**",
+          "**Let the author read the code before it reports the transcript silent.** Many of the reviewer's questions are not about the session at all. \"deleteWorkflow reads status, then calls removeExecutionTree, then deleteExecution. No transaction, no row lock\" is answered by the surrounding function, which lies OUTSIDE the diff.",
+          "**Say how each question ended, and ask the developer before giving up.** The interview had a stopping rule, MAX_BATCHES, but it governs the CONVERSATION rather than the question. A halt is not a verdict: whatever was still open fell into one undifferentiated bucket, so a secret blast radius nobody had considered rendered exactly like \"why did you pick this name\".",
+          "**Let what is still uncertain say which hunk it is about.** A reviewer arrives at a tour stop wanting three things: what changed, what to check, and what is still uncertain HERE. The document could only answer the first two.",
+          "**Show a reviewer what is uncertain at the stop they are looking at.** A reviewer at a tour stop wants three things: what changed, what to check, and what is still uncertain HERE.",
+          "**Divide the session into what it was about, and answer from that.** The spine is complete and that is its virtue: a session is a median 4.8% conversation and 95% tool output, and serving all of the 4.8% removes the one failure retrieval can never rule out, an answer nobody found. But complete is not relevant.",
+          "**Express the author's client grant per client, not once for all of them.** Granting the author file access listed `Read`, `Grep`, `Glob` and later `AskUserQuestion` in one table, for every client. Claude Code got a correct allowlist. The other two got an access list naming four tools they do not have.",
+          "**Write down what a hunk does while reading it, not after.** The largest single cost in a distillation is the reviewer drafting between interview batches. Measured over the 15 runs on disk: 303, 330, 544, 592 and 916 seconds, in every multi-batch run, and it is the biggest in-run gap every time.",
+          "**Ask only where the plan and the change disagree.** Batch one was a union: the baseline set, the house rules, and everything the diff provoked. That union is why the count ran 18 to 34 — and question count is what drives the author's single answer call, a median 57.8 KB of answers and about 14.4K generated tokens, all of it on the critical path.",
+          "**Stop a client that installs nothing from deleting the role definitions.** A Claude Code session's intent-author and intent-reviewer subagents disappeared whenever another tool connected to this server. The only symptom was their absence: the server reported them installed, and some time later they were simply gone.",
+          "**Typecheck the tests, which is why a duplicate import went unnoticed.** roles.test.ts carried seven duplicate import bindings — mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, tmpdir and join, each imported twice — through a green `npm run typecheck` AND a green `vitest run`.",
+          "**Stop the test suite deleting the developer's Codex role definitions.** Running `npx vitest run` removed ~/.codex/agents/intent-*.toml. Not a hypothetical: planting that file and running the suite deleted it, twice, before and after the diagnosis.",
+          "**Regenerate styles.css for the one class the walkthrough added.** CI's \"Generated files are current\" step has been failing since 721f51b, on main as well as on this branch. The whole diff is 23 characters:"
+        ]
+      }
+    ]
+  },
+  {
+    "v": "1.0.6",
+    "date": "4 Oct 2026",
+    "title": "Prerender the site, say what the App can access, and measure the funnel",
+    "summary": "The landing page shipped as one line of HTML, \"Loading…\", until its script ran. Google runs the script; Bing, link unfurlers and the LLM crawlers mostly do not. The release notes were worse off: they lived under #/blog, and a fragment never reaches a crawler, so none of them could be indexed at all.",
+    "body": [
+      "The viewer build now runs the page's own script in jsdom once per route and writes the result into viewer/dist/, which wrangler serves: /, /blog/, one page per release at /blog/<version>/, and /installed/. Each gets its own title, canonical and structured data, and the sitemap is generated from the release list. Old #/blog links redirect. A <head> flag hides the prerendered landing page on PR routes, so a guided-review link does not flash the marketing page while the document loads. The build fails on a page-script error or an empty #app, which is the failure this step exists to prevent.",
+      "The landing page now leads with what a reviewer gets, then names the six parts of a guided review with excerpts from the example document. The install is three steps, because the App alone posts \"No Intent Document\" on every pull request. A Permissions and data section sits under the App's button, each claim checked against the App's own record on GitHub (checks:write, contents:read, metadata:read, pull_requests:write; pull_request events) and the worker source. The footer's \"read live from GitHub in your browser\" was not what happens, and is corrected.",
+      "/installed/ is the target for the App's Setup URL: GitHub returns people there after an install, and it tells them the step the App cannot do for them, registering the MCP server.",
+      "Funnel events go to Clarity and to GA4, both gated on reviewassist.dev and never loaded on a PR route, because a guided review's address names the repository. Pasting a review link into an open tab only changes the hash, so a capture-phase listener switches both tags off and reloads before the PR view renders. GitHub's installation_id is stripped from /installed/ before either tag can read it, and a page counts as viewed once, not on every hash change. The Worker reports the steps no browser sees (App installed or removed, repositories changed, a review posted, a pull request with no document or an unparseable one) over the Measurement Protocol: counts and GitHub's own settings only, with each installation behind an HMAC keyed from SESSION_SECRET. Not the GA API secret, which Google receives in every request; with it and the small id space the pseudonym could be reversed. Nothing is sent unless GA_API_SECRET is set, so self-hosted copies stay silent.",
+      "Release notes for 1.0.1 to 1.0.5 are added; the site stopped at 1.0.0.",
+      "Two things a real browser found: a manual theme choice is now saved and re-applied before first paint, since the release notes are separate pages rather than views of one; and richHtml sets code spans aside before emphasis, so a glob like intent-*.md keeps its asterisks instead of pairing with the next one and italicising everything between.",
+      "Also carries the demo fixes that were already uncommitted in the tree: the demo pauses off screen and under the pointer, no longer scrolls the page to itself on every dwell, and holds its height so stops do not reflow the page.",
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**Add Review Assist blog and architecture article.**",
+          "**Split blog from releases and add conversation spine article.**"
+        ]
+      }
+    ]
+  },
+  {
+    "v": "1.0.5",
+    "date": "21 Sep 2026",
+    "title": "Start both roles at once, and stop the interview deadlocking",
+    "summary": "The distillation spent most of its time with one role waiting on the other. Both roles now start together, the two-batch cap is enforced, and a waiting reviewer is told when to stop.",
+    "body": [
+      "`compute_diff` now seeds the standing questions on the run when it opens, so the author starts answering from the session while the reviewer is still paging the diff. Across 15 recorded runs that phase was 670 seconds of a 1,400-second median, and it was serial only because the author had nothing to answer until the reviewer handed back question ids.",
+      {
+        "h": "A cap that only lived in prose"
+      },
+      "The interview is capped at two batches of questions, but only the role prompts said so. Three recorded runs broke it the same way: the reviewer opened a third batch after the author had correctly handed back, nothing was left to answer it, and the reviewer polled `get_answers` for 61 to 103 minutes. On one run that was 89% of the wall clock.",
+      "`record_interview_round` now refuses a third batch that carries new questions, and points the findings where the protocol already sends them: `verification.not_verified` and the reviewer’s closing report. Re-recording a question the run already holds is still a free retry.",
+      {
+        "h": "Telling a waiting reviewer the truth"
+      },
+      "`get_answers` ended with “the author has not replied to those yet”, which reads as “keep waiting”. The author is a subagent and does not idle: if it has stopped, it has returned. After 8 polls or 60 seconds with no new answer, the tool now says so and names the two real options, re-dispatching the author or submitting with these as findings.",
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**Every submit failed again.** `summarizeRun` grew a field, `submit_document` spread the whole summary into `meta.interview`, and that block allows exactly five. The stamp is now narrowed to the schema’s own fields, so the next field added is a compile error instead of a failed distillation.",
+          "**The distillation diagram was redrawn.** It had drifted past the house-rules tool, and it drew a private channel between author and reviewer that does not exist: the interview goes through the server precisely so it can attest who answered."
+        ]
+      }
+    ]
+  },
+  {
+    "v": "1.0.4",
+    "date": "8 Sep 2026",
+    "title": "Finish a release that half-shipped",
+    "summary": "1.0.3 reached npm and stopped there, missing from the MCP registry and the releases page with nothing able to finish it. Also: the cache purge that failed every deploy.",
+    "body": [
+      "The registry refuses a version it cannot find on npm, and npm does not serve a new version to everyone the moment `npm publish` returns. So 1.0.3 published, was tagged, and failed registration with a 404 on its own package; the GitHub release step after it never ran.",
+      "The workflow now waits until npm actually serves the version, and retries registration three times, because the registry reads npm from its own side and the two can disagree for a few seconds. The recovery path, `release_only`, now includes this step and treats an already-registered version as done, so a rerun finishes a half-shipped release instead of duplicating it.",
+      {
+        "h": "The purge that never ran"
+      },
+      "Every deploy since the purge step landed failed at it with a Cloudflare 7003 routing error. The zone id secret had never been set, and an unset secret interpolates to an empty string, so the URL became `zones//purge_cache` and the error named neither.",
+      "The step now checks the id is 32 hex characters before calling Cloudflare. Checking for emptiness was too weak: piping a failed lookup into `gh secret set` stores the literal `null`, which is what happened while fixing this.",
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**The reviewer’s findings get a second destination.** The Intent Document carries them to whoever reviews the pull request, after the fact. The reviewer’s closing message is now the channel back to the session that can still fix the code.",
+          "**The social preview matches the site.** Shared links were previewing the previous design."
+        ]
+      }
+    ]
+  },
+  {
+    "v": "1.0.3",
+    "date": "8 Sep 2026",
+    "title": "A repository can teach the reviewer its own questions",
+    "summary": "A `.reviewer/` folder holds what only your repository knows to ask. Published to npm, but not to the MCP registry or the releases page; 1.0.4 fixed that.",
+    "body": [
+      "The reviewer asks the same baseline questions everywhere. What it cannot know cold is what one repository always wants asked: an invariant a past incident bought, a change that must ship with its migration, a directory whose churn is never incidental. That belongs in the repository beside the code, not in a prompt the server ships.",
+      "A `.reviewer/` folder at the repository root now holds it, served by a new `get_reviewer_instructions`. The server reads the folder rather than the agent, because the reviewer has no file access by design: reaching the transcript is exactly what the role split forbids.",
+      "House rules add questions and replace none. A repository writes its rules without the baseline in view, so a short folder read as the whole set would quietly shorten the interview. The folder is bounded (50 files, depth 3, 64 KB each) with anything cut named, and because a fork’s pull request can edit it, it is framed as reference material that cannot override the protocol or the schema.",
+      {
+        "h": "Found by its own interview"
+      },
+      "Distilling this change found four defects in it, all fixed before release. The telling one: `present` meant “the folder exists” in one function and “there is something readable in it” in another, so a folder holding no markdown was reported absent and present in the same run.",
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**The site is cached at the edge** for a day and purged on deploy, instead of revalidating on every request. The purge did not actually run until 1.0.4.",
+          "**The landing page was rebuilt** around the live demo, with an install tab per agent, an FAQ, social metadata, `robots.txt`, `sitemap.xml` and `llms.txt`."
+        ]
+      }
+    ]
+  },
+  {
+    "v": "1.0.2",
+    "date": "29 Aug 2026",
+    "title": "The viewer’s columns stop drifting",
+    "summary": "On wide displays the two-column layouts sat centred in a gutter that grew with the window, and at some widths the diff got less room than it had in one column.",
+    "body": [
+      "The overview and walkthrough columns were centred inside the content pane, so on a wider display the content drifted away from the navigation rail, which stayed pinned left. They now share the rail’s left edge, and the leftover space banks to the right, the way documentation layouts do.",
+      "Two breakpoints were wrong by arithmetic. The walkthrough split turned on at 1024px, which left the diff 232px, narrower than the single column it replaced; it now waits for 1280px, where the diff gets about 520. And the prose column was sticky from 1024px while the split started at 1280, so in between it would have pinned itself over the diff.",
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**No sideways scroll on narrow screens.** The masthead’s background grid bled past the page edge below 864px, which became 24px of horizontal scroll at exactly 768.",
+          "**The docs match the tools again.** The distillation diagram and the tool tables had drifted after five tools were added and two moved to the orchestrator."
+        ]
+      }
+    ]
+  },
+  {
+    "v": "1.0.1",
+    "date": "25 Aug 2026",
+    "title": "Shorter documents, and an interview that survives a commit",
+    "summary": "Intent Documents are now written in points instead of paragraphs. Underneath: three ways the interview silently lost its answers.",
+    "body": [
+      "Documents were drifting into prose: a tour stop’s “why” had grown from 20 words to 96 on average, and the approach rationale from 44 to 220. Every field is now a list of points, one phrase each, and the size of the change sets how many points a field gets rather than how long they run. On the same repository afterwards, a stop’s “why” came to 17 words a point, and the rationale went from one 179-word paragraph to 12 points.",
+      {
+        "note": "Breaking for older documents: `problem.evolution` is gone from the schema, and `problem` allows no extra fields, so a document that still carries it fails validation. Delete the field. A constraint that killed a design now goes in `approach.trials`; one that only bounded the work is a requirement, with you named as its source."
+      },
+      {
+        "h": "The interview kept disappearing"
+      },
+      "Three defects with one symptom: the author’s next answer landed on a fresh, empty run and came back as unknown questions, with no error anywhere.",
+      {
+        "ul": [
+          "**A commit rotated the run.** The run id included the head commit, and committing the Intent Document is itself a commit, so the correction cycle the guide promises destroyed the interview it was meant to keep. The head is now state on the run, not part of its id.",
+          "**Submitting deleted the run.** So “fix the findings and resubmit” found nothing to resubmit to. A submitted run is now kept, and swept after 7 days untouched.",
+          "**Two branches off one commit shared a run.** Taking the head out of the id left nothing to tell them apart. The id is now the repository, the base commit and the branch."
+        ]
+      },
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**A space in the repository path hid every session.** Claude Code files sessions under a directory name with spaces turned into dashes too; the lookup only replaced slashes, so it found nothing and said nothing. Matching now ignores which characters were replaced.",
+          "**The two roles read the run directly.** Questions and answers used to be copied between them as chat text, 25 to 29 KB a run. `get_questions` and `get_answers` read the other half off the run, so only the run id travels.",
+          "**The Intent Document left the diff it describes.** From a branch’s second commit it arrived as a whole-file addition, sorted first, and shifted every hunk id by one.",
+          "**Point lists render as lists**, and requirements and rejected alternatives are shown open instead of folded, in the viewer and the PR description.",
+          "**The viewer and the schema moved to reviewassist.dev**, with `www` redirecting to it."
+        ]
+      }
+    ]
+  },
+  {
+    "v": "1.0.0",
+    "date": "13 Aug 2026",
+    "title": "Nothing large enough to matter can go missing",
+    "summary": "A paged session spine, an interview the server can attest from both sides, and the schema fix that made every submission fail.",
+    "body": [
+      {
+        "h": "The spine deleted the agent’s half"
+      },
+      "`get_spine` was the one tool with no result ceiling — up to 600 KB, thirty times what every other tool respects. When a session went past that, the fallback dropped every assistant turn to fit.",
+      "That is the worst thing to lose: roughly two thirds of the prose in a session is the agent’s, and 17 of 23 recorded trials came from its side. The spine is now paged like the diff, so a long session costs more calls and no material.",
+      {
+        "h": "The server only heard one side"
+      },
+      "`record_interview_round` took both the question and the answer from the reviewer, so a fabricated interview was indistinguishable from a real one.",
+      "Questions are now recorded first and come back with a `q_id`; the author answers by that id through `answer_questions`. `meta.interview` gained `author_attested`, so an unattested interview shows up in the document. The interview also went from four rounds to two.",
+      {
+        "h": "The schema fix"
+      },
+      "`summarizeRun` grew two fields; `meta.interview` is `additionalProperties: false` over three. `submit_document` stamps that summary into every document — so every submission failed validation. The tool could not file its own output.",
+      "124 unit tests passed with the bug in place, because no test stamped a real summary into a real document. A reviewer agent reading the diff cold found it, which is what the two-role split is for."
+    ]
+  },
+  {
+    "v": "0.3.1",
+    "date": "6 Aug 2026",
+    "title": "No response grows with the size of the change",
+    "summary": "The flow died on exactly the changes big enough to deserve a document. Paged diffs, hunk-id anchors, a run handle that survives a restart.",
+    "body": [
+      "`compute_diff` returned the whole diff beside the `run_id` every later call needs. On a 205,432-character change the response was 234,337 characters — past the client’s tool-result cap, so it was spilled to a file whole and the `run_id` went with it. The reviewer has no file access by design, so it could neither record a round nor submit. The bigger the change, the more certain the failure.",
+      "Now `compute_diff` returns the handle, the SHAs and a numbered hunk index; the bytes come from `read_diff`, paged on hunk boundaries — the unit the anchors already speak in. Envelope on the change that prompted it: 234,337 → 15,622 characters, twelve pages, every walked hunk byte-identical on reassembly.",
+      {
+        "note": "Breaking: `compute_diff` no longer returns `diff`. The document format is unchanged."
+      },
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**A run handle, not a working directory.** Rounds were filed under the server’s cwd while submits passed the repo — different keys in a multi-repo workspace, so the submit found no interview and the reviewer re-ran everything. A run is now `sha256(repo|base_sha|head_sha)`, required by both tools.",
+          "**Anchors by hunk id.** A stop says `H3, H4` instead of restating line numbers from a diff header. Ids are expanded before validation, so nothing downstream changes.",
+          "**A transcript parser per agent.** Claude Code and Codex transcripts share nothing; guessing at both half-worked in silence — `get_spine` reduced 831 Codex entries to one gap item.",
+          "**A tour grouped by the plan, not the diff.** Grouping by file structure produces stops that are really just filenames.",
+          "**The reviewer lost the orchestrator’s tools.** It could reset consent for every repository on the machine, and in one run reached for it after two failed submits."
+        ]
+      }
+    ]
+  },
+  {
+    "v": "0.2.11",
+    "date": "29 Jul 2026",
+    "title": "Role definitions install at the handshake",
+    "summary": "Written during a tool call, they could not be dispatched until the next session — so agents simulated the split without the allowlist that enforces it.",
+    "body": [
+      "Claude Code reads `~/.claude/agents/` once, at session start. Definitions written during a tool call therefore did nothing that session, and the agent offered to simulate the two roles with general-purpose subagents — which drops the `tools:` allowlist, the only thing making the split enforceable rather than advisory.",
+      "They now install on the `initialize` handshake, during the session start the user was already performing. The hook is `oninitialized`, not a step after `connect()`: connect resolves before the client has sent `initialize`, so the client identity is still unknown there."
+    ]
+  },
+  {
+    "v": "0.2.10",
+    "date": "29 Jul 2026",
+    "title": "The server installs the roles, at user scope",
+    "summary": "The guide told agents to run a CLI that could not detect their client, so they wrote subagent files into whatever repository they happened to be in.",
+    "body": [
+      "`review-assist-mcp agents --write`, run standalone, has no MCP handshake: it resolved to `generic`, which has no agent directory, and refused to write. Every agent fell through to placing the files by hand — in the user’s repository.",
+      "The server already knows the client from the handshake, so it does the write. At user scope, not project scope: the definitions contain nothing repo-specific, and per-project writes left untracked files in every repository the tool touched.",
+      "The CLI keeps the job the server cannot do — showing what would be written, before anything is."
+    ]
+  },
+  {
+    "v": "0.2.9",
+    "date": "29 Jul 2026",
+    "title": "Check the invariants; name the silent install failure",
+    "summary": "Two releases had broken on cross-file invariants no generator owns. Separately: why `npx`-based servers show as *not connected* in GUI editors, with no error.",
+    "body": [
+      "Both release bugs that week were cross-file invariants, not forgotten generator runs: `server.json` advertised 0.2.1 against npm 0.2.7, and the registry’s required `mcpName` did not exist at all.",
+      "CI now fails on any diff from regenerating derived files, and asserts what no generator owns — `mcpName` against `server.json`, the identifier shape, that `SERVER_VERSION` is still derived, and that the manifest declares exactly the tools the server registers. That last one is how the manifest sat at eight tools while the server had ten. The publish workflow checks twice, so a broken invariant fails the release instead of annotating it afterwards.",
+      {
+        "h": "The install that fails silently"
+      },
+      "`npx -y review-assist-mcp` works from a terminal and fails two ways elsewhere, both silent: GUI apps on macOS inherit only `/usr/bin:/bin:/usr/sbin:/sbin`, so a Homebrew or nvm `npx` is not found; on Windows `npx` is a `.cmd` wrapper needing a TTY the VS Code panel lacks. The server just shows as not connected.",
+      "Under a bare GUI PATH, only an absolute `node` invoking the script directly starts — plain `npx` fails on lookup, the others on the shebang:",
+      {
+        "code": "npm install -g review-assist-mcp\nclaude mcp add -s user review-assist -- \"$(which node)\" \"$(npm root -g)/review-assist-mcp/dist/index.js\""
+      },
+      "This affects every `npx`-based MCP server, not just this one."
+    ]
+  },
+  {
+    "v": "0.2.8",
+    "date": "29 Jul 2026",
+    "title": "Publishing to the MCP registry",
+    "summary": "`server.json` had drifted two versions behind npm, and the registry could not verify the package was ours.",
+    "body": [
+      "`server.json` carries the version twice and derived neither from `package.json`, so it advertised 0.2.1 while npm was on 0.2.7 — publishing that would list a version that no longer resolves. It is now folded into `sync-version`.",
+      "The registry also checks that the underlying package claims the same name: for npm that means an `mcpName` field present in the published tarball, not just the repository. Without it, verification fails.",
+      "Publishing runs from CI over GitHub OIDC. Interactively it would mean a device code and a token on a laptop, and a manual step that drifts exactly the way `server.json` already had."
+    ]
+  },
+  {
+    "v": "0.2.7",
+    "date": "29 Jul 2026",
+    "title": "Say what the thing actually is",
+    "summary": "The npm README listed five tools where the server registers ten, and never mentioned that half the product is a GitHub App. The privacy claim was overstated too.",
+    "body": [
+      "It told readers to build from source and register an absolute `dist` path — instructions that cannot work for anyone arriving via `npx` — and never mentioned the App, so an npm installer got half a product with nothing saying so. It now leads with the two installs, states that the second is a GitHub App rather than an Action, and documents all ten tools by role.",
+      {
+        "h": "The privacy claim"
+      },
+      "“Validation runs against the diff on GitHub’s side of the fence” read as though repository content never reached the service. It does: the worker fetches the document and the full `base...head` diff from the GitHub API.",
+      "Nothing is persisted — that is the claim worth making, so that is the claim now made, with the in-transit caveat named rather than left in `index.ts` for a reader to find."
+    ]
+  },
+  {
+    "v": "0.2.6",
+    "date": "29 Jul 2026",
+    "title": "Pin the toolchain",
+    "summary": "`npm i -g npm@latest` made every release depend on whatever npm shipped that hour.",
+    "body": [
+      "Runs 2 through 4 published fine over OIDC. Run 6 failed inside `npm publish` with a 401, trying to open a browser web-auth flow — after the tarball had uploaded and the provenance statement was signed. Nothing in the repository had changed in any way that touches authentication.",
+      "Node 24 already bundles npm 11.5.1 or later, which is all trusted publishing needs. Use the bundled npm and assert the floor."
+    ]
+  },
+  {
+    "v": "0.2.5",
+    "date": "29 Jul 2026",
+    "title": "Push an annotated tag",
+    "summary": "`git tag` creates a lightweight tag; `git push --follow-tags` only pushes annotated ones.",
+    "body": [
+      "v0.2.4 never left the runner, and `gh release create` failed with “tag exists locally but has not been pushed”. npm and `main` had already been updated, leaving a published version with no release behind it."
+    ]
+  },
+  {
+    "v": "0.2.4",
+    "date": "29 Jul 2026",
+    "title": "Commit and tag from the repository root",
+    "summary": "`npm version` inside a workspace package bumps `package.json` and silently does nothing in git.",
+    "body": [
+      "There is no `.git` in `packages/mcp-server`, so the commit and tag were skipped without complaint: 0.2.3 went to npm while `main` still said 0.2.2, and `gh release` tagged the pre-bump commit.",
+      "The release now bumps with `--no-git-tag-version`, reads the version back off disk, and commits and tags from the root. 0.2.4 carries no functional change — it is the first release cut correctly by that path."
+    ]
+  },
+  {
+    "v": "0.2.3",
+    "date": "29 Jul 2026",
+    "title": "One version, derived everywhere",
+    "summary": "Three files carried a version and the release bumped one, so 0.2.2 shipped a server that reported itself as 0.2.1.",
+    "body": [
+      "`SERVER_VERSION` now reads `package.json` at runtime, so there is no second literal to drift. `manifest.json` still needs one, because the `.mcpb` format requires it — so the build regenerates it.",
+      "Same change fixes the release push: `actions/checkout` leaves a detached HEAD, so the bump commit had no branch to land on and only the tag reached the remote."
+    ]
+  },
+  {
+    "v": "0.2.2",
+    "date": "29 Jul 2026",
+    "title": "Trusted publishing, and the bundle the README promised",
+    "summary": "The publish workflow depended on a secret that was never set, and never attached the `.mcpb` the README links to.",
+    "body": [
+      "`NPM_TOKEN` had never been set, so the workflow would have failed at the publish step. It now uses npm trusted publishing over OIDC — no long-lived credential stored anywhere. `setup-node`’s `registry-url` is deliberately dropped, since it writes an `_authToken` line that breaks OIDC.",
+      "The `.mcpb` is now packed and attached to the release the README already pointed people at."
+    ]
+  },
+  {
+    "v": "0.2.1",
+    "date": "29 Jul 2026",
+    "title": "First published release",
+    "summary": "The format, the validator, the MCP server and the guided-review app — and the decision to retire the GitHub Action.",
+    "body": [
+      "First release on npm and in the MCP registry: the Intent Document format and schema, the deterministic validator, the MCP server that drives distillation, and the GitHub App that renders the guided review.",
+      "**The Action was retired.** It and the App webhook were two paths to the same checks, and the webhook already runs them on every `pull_request` event with zero configuration — so the Action was a redundant path that cost every adopting repository a workflow file and runner minutes. The `review-assist` CLI remains for teams who prefer their own runners.",
+      "Also: all ten tools registered (the desktop manifest advertised eight, so clients never saw two of them), the two roles shipped as installable subagents, commenting on a range of lines, and per-repository consent before anything is written."
+    ]
+  }
+]

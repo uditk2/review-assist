@@ -20,6 +20,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { inlineReleaseNotes } from "./release-notes.mjs";
 
 const VIEWER = fileURLToPath(new URL("..", import.meta.url));
 const DIST = join(VIEWER, "dist");
@@ -33,7 +34,7 @@ const ASSETS = ["favicon.svg", "fonts", "schema", "styles.css", "robots.txt", "l
 
 // A changed stylesheet gets a new URL so existing browser caches cannot mix builds.
 const cssVersion = createHash("sha256").update(await readFile(join(VIEWER, "styles.css"))).digest("hex").slice(0, 12);
-const template = (await readFile(join(VIEWER, "index.html"), "utf8"))
+const template = inlineReleaseNotes(await readFile(join(VIEWER, "index.html"), "utf8"))
   .replace('href="/styles.css"', `href="/styles.css?v=${cssVersion}"`);
 
 /** Run the page at `path` and return what its script put in #app, plus the release list. */
@@ -64,12 +65,15 @@ async function render(path) {
     "JSON.stringify(RELEASES.map(r => ({ v: r.v, title: r.title, summary: r.summary, date: r.date })))"));
   const h1 = app.querySelector("h1")?.textContent.trim();
   const textLength = app.textContent.replace(/\s+/g, " ").trim().length;
+  // The placeholder paragraph itself, not the word: the 1.0.6 note quotes "Loading…" as
+  // the thing it fixed, and matching the substring failed the build on that page.
+  const placeholder = [...app.querySelectorAll("p")].some((p) => p.textContent.trim() === "Loading…");
   dom.window.close(); // stops the demo's interval
 
   if (errors.length) throw new Error(`${path}: the page script failed:\n${errors.map((e) => e.stack || e.message).join("\n")}`);
   // A blank or placeholder #app is the failure this whole step exists to prevent, so it
   // fails the build rather than shipping.
-  if (!h1 || textLength < 300 || html.includes("Loading…")) {
+  if (!h1 || textLength < 300 || placeholder) {
     throw new Error(`${path}: prerender produced no real content (h1: ${JSON.stringify(h1)}, ${textLength} chars)`);
   }
   return { html, releases };
