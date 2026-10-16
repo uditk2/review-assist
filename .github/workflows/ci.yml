@@ -9,6 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      # Anthropic's plugin directory downloads this repository as GitHub archives it and
+      # will not validate one over 50 MiB, so an oversized repo fails before any check
+      # runs. Blog images are what grows it: commit heroes as JPEG, not PNG. 45 leaves room.
+      - name: Repository archive stays under the plugin directory's limit
+        run: |
+          size=$(git archive --format=tar.gz HEAD | wc -c)
+          echo "archive: $((size / 1048576)) MiB"
+          [ "$size" -le $((45 * 1048576)) ] || { echo "Archive is over 45 MiB; the plugin directory stops at 50."; exit 1; }
+
       - uses: actions/setup-node@v5
         with:
           node-version: 24

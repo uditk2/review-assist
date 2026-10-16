@@ -1535,7 +1535,7 @@ const ARTICLES = [
     modified: "16 Oct 2026",
     title: "How to review an AI-written feature flag rollout",
     summary: "Check both flag states, the evaluation failure path, rollout scope, rollback, and cleanup before approving.",
-    hero: "/blog/how-to-review-ai-written-feature-flag-rollouts.png",
+    hero: "/blog/how-to-review-ai-written-feature-flag-rollouts.jpg",
     alt: "Two code paths controlled by a feature flag, with a rollback path from a failed rollout",
     caption: "The flag adds a second production path. Review both.",
     body: [
@@ -1564,7 +1564,7 @@ const ARTICLES = [
     modified: "15 Oct 2026",
     title: "How to review an AI-written npm audit fix pull request",
     summary: "Trace the advisory through the dependency tree, inspect what the fix actually changed, and test the affected behavior before approving.",
-    hero: "/blog/how-to-review-ai-written-npm-audit-fix-prs.png",
+    hero: "/blog/how-to-review-ai-written-npm-audit-fix-prs.jpg",
     alt: "A dependency graph before and after a fix, with one changed package highlighted for review",
     caption: "Follow the changed dependency path, not just the new audit count.",
     body: [
@@ -1594,7 +1594,7 @@ const ARTICLES = [
     modified: "14 Oct 2026",
     title: "How to review an AI-written database migration",
     summary: "Check the rollout order, old and new code compatibility, backfill behavior, and recovery plan before approving a schema change.",
-    hero: "/blog/how-to-review-ai-written-database-migrations.png",
+    hero: "/blog/how-to-review-ai-written-database-migrations.jpg",
     alt: "A reviewer traces a schema change through old, transitional, and new table shapes",
     caption: "Review the transitional state, not just the final schema.",
     body: [
@@ -1623,7 +1623,7 @@ const ARTICLES = [
     modified: "13 Oct 2026",
     title: "How to review authorization changes in an AI-written PR",
     summary: "Trace who can reach the changed path, challenge the permission assumptions, and ask for denial-path evidence before approving.",
-    hero: "/blog/how-to-review-authorization-changes-in-ai-prs.png",
+    hero: "/blog/how-to-review-authorization-changes-in-ai-prs.jpg",
     alt: "Two reviewers trace allowed and denied paths through an authorization boundary in a code change",
     caption: "Trace the allowed path and the denied path before approving an access change.",
     body: [
@@ -1654,7 +1654,7 @@ const ARTICLES = [
     modified: "12 Oct 2026",
     title: "How to re-review an AI-written PR after a new push",
     summary: "Use the new PR head as the review boundary: inspect changed behavior, refresh the explanation and evidence, then decide what needs another look.",
-    hero: "/blog/how-to-re-review-an-ai-pr-after-a-new-push.png",
+    hero: "/blog/how-to-re-review-an-ai-pr-after-a-new-push.jpg",
     alt: "An engineer examines a revised code change handed over by a teammate while the earlier version sits aside",
     caption: "A new push changes the evidence the review decision rests on.",
     body: [
@@ -1685,7 +1685,7 @@ const ARTICLES = [
     modified: "11 Oct 2026",
     title: "How to check scope drift in an AI-written PR",
     summary: "Compare the original ask with the changed behavior, then decide whether extra work belongs in this PR, needs approval, or should be split out.",
-    hero: "/blog/how-to-check-scope-drift-in-ai-written-prs.png",
+    hero: "/blog/how-to-check-scope-drift-in-ai-written-prs.jpg",
     alt: "A reviewer compares a small request with a larger stack of code changes and points to a sheet outside the agreed boundary",
     caption: "A related change still needs a reason to be in this pull request.",
     body: [
@@ -1717,7 +1717,7 @@ const ARTICLES = [
     modified: "10 Oct 2026",
     title: "How to review an untested path in an AI-written PR",
     summary: "Trace the untested behavior to the changed code, ask for one check that would settle the risk, and make the merge decision explicit.",
-    hero: "/blog/how-to-review-untested-paths-in-ai-prs.png",
+    hero: "/blog/how-to-review-untested-paths-in-ai-prs.jpg",
     alt: "A reviewer traces a code path that ends in an untested gap while another engineer prepares to check it",
     caption: "A missing check is a review decision with a specific path and consequence.",
     body: [
@@ -1750,7 +1750,7 @@ const ARTICLES = [
     modified: "9 Oct 2026",
     title: "What a green Review Assist check tells you",
     summary: "A complete coverage count means each counted hunk has a tour anchor. A green check without a count needs a closer look, and no check approves the code.",
-    hero: "/blog/what-a-review-assist-check-means-v3.png",
+    hero: "/blog/what-a-review-assist-check-means-v3.jpg",
     alt: "A reviewer inspects a fragile component despite the green coverage light beside the explained diff",
     caption: "Coverage is a map of explanations, not a merge decision.",
     body: [
@@ -1782,7 +1782,7 @@ const ARTICLES = [
     modified: "9 Oct 2026",
     title: "Where your code and transcript go in Review Assist",
     summary: "The raw transcript stays local. The Intent Document lives in GitHub. The hosted App sees the diff in transit when a reviewer opens the PR.",
-    hero: "/blog/where-code-and-transcript-go-in-review-assist-v3.png",
+    hero: "/blog/where-code-and-transcript-go-in-review-assist-v3.jpg",
     alt: "A developer keeps a large session archive behind while passing a slim review folder to another engineer",
     caption: "Follow each artifact to the place it actually lives.",
     body: [
@@ -1815,7 +1815,7 @@ const ARTICLES = [
     modified: "9 Oct 2026",
     title: "How to add repository-specific review questions for AI-written PRs",
     summary: "Put the invariants your team learned the hard way in .reviewer/, then check that they become specific questions during AI PR review.",
-    hero: "/blog/how-to-add-repository-review-rules-for-ai-prs-v3.png",
+    hero: "/blog/how-to-add-repository-review-rules-for-ai-prs-v3.jpg",
     alt: "Two engineers use a blue repository rule card to focus on a risky part of the changed code",
     caption: "Ask the repository's question where the changed code can answer it.",
     body: [
@@ -1846,7 +1846,7 @@ const ARTICLES = [
     modified: "9 Oct 2026",
     title: "How to comment on an unverified assumption in an AI-written PR",
     summary: "Find the assumption, tie it to the affected code, and ask for evidence or a change the author can act on.",
-    hero: "/blog/how-to-comment-on-unverified-assumptions-in-ai-prs-v3.png",
+    hero: "/blog/how-to-comment-on-unverified-assumptions-in-ai-prs-v3.jpg",
     alt: "A reviewer places a blue question note beside a fragile connection in the code diff",
     caption: "Put the question where its answer will help the next reviewer.",
     body: [
@@ -1879,7 +1879,7 @@ const ARTICLES = [
     modified: "9 Oct 2026",
     title: "How to spot unexplained changes in an AI-written pull request",
     summary: "Use diff coverage to find changes the review narrative missed, then decide what the author needs to explain or fix before approval.",
-    hero: "/blog/how-to-spot-unexplained-changes-in-ai-written-prs-v3.png",
+    hero: "/blog/how-to-spot-unexplained-changes-in-ai-written-prs-v3.jpg",
     alt: "A reviewer lifts one overlooked change from a wall of changes with blue explanation tabs",
     caption: "An uncovered hunk is a question to investigate, not a verdict about the code.",
     body: [
@@ -1912,7 +1912,7 @@ const ARTICLES = [
     modified: "9 Oct 2026",
     title: "The conversation spine: turning an agent session into useful code review context",
     summary: "Reviewers need more than a diff. The spine keeps the decisions, failures, edits, and verification that explain how the code got there.",
-    hero: "/blog/conversation-spine-code-review-context-v4.png",
+    hero: "/blog/conversation-spine-code-review-context-v4.jpg",
     alt: "A developer follows a blue thread through scattered session notes and hands a compact booklet to a reviewer",
     caption: "The spine preserves useful evidence and carries its source into one reviewer-ready view.",
     body: [
@@ -1955,7 +1955,7 @@ const ARTICLES = [
     modified: "9 Oct 2026",
     title: "How Review Assist’s architecture catches bugs before code review",
     summary: "A two-agent, evidence-gated approach to reviewing AI-generated code while the implementation can still change.",
-    hero: "/blog/how-review-assist-architecture-catches-bugs-early-v4.png",
+    hero: "/blog/how-review-assist-architecture-catches-bugs-early-v4.jpg",
     alt: "An independent reviewer points out a small gap as the author prepares the piece to fix it",
     caption: "Independent review makes hidden defects visible while the change can still be corrected.",
     body: [
