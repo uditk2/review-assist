@@ -79,10 +79,14 @@ import {
   MAX_BATCHES,
   markSubmitted,
   listOpenRuns,
+  grantConsentOnce,
   type InterviewRound,
+  type RunRecord,
 } from "./runs.js";
 import {
   getConsent,
+  consentFor,
+  consentAllows,
   setConsent,
   resetConsent,
   listConsent,
@@ -138,6 +142,75 @@ function textResult(text: string, isError = false) {
   return { content: [{ type: "text" as const, text }], isError };
 }
 
+/**
+ * The question put to the user, worded once. It names both things the answer allows,
+ * because reading the session is the part a user would most want to be asked about, and
+ * the prompt used to mention only the document.
+ */
+function consentQuestion(repoDir: string) {
+  return {
+    prompt:
+      `Enable Review Assist for this project? It reads this project's coding-session transcripts on this ` +
+      `machine, read-only and without sending them anywhere, and writes an Intent Document to ${repoDir}/.intent/.`,
+    options: [
+      { decision: "always", label: "Always: enable for this repo and don't ask again" },
+      { decision: "once", label: "Just this time: allow it for this change, ask again later" },
+      { decision: "never", label: "Never: turn it off for this repo (won't ask again)" },
+    ],
+  };
+}
+
+function consentPrompt(repoDir: string, runId?: string) {
+  return { ok: false, consent_required: true, repo: repoDir, ...(runId ? { run_id: runId } : {}), ...consentQuestion(repoDir) };
+}
+
+/**
+ * The gate on every tool that reads a session. Reading the session is covered by the same
+ * per-repository decision as writing the document, and is asked for BEFORE it happens: it
+ * used to be checked only at submit, by which point the transcript had been read in full.
+ *
+ * Returns the response to send instead, or undefined when reading is allowed. The repo is
+ * the run's when there is one; a call without a run_id falls back to the server's own
+ * repository, which in a multi-repo workspace may not be the one meant, so the refusal
+ * says to pass it.
+ */
+function sessionReadRefusal(repoDir: string, run?: RunRecord) {
+  const consent = consentFor(repoDir, run?.consent_once_at);
+  if (consentAllows(consent)) return undefined;
+  if (consent === "disabled") {
+    return textResult(
+      JSON.stringify(
+        {
+          ok: false,
+          skipped: true,
+          reason: "disabled",
+          repo: repoDir,
+          message:
+            `Review Assist is turned off for this repository (you chose "Never"), so no session was read. ` +
+            `To turn it back on, run: npx review-assist-mcp consent enable "${repoDir}", or call set_consent with decision "always".`,
+        },
+        null,
+        2
+      )
+    );
+  }
+  return textResult(
+    JSON.stringify(
+      {
+        ...consentPrompt(repoDir, run?.run_id),
+        next:
+          "Nothing about the session may be read until the user answers. Put the prompt and options to the " +
+          "user verbatim and let them choose; do not choose for them. Then call set_consent({ run_id, decision }) " +
+          "and repeat this call. If you have no way to ask the user, stop now and hand this back to whoever " +
+          "dispatched you." +
+          (run ? "" : " Pass your run_id on this call, so the check is made for the repository the change is in."),
+      },
+      null,
+      2
+    )
+  );
+}
+
 /** How long a waiting get_answers call is held; see `answerWaitMs` in ./handoff.ts. */
 const ANSWER_WAIT_MS = answerWaitMs();
 
@@ -163,11 +236,15 @@ registerTool(
   "Return the Intent Document JSON Schema and the authoring protocol. Call this first.",
   {},
   async () => {
+    const consent = getConsent(REPO_DIR);
     const payload = {
       schema: intentDocSchema,
       guide: GENERATION_GUIDE,
       repo_dir: REPO_DIR,
-      consent_state: getConsent(REPO_DIR),
+      consent_state: consent,
+      // Often the first call, made by whoever dispatches the roles: the one place it can be
+      // settled before an author is started that could only ask.
+      ...(consent === "unknown" ? { consent_prompt: consentQuestion(REPO_DIR) } : {}),
     };
     return textResult(JSON.stringify(payload, null, 2));
   }
@@ -208,7 +285,7 @@ registerTool(
         answered: seeded.filter((r) => r.answer.length > 0).length,
         q_ids: seeded.map((r) => r.q_id),
       };
-      const consent = getConsent(repoDir);
+      const consent = consentFor(repoDir, run.consent_once_at);
       const houseRules = summarizeReviewerInstructions(repoDir);
       const hunks = indexHunks(diff);
       const files = summarizeFiles(hunks);
@@ -225,6 +302,8 @@ registerTool(
         head_sha: headSha,
         branch,
         consent_state: consent,
+        // The exact words to put to the user, so whoever settles it does not paraphrase.
+        ...(consent === "unknown" ? { consent_prompt: consentQuestion(repoDir) } : {}),
         // Presence only. The rules themselves come from `get_reviewer_instructions`, for
         // the same reason the diff does not travel in this response: a repo can grow its
         // house rules without the handle above ever falling out of a truncated result.
@@ -299,8 +378,10 @@ registerTool(
               : ` ${standing.count} standing question(s) are seeded on this run. Dispatch both roles NOW, in parallel: the author answers these off the transcript while the reviewer pages the diff.`;
       envelope.next =
         (consent === "unknown"
-          ? "This repo is not opted in yet. Resolve consent NOW, before writing the document: present the choice to the user and call set_consent({ repo, decision }). Submitting first only wastes the document."
-          : "Pass `run_id` to read_diff, record_interview_round and submit_document. Do not pass `repo` to those tools — the run already knows it.") +
+          ? "This repo is not opted in yet. Resolve consent NOW: put `consent_prompt` to the user verbatim and call set_consent({ run_id, decision }). Until it is settled the author cannot read the session, and nothing can be written."
+          : consent === "disabled"
+            ? "Review Assist is turned off for this repository. The session cannot be read and nothing will be written; stop, and tell the user how to turn it back on (set_consent \"always\", or the `consent enable` CLI)."
+            : "Pass `run_id` to read_diff, record_interview_round and submit_document. Do not pass `repo` to those tools — the run already knows it.") +
         standingNote +
         houseRulesNote;
 
@@ -628,7 +709,11 @@ registerTool(
   },
   async ({ path, base, head, repo, run_id }) => {
     if (run_id) handoff.noteAuthorActivity(run_id);
-    const repoDir = repo ? resolve(repo) : REPO_DIR;
+    const run = run_id ? getRun(run_id) : undefined;
+    const repoDir = repo ? resolve(repo) : run?.repo ?? REPO_DIR;
+    // Ranking reads the opening of every candidate, and the previews quote the user.
+    const refused = sessionReadRefusal(repoDir, run?.repo === repoDir ? run : undefined);
+    if (refused) return refused;
     let changedBasenames: string[] = [];
     if (base) {
       try {
@@ -681,6 +766,9 @@ registerTool(
       .describe("Identifier to store it under. Defaults to the source file's name."),
   },
   async ({ repo, from, session_id }) => {
+    // Filing a copy of a session is reading it, and keeps it besides.
+    const refused = sessionReadRefusal(resolve(repo));
+    if (refused) return refused;
     try {
       const res = importSession({ repo: resolve(repo), from, sessionId: session_id });
       return textResult(
@@ -733,6 +821,9 @@ registerTool(
   },
   async ({ path, run_id, from_entry, cursor, max_bytes }) => {
     if (run_id) handoff.noteAuthorActivity(run_id);
+    const run = run_id ? getRun(run_id) : undefined;
+    const refused = sessionReadRefusal(run?.repo ?? REPO_DIR, run);
+    if (refused) return refused;
     try {
       const spine = buildSpine(path);
       // `from_entry` is a TRANSCRIPT index and `cursor` is a SPINE ITEM index. Selecting by
@@ -778,6 +869,9 @@ registerTool(
   },
   async ({ path, run_id, offset, limit }) => {
     if (run_id) handoff.noteAuthorActivity(run_id);
+    const run = run_id ? getRun(run_id) : undefined;
+    const refused = sessionReadRefusal(run?.repo ?? REPO_DIR, run);
+    if (refused) return refused;
     try {
       const win = readTranscriptWindow(path, offset ?? 0, limit ?? 50);
       return textResult(JSON.stringify(win, null, 2));
@@ -1001,6 +1095,8 @@ registerTool(
       return textResult("Pass `hunks` (preferred) or `paths`. With neither there is nothing to look up.", true);
     }
     handoff.noteAuthorActivity(run_id);
+    const refused = sessionReadRefusal(run.repo, run);
+    if (refused) return refused;
     try {
       // Recomputed from the run's own SHAs, exactly as read_diff does, so the hunk ids
       // mean the same thing here as they did when the reviewer anchored them.
@@ -1071,6 +1167,8 @@ registerTool(
     const run = getRun(run_id);
     if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
     handoff.noteAuthorActivity(run_id);
+    const refused = sessionReadRefusal(run.repo, run);
+    if (refused) return refused;
     try {
       const { diff } = await computeDiff(run.repo, run.base_sha, run.head_sha);
       const changed = summarizeFiles(indexHunks(diff)).map((f) => f.path);
@@ -1142,6 +1240,9 @@ registerTool(
     const run = getRun(run_id);
     if (!run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
     handoff.noteAuthorActivity(run_id);
+    // Reads the transcript to derive each context's files.
+    const refused = sessionReadRefusal(run.repo, run);
+    if (refused) return refused;
     try {
       const index = recordContexts(path, run.repo, { from, scanned_through, contexts });
       return textResult(
@@ -1184,6 +1285,9 @@ registerTool(
   },
   async ({ path, run_id, context_id, cursor, max_bytes }) => {
     if (run_id) handoff.noteAuthorActivity(run_id);
+    const run = run_id ? getRun(run_id) : undefined;
+    const refused = sessionReadRefusal(run?.repo ?? REPO_DIR, run);
+    if (refused) return refused;
     try {
       const index = readIndex(path);
       const ctx = index.contexts.find((c) => c.id.toUpperCase() === context_id.trim().toUpperCase());
@@ -1566,7 +1670,7 @@ registerTool(
     // Consent gate. compute_diff already reported this state when the run opened, so by
     // here it is normally settled; the check stays because the write below is the point
     // of no return and must not depend on the agent having read that field.
-    const consent = getConsent(repoDir);
+    const consent = consentFor(repoDir, run.consent_once_at);
     if (consent === "disabled") {
       return textResult(
         JSON.stringify(
@@ -1586,16 +1690,8 @@ registerTool(
       return textResult(
         JSON.stringify(
           {
-            ok: false,
-            consent_required: true,
-            repo: repoDir,
-            prompt: `Enable Review Assist for this project? It will distill this change into an Intent Document written to ${repoDir}/.intent/.`,
-            options: [
-              { decision: "always", label: "Always — enable for this repo and don't ask again" },
-              { decision: "once", label: "Just this time — do it now, ask again next session" },
-              { decision: "never", label: "Never — turn it off for this repo (won't ask again)" },
-            ],
-            next: "Ask the user to pick one, then call set_consent({ repo, decision }), then call submit_document again with the same document and run_id.",
+            ...consentPrompt(repoDir, run_id),
+            next: "Ask the user to pick one, then call set_consent({ run_id, decision }), then call submit_document again with the same document and run_id.",
           },
           null,
           2
@@ -1836,23 +1932,39 @@ registerTool(
 
 registerTool(
   "set_consent",
-  "Record the user's decision about whether Review Assist may operate in a repository. Call this only after the user has answered the consent prompt returned by submit_document.",
+  "Record the user's decision about whether Review Assist may operate in a repository: read its coding " +
+    "sessions and write its Intent Document. Call this only after the user has answered the consent prompt " +
+    "(from compute_diff, a session-reading tool, or submit_document). Pass `run_id` whenever you have one: a " +
+    "\"once\" recorded on the run holds for every agent working on that change, not just this one.",
   {
     decision: z
       .enum(["always", "once", "never"])
-      .describe("always = enable and remember; once = allow this session only; never = disable and remember"),
+      .describe("always = enable and remember; once = allow it for this change and this session; never = disable and remember"),
+    run_id: z
+      .string()
+      .optional()
+      .describe("Run handle from compute_diff. Names the repository, and carries a \"once\" to the other role."),
     repo: z
       .string()
       .optional()
-      .describe("Absolute repo path; defaults to REVIEW_ASSIST_REPO or cwd."),
+      .describe("Absolute repo path, when there is no run. Defaults to REVIEW_ASSIST_REPO or cwd."),
   },
-  async ({ decision, repo }) => {
-    const repoDir = repo ? resolve(repo) : REPO_DIR;
+  async ({ decision, run_id, repo }) => {
+    const run = run_id ? getRun(run_id) : undefined;
+    if (run_id && !run) return textResult(JSON.stringify(unknownRun(run_id), null, 2), true);
+    const repoDir = repo ? resolve(repo) : run?.repo ?? REPO_DIR;
     setConsent(repoDir, decision);
+    if (decision === "once" && run) grantConsentOnce(run.run_id);
     const state =
-      decision === "always" ? "enabled" : decision === "never" ? "disabled" : "enabled for this session only";
+      decision === "always"
+        ? "enabled"
+        : decision === "never"
+          ? "disabled"
+          : run
+            ? "enabled for this change and this session"
+            : "enabled for this session only";
     return textResult(
-      JSON.stringify({ ok: true, repo: repoDir, decision, state }, null, 2)
+      JSON.stringify({ ok: true, repo: repoDir, ...(run ? { run_id: run.run_id } : {}), decision, state }, null, 2)
     );
   }
 );

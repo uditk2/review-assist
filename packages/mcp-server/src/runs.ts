@@ -175,6 +175,12 @@ export interface RunRecord {
   submitted_at?: string;
   /** Where that document went. */
   document_path?: string;
+  /**
+   * When the user said "just this time" for this change. Kept on the run because every
+   * agent working on the change reads the run, while a "once" held in one server process's
+   * memory reaches only that process; see consent.ts.
+   */
+  consent_once_at?: string;
   /** Last time anything was written to this run. What the sweep measures. */
   updated_at?: string;
   /** Keyed by question hash, so re-recording a question replaces it. */
@@ -875,6 +881,15 @@ export function markSubmitted(runId: string, documentPath: string): RunRecord | 
   if (!run) return undefined;
   run.submitted_at = new Date().toISOString();
   run.document_path = documentPath;
+  writeRun(run);
+  return run;
+}
+
+/** Record the user's "just this time" on the run, for every agent working on it. */
+export function grantConsentOnce(runId: string): RunRecord | undefined {
+  const run = readRun(runId);
+  if (!run) return undefined;
+  run.consent_once_at = new Date().toISOString();
   writeRun(run);
   return run;
 }

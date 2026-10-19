@@ -250,13 +250,16 @@ document is committed — is fixed by editing and submitting again under the sam
 first and re-anchor; the id is unchanged but the hunk ids are not.
 
 Consent is per repository: Review Assist is installed globally but must be opted in for
-each repo. \`compute_diff\` reports \`consent_state\` when it opens the run — if it is
-\`unknown\`, settle it THEN, before writing anything. Present the \`prompt\` and \`options\`
-verbatim and let the USER choose; do not decide for them. Then call \`set_consent\` with
-their \`decision\` (always | once | never) and the repo. Discovering this at submit time
-instead costs you the whole document, twice over. If the repo is disabled
-(\`skipped: true, reason: "disabled"\`), stop — do not write anything; tell the user how
-to re-enable it (\`manage_consent\` / the \`consent\` CLI).
+each repo, and the one decision covers both reading the repo's coding sessions and writing
+its document. Every tool that reads a session refuses with \`consent_required\` until it is
+settled, so it is asked BEFORE the transcript is read, not after. \`compute_diff\` reports
+\`consent_state\` when it opens the run — if it is \`unknown\`, settle it THEN. Present
+\`consent_prompt\` verbatim and let the USER choose; do not decide for them. Then call
+\`set_consent\` with their \`decision\` (always | once | never) and the \`run_id\`: a "once"
+recorded on the run holds for both roles. Discovering this at submit time instead costs
+you the whole document, twice over. If the repo is disabled (\`skipped: true, reason:
+"disabled"\`), stop — read nothing and write nothing; tell the user how to re-enable it
+(\`manage_consent\` / the \`consent\` CLI).
 
 On success the response includes \`pr_description\` — a ready-made Markdown PR body
 (problem, approach, any diagrams, assumptions to check). When you open the PR, use it as

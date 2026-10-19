@@ -13,6 +13,12 @@ as a second batch.
 {{ACCESS}}
 
 ## Find the session
+If a session tool answers `consent_required`, the developer has not yet said whether Review
+Assist may read this repository's sessions, and nothing may be read until they do. Put its
+`prompt` and `options` to them verbatim, record their choice with `set_consent` and the
+`run_id`, then repeat the call. If your client gives you no way to ask, hand back at once
+and say that consent is needed. Do not look for another way in.
+
 1. `list_transcripts` ranks candidates by how much they touch the changed files. Pick
    the one whose `first_user` matches how the session actually began — not simply the
    newest. Skip anything with `user_turns: 0`: no human spoke in it, so it is one agent

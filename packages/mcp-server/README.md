@@ -94,7 +94,8 @@ Author role:
 | `compute_diff` | Opens the run: handle, numbered hunk index, resolved SHAs. No diff text. |
 | `read_diff` | The diff itself, paged by hunk. Follow `next_cursor`, or ask for `hunks`/`paths`. |
 | `get_questions` | The reviewer's questions, with their `q_id`s, read straight off the run. |
-| `answer_questions` | The author's own answers, by `q_id`. Its only write, and the half of the interview the server can attest. |
+| `answer_questions` | The author's own answers, by `q_id`. Its only write to the interview, and the half of it the server can attest. |
+| `set_consent` | Records the developer's answer when a session tool asks for consent, since the author is the role that reads the session. |
 
 Reviewer role:
 
@@ -110,9 +111,11 @@ Reviewer role:
 
 ## Consent and validation
 
-The first `submit_document` in a repository returns `consent_required` instead of
-writing, with a prompt for the user to answer: `always`, `once`, or `never`. Nothing is
-written until they choose.
+Each repository is asked once, before anything about it is read: every tool that reads a
+coding session returns `consent_required` instead, with a prompt for the user to answer:
+`always`, `once`, or `never`. The one answer covers reading the repository's sessions and
+writing its document, and nothing is read or written until they choose. `submit_document`
+checks it again before writing.
 
 On allow, five deterministic checks run locally — schema, coverage (every substantive
 diff hunk explained), staleness, cross-references, and secret redaction — plus the

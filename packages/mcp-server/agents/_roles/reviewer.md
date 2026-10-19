@@ -38,8 +38,10 @@ two points or a restatement. Split it or cut it.
 ## Open the run
 - Call `compute_diff` with `repo`. It returns a `run_id`; every later call takes that
   `run_id` and no `repo`.
-- If `consent_state` is `unknown`, settle it now — put the prompt and options to the user
-  verbatim and call `set_consent`. Finding out at submit time costs you the document twice.
+- If `consent_state` is `unknown`, settle it now — put `consent_prompt` to the user
+  verbatim and call `set_consent` with the `run_id`. Until it is settled the author cannot
+  read the session, so its wait is yours too. Finding out at submit time costs you the
+  document twice.
 - `compute_diff` returns no diff text: only the handle, the numbered hunk index and the SHAs.
 - Read the change with `read_diff`. Keep passing back `next_cursor` until there is none;
   that, and nothing else, is how you know you have seen all of it.

@@ -2,13 +2,17 @@
  * Per-repository consent for Review Assist.
  *
  * Review Assist is installed once (globally), but it must not silently operate on
- * every repository. At commit time (submit_document) the server checks whether the
- * user has opted this repo in. Decisions are stored per-user, centrally:
+ * every repository. The same decision covers both things it does there: reading the
+ * repository's coding sessions, and writing the Intent Document. Each session-reading tool
+ * and submit_document check it. Decisions are stored per-user, centrally:
  *
  *   ~/.review-assist/consent.json   (override dir with REVIEW_ASSIST_HOME)
  *
  * States: "enabled" (always) and "disabled" (never) are persisted; "once" (just this
- * session) lives only in memory for the life of the server process.
+ * time) lives in memory for the life of the server process, and on the run when one is
+ * named, so that every agent working on that change sees it. That second home matters
+ * under Codex, where each role runs its own server process: a "once" held only in the
+ * reviewer's memory would leave the author refused.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -48,10 +52,25 @@ function save(store: Store): void {
 
 /** Current decision for a repo: enabled | disabled | once (session) | unknown. */
 export function getConsent(repo: string): ConsentResult {
+  return consentFor(repo);
+}
+
+/**
+ * The decision for a repo, counting a "once" recorded on a run (`onceAt`, when it was
+ * given). A run's "once" stands unless the user persisted a decision AFTER it: someone who
+ * says "never" mid-distillation means never, from then on.
+ */
+export function consentFor(repo: string, onceAt?: string): ConsentResult {
   const key = resolve(repo);
   if (sessionAllow.has(key)) return "once";
   const rec = load().repos[key];
+  if (onceAt && (!rec || rec.at < onceAt)) return "once";
   return rec ? rec.state : "unknown";
+}
+
+/** Whether this decision lets Review Assist read the repo's sessions and write its document. */
+export function consentAllows(c: ConsentResult): boolean {
+  return c === "enabled" || c === "once";
 }
 
 /** Record a decision. "once" is session-only; "always"/"never" persist. */
