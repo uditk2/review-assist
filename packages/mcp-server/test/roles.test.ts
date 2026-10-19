@@ -11,7 +11,15 @@ import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { getRoles, installRoles, sweepStaleRoleDefinitions, ROLE_TOOLS } from "../src/roles.js";
+import {
+  getRoles,
+  installRoles,
+  sweepStaleRoleDefinitions,
+  legacyDefinitions,
+  pluginAgentFiles,
+  PLUGIN_TOOL_PREFIX,
+  ROLE_TOOLS,
+} from "../src/roles.js";
 
 const scratch = mkdtempSync(join(tmpdir(), "review-assist-roles-"));
 const projectDir = join(scratch, "my-repo");
@@ -357,5 +365,72 @@ describe("the role-definition sweep", () => {
     const bundle = { ...getRoles({ env: "claude" }), install_dir: claudeDir };
     sweepStaleRoleDefinitions(bundle, []);
     expect(readFileSync(mine, "utf8")).toContain("my own prompt");
+  });
+});
+
+describe("the Claude Code plugin", () => {
+  const plugin = getRoles({ env: "claude", plugin: true });
+
+  it("ships the roles itself, so there is nothing to install", () => {
+    expect(plugin.plugin).toBe(true);
+    expect(plugin.install_dir).toBeUndefined();
+    expect(plugin.how_to_run).toContain("review-assist:intent-author");
+  });
+
+  it("names every tool the way Claude Code names a plugin's tools", () => {
+    // Inside a plugin the server's tools are mcp__plugin_<plugin>_<server>__<tool>. An
+    // allowlist naming mcp__review-assist__* there grants nothing, and a role that can
+    // reach none of its tools cannot run.
+    for (const role of ["author", "reviewer"] as const) {
+      const def = plugin.roles[role]!.definition;
+      for (const tool of ROLE_TOOLS[role]) expect(def).toContain(`${PLUGIN_TOOL_PREFIX}${tool}`);
+      expect(def).not.toContain("mcp__review-assist__");
+    }
+    expect(plugin.roles.author!.definition).not.toContain(`${PLUGIN_TOOL_PREFIX}submit_document`);
+    expect(plugin.roles.author!.definition).toContain("AskUserQuestion");
+  });
+
+  it("keeps every tool name within 64 characters", () => {
+    for (const tool of [...ROLE_TOOLS.author, ...ROLE_TOOLS.reviewer]) {
+      expect(`${PLUGIN_TOOL_PREFIX}${tool}`.length, tool).toBeLessThanOrEqual(64);
+    }
+  });
+
+  it("marks its files as the build's, so the server's sweep never claims them", () => {
+    for (const role of Object.values(plugin.roles)) {
+      expect(role.definition).toContain("generated from agents/_roles by the plugin build");
+      expect(role.definition).not.toContain("rewritten when the server connects");
+    }
+  });
+
+  it("writes one file per role, under the names the plugin namespaces", () => {
+    const files = pluginAgentFiles();
+    expect(files.map((f) => f.filename).sort()).toEqual(["intent-author.md", "intent-reviewer.md"]);
+    expect(files.find((f) => f.filename === "intent-author.md")!.definition).toMatch(/^---\nname: intent-author\n/);
+  });
+
+  it("applies to Claude Code only: any other client keeps its own definitions", () => {
+    const codex = getRoles({ env: "codex", plugin: true });
+    expect(codex.plugin).toBeUndefined();
+    expect(codex.install_dir).toBeDefined();
+  });
+
+  it("reports an older install's Claude definitions, and only generated ones", () => {
+    const dir = join(process.env.HOME!, ".claude", "agents");
+    mkdirSync(dir, { recursive: true });
+    const old = join(dir, "intent-reviewer.md");
+    const handWritten = join(dir, "intent-author.md");
+    writeFileSync(old, getRoles({ env: "claude", role: "reviewer" }).roles.reviewer!.definition);
+    writeFileSync(handWritten, "# my own prompt\n");
+    // Codex's definitions are not the plugin's to replace, so they are not reported.
+    const codexDir = join(process.env.HOME!, ".codex", "agents");
+    mkdirSync(codexDir, { recursive: true });
+    writeFileSync(join(codexDir, "intent-author.toml"), getRoles({ env: "codex", role: "author" }).roles.author!.definition);
+    try {
+      expect(legacyDefinitions()).toEqual([old]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(codexDir, { recursive: true, force: true });
+    }
   });
 });
