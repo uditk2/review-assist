@@ -40,6 +40,9 @@ import {
   getRoles,
   installRoles,
   sweepStaleRoleDefinitions,
+  legacyDefinitions,
+  pluginAgentFiles,
+  pluginHost,
   KNOWN_ENVS,
   ROLE_TOOLS,
   activeRole,
@@ -112,6 +115,9 @@ const server = new McpServer({
  */
 const ACTIVE_ROLE = activeRole();
 
+/** Launched by the Claude Code plugin; see `pluginHost` in ./roles.ts. */
+const PLUGIN_HOST = pluginHost();
+
 /**
  * Every tool goes through here: the role gate above, then registration with the title and
  * annotations from ./tool-meta.ts. `name` is typed to that table's keys, so a tool cannot
@@ -124,7 +130,7 @@ function registerTool<Args extends ZodRawShape>(
   cb: ToolCallback<Args>
 ): void {
   if (ACTIVE_ROLE && !ROLE_TOOLS[ACTIVE_ROLE].includes(name)) return;
-  const meta = toolMeta(name);
+  const meta = toolMeta(name, { plugin: PLUGIN_HOST });
   server.registerTool(name, { title: meta.title, description, inputSchema, annotations: toolAnnotations(meta) }, cb);
 }
 
@@ -1893,7 +1899,8 @@ registerTool(
       .describe(
         "Write the definitions where this client reads them (user scope, e.g. ~/.claude/agents). " +
           "Do this rather than placing the files yourself: the server knows the environment from " +
-          "the handshake, so it writes the right format to the right place."
+          "the handshake, so it writes the right format to the right place. Does nothing inside the " +
+          "Claude Code plugin, which ships the roles itself."
       ),
   },
   async ({ env, role, install }) => {
@@ -1901,7 +1908,24 @@ registerTool(
       env,
       role: role as RoleName | undefined,
       clientName: server.server.getClientVersion()?.name,
+      plugin: PLUGIN_HOST,
     });
+    if (bundle.plugin) {
+      // Nothing to install and nothing to sweep: the plugin ships these, and any file at
+      // user scope belongs to an older install, which is reported rather than removed.
+      const legacy = legacyDefinitions();
+      return textResult(
+        JSON.stringify(
+          {
+            ...bundle,
+            ...(install ? { installed: [], note: "The plugin ships these roles; nothing was written." } : {}),
+            ...(legacy.length ? { older_install: olderInstallNotice(legacy) } : {}),
+          },
+          null,
+          2
+        )
+      );
+    }
     let installed: string[] | undefined;
     let removed: string[] | undefined;
     if (install) {
@@ -1975,6 +1999,47 @@ function runAgentsCli(): number {
   return 0;
 }
 
+/**
+ * What to tell a user whose install from before the plugin is still on disk beside it.
+ * Both register the same two roles, so the session has two of each to choose from, and the
+ * older pair calls the older server registration rather than the plugin's.
+ */
+function olderInstallNotice(files: string[]) {
+  return {
+    files,
+    why:
+      "An install from before the plugin is still here. Its agents duplicate the plugin's " +
+      "(intent-author beside review-assist:intent-author) and call the older server registration, " +
+      "not the plugin's. Nothing was removed; these are not the plugin's to delete.",
+    to_remove: [
+      "claude mcp remove -s user review-assist   (the older registration, if it is still configured)",
+      ...files.map((f) => `rm "${f}"`),
+    ],
+  };
+}
+
+/**
+ * Write the plugin's agent files into `dir`. Build-time only: the plugin build points it at
+ * the plugin's own agents/ folder.
+ *
+ * `agents` above only prints, because a user's agent directory is the server's to write
+ * only through get_role_definitions, where the handshake says which client it is. This one
+ * writes because a build has to, and only into the directory it is given.
+ */
+function runPluginAgentsCli(argv: string[]): number {
+  const [dir] = argv;
+  if (!dir) {
+    process.stderr.write("usage: review-assist-mcp plugin-agents <plugin agents dir>\n");
+    return 1;
+  }
+  mkdirSync(dir, { recursive: true });
+  for (const f of pluginAgentFiles()) {
+    writeFileSync(join(dir, f.filename), f.definition, "utf8");
+    process.stdout.write(`wrote ${join(dir, f.filename)}\n`);
+  }
+  return 0;
+}
+
 function runConsentCli(argv: string[]): number {
   const [sub, repoArg] = argv;
   const target = repoArg ? resolve(repoArg) : process.cwd();
@@ -2019,6 +2084,9 @@ async function main() {
   if (argv[0] === "agents") {
     process.exit(runAgentsCli());
   }
+  if (argv[0] === "plugin-agents") {
+    process.exit(runPluginAgentsCli(argv.slice(1)));
+  }
   // Wait for the handshake before installing: connect() resolves as soon as the
   // transport is wired up, which is BEFORE the client sends `initialize`, so
   // getClientVersion() is still undefined there and the env resolves to `generic`.
@@ -2054,6 +2122,18 @@ function projectScopeDirs(): string[] {
  */
 function installRoleDefinitions(): void {
   if (ACTIVE_ROLE) return; // role-gated instances are spawned per-role; not their job
+  if (PLUGIN_HOST) {
+    // The plugin ships the roles. Writing or sweeping here would be a change to the user's
+    // agent directory that nothing they did asked for.
+    const legacy = legacyDefinitions();
+    if (legacy.length) {
+      process.stderr.write(
+        `review-assist: an install from before the plugin left ${legacy.join(", ")}; ` +
+          "get_role_definitions says how to remove it\n"
+      );
+    }
+    return;
+  }
   try {
     const bundle = getRoles({ clientName: server.server.getClientVersion()?.name });
     // Reconcile before writing. A project-scoped copy left by an older version takes

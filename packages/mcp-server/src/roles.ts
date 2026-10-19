@@ -47,6 +47,37 @@ const MARKER = "review-assist-mcp: generated file — rewritten when the server 
  */
 const LEGACY_SIGNATURES = ["mcp__review-assist__", "REVIEW_ASSIST_ROLE"];
 
+/**
+ * Running inside the Claude Code plugin. Set by the plugin's own .mcp.json, never by hand.
+ *
+ * It changes three things. The roles ship in the plugin's agents/ folder, so the server
+ * installs nothing and sweeps nothing: an install writing into ~/.claude/agents is a
+ * side effect the user did not ask for, and the plugin directory's security scan looks for
+ * exactly that. The definitions name the tools the way Claude Code names a plugin's tools.
+ * And get_role_definitions points at the shipped agents instead of offering to install.
+ */
+export function pluginHost(): boolean {
+  return process.env.REVIEW_ASSIST_HOST === "claude-plugin";
+}
+
+/**
+ * The plugin's name, and this server's key in the plugin's .mcp.json. Claude Code names a
+ * plugin's MCP tools `mcp__plugin_<plugin>_<server>__<tool>`, so these two decide every
+ * name in the plugin agents' allowlists. The key is short on purpose: with "review-assist"
+ * in both places the longest name runs to 66 characters, past the 64 that is a common cap
+ * on tool names; with "intent" it is 59.
+ */
+export const PLUGIN = { name: "review-assist", serverKey: "intent" } as const;
+const SERVER_TOOL_PREFIX = "mcp__review-assist__";
+export const PLUGIN_TOOL_PREFIX = `mcp__plugin_${PLUGIN.name}_${PLUGIN.serverKey}__`;
+
+/**
+ * Stamped into the plugin's agent files instead of MARKER. Different on purpose: the sweep
+ * recognises its own output by MARKER, and a plugin's files are the plugin's, never the
+ * sweep's to remove.
+ */
+const PLUGIN_MARKER = "review-assist-mcp: generated from agents/_roles by the plugin build. Edit those, not this file";
+
 export type RoleEnv = "claude" | "codex" | "generic";
 export type RoleName = "author" | "reviewer";
 
@@ -170,17 +201,22 @@ const ROLE_CLIENT_TOOLS: Record<RoleEnv, Record<RoleName, ClientGrant>> = {
  * the two drifted the moment search_transcript was added, leaving the Claude author
  * unable to call the one tool the interview depends on.
  */
-function render(tpl: string, role: RoleName, env: RoleEnv): string {
+function render(
+  tpl: string,
+  role: RoleName,
+  env: RoleEnv,
+  opts: { prefix?: string; marker?: string } = {}
+): string {
   const grant = ROLE_CLIENT_TOOLS[env][role];
   const allowlist = [
-    ...ROLE_TOOLS[role].map((t) => `mcp__review-assist__${t}`),
+    ...ROLE_TOOLS[role].map((t) => `${opts.prefix ?? SERVER_TOOL_PREFIX}${t}`),
     ...grant.tools,
   ].join(", ");
   return tpl
     .replace("{{BODY}}", BODY[role].trim())
     .replace("{{ACCESS}}", accessList(role, env))
     .replace("{{TOOLS}}", allowlist)
-    .replace("{{MARKER}}", MARKER);
+    .replace("{{MARKER}}", opts.marker ?? MARKER);
 }
 
 /**
@@ -200,35 +236,80 @@ export function isRoleEnv(v: string): v is RoleEnv {
 
 export interface RoleBundle {
   env: RoleEnv;
+  /** The definitions the Claude Code plugin ships. Nothing to install. */
+  plugin?: true;
   detected_from: string;
   how_to_run: string;
   install_dir?: string;
   roles: Partial<Record<RoleName, { filename: string; definition: string }>>;
 }
 
-export function getRoles(opts: { env?: string; role?: RoleName; clientName?: string }): RoleBundle {
+/** The Claude entry's instructions, for the definitions the plugin already ships. */
+const PLUGIN_HOW_TO_RUN =
+  `These roles ship with the plugin as ${PLUGIN.name}:intent-author and ${PLUGIN.name}:intent-reviewer; ` +
+  "there is nothing to install. Dispatch both with the Task tool IN THE SAME MESSAGE, so they run " +
+  "concurrently: the author reads the transcript while the reviewer reads the diff, and neither needs " +
+  "anything from the other to start. compute_diff seeds the standing questions, so the author has work " +
+  "to do before the reviewer has asked anything. You do not relay questions or answers; both sides read " +
+  "them off the run. Each starts in its own context, and the `tools:` allowlist keeps the roles apart.";
+
+export function getRoles(opts: { env?: string; role?: RoleName; clientName?: string; plugin?: boolean }): RoleBundle {
   const requested = opts.env?.toLowerCase();
   const env: RoleEnv = requested && isRoleEnv(requested) ? requested : detectEnv(opts.clientName);
   const entry = REGISTRY[env];
   const wanted: RoleName[] = opts.role ? [opts.role] : ["author", "reviewer"];
+  // Only Claude Code takes plugins in this form. Any other client reaching a plugin's
+  // server gets its own definitions, as it would anywhere else.
+  const plugin = opts.plugin === true && env === "claude";
 
   const roles: RoleBundle["roles"] = {};
   for (const r of wanted) {
-    roles[r] = { filename: entry.filename(r), definition: render(entry.templates[r], r, env) };
+    const definition = plugin
+      ? render(entry.templates[r], r, env, { prefix: PLUGIN_TOOL_PREFIX, marker: PLUGIN_MARKER })
+      : render(entry.templates[r], r, env);
+    roles[r] = { filename: entry.filename(r), definition };
   }
 
   return {
     env,
+    ...(plugin ? { plugin: true as const } : {}),
     detected_from:
       requested && isRoleEnv(requested)
         ? "explicit env argument"
         : opts.clientName
           ? `MCP clientInfo.name = ${opts.clientName}`
           : "no client info; defaulted",
-    how_to_run: entry.how_to_run,
-    install_dir: entry.install_dir ? join(homedir(), entry.install_dir) : undefined,
+    how_to_run: plugin ? PLUGIN_HOW_TO_RUN : entry.how_to_run,
+    install_dir: !plugin && entry.install_dir ? join(homedir(), entry.install_dir) : undefined,
     roles,
   };
+}
+
+/**
+ * The agent files the plugin ships, for the build to write into the plugin's agents/
+ * folder. Rendered from the same role prose as every other client's, so the plugin's roles
+ * cannot drift from the server's: only the tool names and the marker differ.
+ */
+export function pluginAgentFiles(): { filename: string; definition: string }[] {
+  return Object.values(getRoles({ env: "claude", plugin: true }).roles);
+}
+
+/**
+ * Claude Code definitions an install outside the plugin wrote at user scope, still on disk.
+ *
+ * Inside the plugin these are a second copy of each role: the session has intent-author
+ * beside review-assist:intent-author, and the older one's allowlist names the server as
+ * `mcp__review-assist__*`, which resolves only while that older registration exists.
+ * Codex's definitions are not counted: the plugin does not replace them.
+ *
+ * Reported, never removed. The older install may still be in use, and these are not the
+ * plugin's to delete.
+ */
+export function legacyDefinitions(): string[] {
+  const dir = join(homedir(), REGISTRY.claude.install_dir!);
+  return (["author", "reviewer"] as RoleName[])
+    .map((r) => join(dir, REGISTRY.claude.filename(r)))
+    .filter((p) => existsSync(p) && isGeneratedDefinition(p));
 }
 
 /**
