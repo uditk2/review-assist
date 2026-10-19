@@ -103,6 +103,16 @@ interface EnvEntry {
   how_to_run: string;
 }
 
+/**
+ * Said to whoever dispatches the roles, in every client's instructions. Reading the session
+ * waits on the repository's consent, so a dispatch made before it is settled starts an
+ * author that can do nothing but ask.
+ */
+const CONSENT_FIRST =
+  " Settle consent before you dispatch: if get_generation_guide or compute_diff reports consent_state " +
+  "\"unknown\", put its consent_prompt to the user and call set_consent. The author cannot read the " +
+  "session until the user has answered.";
+
 const REGISTRY: Record<RoleEnv, EnvEntry> = {
   claude: {
     templates: { author: claudeAuthorTpl, reviewer: claudeReviewerTpl },
@@ -115,7 +125,7 @@ const REGISTRY: Record<RoleEnv, EnvEntry> = {
       "needs anything from the other to start. compute_diff seeds the standing questions, so the " +
       "author has work to do before the reviewer has asked anything. You do not relay questions or " +
       "answers; both sides read them off the run. Each starts in its own context, and the `tools:` " +
-      "allowlist keeps the roles apart.",
+      "allowlist keeps the roles apart." + CONSENT_FIRST,
   },
   codex: {
     templates: { author: codexAuthorTpl, reviewer: codexReviewerTpl },
@@ -127,7 +137,7 @@ const REGISTRY: Record<RoleEnv, EnvEntry> = {
       "start BOTH before waiting on either: their reads are independent, and compute_diff seeds the " +
       "standing questions so the author is not waiting to be asked. `/agent` switches between the " +
       "running threads. Each definition pins REVIEW_ASSIST_ROLE, so the server itself withholds the " +
-      "other role's tools.",
+      "other role's tools." + CONSENT_FIRST,
   },
   generic: {
     templates: { author: genericAuthorTpl, reviewer: genericReviewerTpl },
@@ -138,7 +148,7 @@ const REGISTRY: Record<RoleEnv, EnvEntry> = {
       "seeds the standing questions so neither blocks on the other. Do not relay questions or answers; " +
       "both sides read them off the run. Launch each with REVIEW_ASSIST_ROLE set (author | reviewer) so " +
       "the server withholds the other role's tools; what matters is that the reviewer never sees " +
-      "the transcript.",
+      "the transcript." + CONSENT_FIRST,
   },
 };
 
@@ -251,7 +261,7 @@ const PLUGIN_HOW_TO_RUN =
   "concurrently: the author reads the transcript while the reviewer reads the diff, and neither needs " +
   "anything from the other to start. compute_diff seeds the standing questions, so the author has work " +
   "to do before the reviewer has asked anything. You do not relay questions or answers; both sides read " +
-  "them off the run. Each starts in its own context, and the `tools:` allowlist keeps the roles apart.";
+  "them off the run. Each starts in its own context, and the `tools:` allowlist keeps the roles apart." + CONSENT_FIRST;
 
 export function getRoles(opts: { env?: string; role?: RoleName; clientName?: string; plugin?: boolean }): RoleBundle {
   const requested = opts.env?.toLowerCase();
@@ -439,6 +449,11 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
   // answers into the run. It is what makes the interview two-sided: without it the server
   // hears the reviewer's account of both halves and cannot tell a real interview from an
   // invented one. It still cannot submit — that gate stays the reviewer's alone.
+  //
+  // `set_consent` because reading the session is gated on the repository's consent, and
+  // the author is the role that reads it: it is the one refused when consent is unsettled,
+  // and in Claude Code it can put the question to the developer itself. It records only
+  // the developer's answer, the same as the reviewer's copy.
   author: [
     "get_generation_guide",
     "list_transcripts",
@@ -452,6 +467,7 @@ export const ROLE_TOOLS: Record<RoleName, readonly string[]> = {
     "get_contexts",
     "record_contexts",
     "read_context",
+    "set_consent",
   ],
   // `get_role_definitions` and `manage_consent` were granted here and belong to neither
   // role: the first installs the role definitions (a reviewer already IS one), the second

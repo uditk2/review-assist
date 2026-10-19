@@ -434,3 +434,22 @@ describe("the Claude Code plugin", () => {
     }
   });
 });
+
+describe("consent before the session is read", () => {
+  it("lets the author record the developer's answer, since it is the role the gate stops", () => {
+    expect(ROLE_TOOLS.author).toContain("set_consent");
+    expect(getRoles({ env: "claude", role: "author" }).roles.author!.definition).toContain("mcp__review-assist__set_consent");
+    expect(getRoles({ env: "claude", role: "author" }).roles.author!.definition).toContain("consent_required");
+  });
+
+  it("tells whoever dispatches the roles, on every client, to settle it first", () => {
+    for (const b of [
+      getRoles({ env: "claude" }),
+      getRoles({ env: "codex" }),
+      getRoles({ env: "generic" }),
+      getRoles({ env: "claude", plugin: true }),
+    ]) {
+      expect(b.how_to_run, b.env + (b.plugin ? " plugin" : "")).toContain("Settle consent before you dispatch");
+    }
+  });
+});
