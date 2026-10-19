@@ -62,6 +62,16 @@ const phantom = [...declared].filter((t) => !registered.includes(t));
 if (undeclared.length) problems.push(`tools registered but missing from manifest: ${undeclared.join(", ")}`);
 if (phantom.length) problems.push(`tools in manifest that the server does not register: ${phantom.join(", ")}`);
 
+// Annotations. registerTool's `name` is typed to TOOL_META's keys, so the compiler already
+// refuses a tool with no entry; this catches the other direction, an entry left behind for
+// a tool that was removed, which would still claim a title and hints for nothing.
+const toolMetaSrc = readFileSync(join(root, "packages/mcp-server/src/tool-meta.ts"), "utf8");
+const annotated = [...toolMetaSrc.matchAll(/^\s{2}([a-z_]+): (?:read|write)\(/gm)].map((m) => m[1]);
+const unannotated = registered.filter((t) => !annotated.includes(t));
+const staleMeta = annotated.filter((t) => !registered.includes(t));
+if (unannotated.length) problems.push(`tools registered with no entry in tool-meta.ts: ${unannotated.join(", ")}`);
+if (staleMeta.length) problems.push(`tool-meta.ts entries for tools the server does not register: ${staleMeta.join(", ")}`);
+
 if (problems.length) {
   console.error("release consistency check failed:\n" + problems.map((p) => `  - ${p}`).join("\n"));
   process.exit(1);

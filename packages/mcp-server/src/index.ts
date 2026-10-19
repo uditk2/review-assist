@@ -15,9 +15,10 @@
  * and gatekeeps the result (validator).
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, type ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
+import { z, type ZodRawShape } from "zod";
+import { toolAnnotations, toolMeta, type ToolName } from "./tool-meta.js";
 import { findAuthoringSessions } from "./footprint.js";
 import { readIndex, recordContexts, resumePoint, scoreContexts } from "./contexts.js";
 import { createHash } from "node:crypto";
@@ -110,10 +111,22 @@ const server = new McpServer({
  * and Codex's per-agent mcp_servers both point at it.
  */
 const ACTIVE_ROLE = activeRole();
-const registerTool: typeof server.tool = ((name: string, ...rest: unknown[]) => {
+
+/**
+ * Every tool goes through here: the role gate above, then registration with the title and
+ * annotations from ./tool-meta.ts. `name` is typed to that table's keys, so a tool cannot
+ * be registered without saying what it does to the user's machine.
+ */
+function registerTool<Args extends ZodRawShape>(
+  name: ToolName,
+  description: string,
+  inputSchema: Args,
+  cb: ToolCallback<Args>
+): void {
   if (ACTIVE_ROLE && !ROLE_TOOLS[ACTIVE_ROLE].includes(name)) return;
-  return (server.tool as (...a: unknown[]) => unknown)(name, ...rest);
-}) as typeof server.tool;
+  const meta = toolMeta(name);
+  server.registerTool(name, { title: meta.title, description, inputSchema, annotations: toolAnnotations(meta) }, cb);
+}
 
 function textResult(text: string, isError = false) {
   return { content: [{ type: "text" as const, text }], isError };
