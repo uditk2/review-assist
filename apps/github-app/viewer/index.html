@@ -1541,6 +1541,55 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    "slug": "how-to-review-ai-written-webhook-signature-verification",
+    "date": "20 Oct 2026",
+    "modified": "20 Oct 2026",
+    "title": "How to review an AI-written webhook signature verification change",
+    "summary": "Check the signed payload, failure path, event boundary, and duplicate delivery behavior before trusting a webhook security change.",
+    "hero": "/blog/how-to-review-ai-written-webhook-signature-verification.png",
+    "alt": "A webhook packet reaches a signature comparison gate, with verified, rejected, and repeated delivery paths",
+    "caption": "A valid signature identifies the sender and payload; delivery handling is a separate review question.",
+    "body": [
+      "To review an AI-written PR that changes webhook signature verification, start at the HTTP request boundary. Find the exact body passed to HMAC, the secret and header used for comparison, and the first possible side effect. Then send altered, unsigned, and repeated deliveries through the proposed code. A valid signature proves that the payload matches the configured secret. It does not make every event type safe to process or prevent the same valid delivery from being processed again.",
+      "Suppose an agent refactors a GitHub App webhook handler while adding a new event. The happy path still passes a test that posts a signed pull request event. The review needs to establish whether middleware changed the body before verification, whether a missing secret can bypass the gate, and whether the new event can run work before that gate. Those are concrete failure paths, not style issues.",
+      {
+        "h": "Trace the bytes and the secret"
+      },
+      "GitHub sends the HMAC-SHA256 digest in `X-Hub-Signature-256`, prefixed with `sha256=`. Compute the digest over the received payload with the webhook secret. Do not parse JSON and serialize it again to produce the signed input: whitespace, escaping, or key order may change. If a framework consumes the request body first, find the original body it preserves for verification. [GitHub's validation guide](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries) also calls out proxies that alter the payload or headers and UTF-8 handling as causes of failed checks.",
+      "In [Review Assist's webhook handler](https://github.com/uditk2/review-assist/blob/main/apps/github-app/worker/src/webhook.ts), `handleWebhook` reads the request text, reads `x-hub-signature-256`, and calls `verifySignature` before it parses JSON or branches on the event. `verifySignature` rejects an absent `sha256=` prefix or empty secret, computes HMAC-SHA256, and compares the resulting digest through `timingSafeEqual`. That is the current code path to use as a reference when a PR moves middleware, parsing, or event dispatch.",
+      "Ask where the secret comes from in each environment and what happens when it is missing or rotated. The safe failure is a rejected delivery with no GitHub write, queue job, or other side effect. A fallback secret, test secret in production, or catch block that continues after verification fails changes the trust boundary even if the cryptographic helper itself is correct.",
+      {
+        "h": "Check what can happen after verification"
+      },
+      "Once a delivery is verified, inspect the event and action filters. Review Assist handles `ping`, installation events, and selected `pull_request` actions; other events are ignored. Its pull request path accepts `opened`, `synchronize`, and `reopened`, then schedules work and returns `202`. The [architecture notes](https://github.com/uditk2/review-assist/blob/main/docs/ARCHITECTURE.md) describe the resulting check and comment flow. For a proposed new event, identify every GitHub read and write it can trigger and confirm that none is reachable from a failed signature.",
+      "A signed delivery can still be unexpected. For example, a new action value may be added later, or an installation event may lack a field the handler assumed. Check the default branch and malformed JSON path. Treat payload fields as data after authentication, not as permission to call arbitrary repository paths or post to arbitrary URLs.",
+      {
+        "h": "Review redelivery separately from authenticity"
+      },
+      "Signature validation does not stop replay of a captured, valid request. GitHub documents `X-GitHub-Delivery` as the event identifier and says a manual redelivery keeps the same value. If a handler creates an irreversible effect, ask how it records that identifier, for how long, and whether the record and effect are coordinated across concurrent workers. A process-local set is not enough when instances restart or run in parallel. See [GitHub's webhook best practices](https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks).",
+      "Do not assume the current Review Assist handler offers delivery-ID deduplication: it does not read `X-GitHub-Delivery`. Its work posts review artifacts, including a Check Run and a sticky comment. A PR claiming replay protection would need a separate design and tests. Conversely, a PR that only fixes signature comparison should state that its scope ends at authentication rather than imply duplicate effects are solved.",
+      {
+        "h": "Run tests that cross the boundary"
+      },
+      "Ask for a test matrix against the actual HTTP handler, not only a unit test of an HMAC helper:",
+      {
+        "ul": [
+          "A valid signed payload reaches only the intended event and action handler.",
+          "A missing header, wrong secret, wrong `sha256=` prefix, changed body, and empty configured secret all fail before side effects.",
+          "A payload with Unicode or escaped characters verifies in the same form GitHub sent; a parse-and-reserialize implementation fails this check.",
+          "Malformed JSON with a valid signature returns a controlled error, while an unsupported signed event is ignored.",
+          "Two identical valid deliveries exercise the documented redelivery policy. If the PR promises deduplication, send them concurrently and verify the effect occurs once."
+        ]
+      },
+      "Use distinct secrets and payloads in tests so a hardcoded digest cannot pass by accident. Inspect the response and the downstream calls. For Review Assist, that means checking that rejected requests never reach installation-token creation, GitHub API writes, or background work. The existing [webhook tests](https://github.com/uditk2/review-assist/blob/main/apps/github-app/worker/test/webhook.test.ts) currently focus on document rendering and coverage states, so a signature-changing PR should add handler-level cases.",
+      {
+        "h": "Make the review request precise"
+      },
+      "A useful comment is: “Please show which request bytes are signed after the middleware change, add a test where the body changes by one byte, and prove a bad signature cannot schedule the new event's work. Also say whether duplicate valid deliveries are in scope and, if so, test two concurrent deliveries.” That tells the author what evidence would settle the review.",
+      "Approve when the proposed code verifies the received payload before any side effect, rejects missing or invalid authentication, limits handling to intended events, and has tests for the failure paths. Keep redelivery as an explicit decision. Review Assist can make the changed code and unverified assumptions easier to inspect, but its [coverage check](/blog/what-a-review-assist-check-means/) does not prove webhook security."
+    ]
+  },
+  {
     slug: "how-to-review-ai-written-idempotency-key-changes",
     date: "19 Oct 2026",
     modified: "19 Oct 2026",
