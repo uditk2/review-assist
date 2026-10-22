@@ -1,0 +1,24 @@
+{
+  "name": "review-assist",
+  "displayName": "Review Assist",
+  "version": "1.1.0",
+  "description": "Turn the coding session behind a branch into a reviewable Intent Document: what was asked, assumed, tried and tested, checked against the diff before it is written.",
+  "author": {
+    "name": "Udit Khandelwal",
+    "url": "https://github.com/uditk2"
+  },
+  "homepage": "https://reviewassist.dev",
+  "repository": "https://github.com/uditk2/review-assist",
+  "license": "Apache-2.0",
+  "keywords": [
+    "code-review",
+    "pull-request",
+    "intent-document",
+    "ai-agents"
+  ],
+  "icon": "./icon.png",
+  "documentationUrl": "https://github.com/uditk2/review-assist/tree/main/plugins/review-assist#readme",
+  "supportUrl": "https://github.com/uditk2/review-assist/issues",
+  "privacyPolicyUrl": "https://github.com/uditk2/review-assist/blob/main/plugins/review-assist/PRIVACY.md",
+  "termsOfServiceUrl": "https://github.com/uditk2/review-assist/blob/main/plugins/review-assist/TERMS.md"
+}

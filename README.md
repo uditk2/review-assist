@@ -48,6 +48,17 @@ with the other. Run the section(s) you use.
 claude mcp add -s user review-assist -- npx -y review-assist-mcp
 ```
 
+Or install it as a plugin, which ships the server and both review agents together, so
+nothing is written to `~/.claude/agents`:
+
+```bash
+claude plugin marketplace add uditk2/review-assist
+claude plugin install review-assist@review-assist
+```
+
+Use one or the other, not both. The [plugin's README](plugins/review-assist/README.md) lists
+everything it reads and writes.
+
 The CLI and the VS Code extension share this one `-s user` config, but only when the
 extension inherits your shell's `PATH` (launched via `code .`, not the Dock). Launched
 from the Dock, GUI apps on macOS get just `/usr/bin:/bin:/usr/sbin:/sbin`, so `npx`
