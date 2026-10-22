@@ -1541,6 +1541,42 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    slug: "how-to-review-ai-written-cursor-pagination",
+    date: "22 Oct 2026",
+    modified: "22 Oct 2026",
+    title: "How to review AI-written cursor pagination on a changing feed",
+    summary: "Check the sort key, cursor boundary, changing-data behavior, and access scope before approving a paginated API change.",
+    hero: "/blog/how-to-review-ai-written-cursor-pagination.png",
+    alt: "Two pages of ordered records meet at a cursor boundary while a new record enters the feed",
+    caption: "A cursor must preserve the page boundary as the feed changes.",
+    body: [
+      "To review an AI-written cursor pagination PR, start with the order the API promises, then follow the last item on page one into the page-two query. The cursor must identify a position in a total order, and the query must continue strictly after that position. Test the boundary while rows are inserted, deleted, and edited. A test that only fetches two pages from a static fixture can miss duplicate or skipped records in a live feed.",
+      "Suppose an agent adds pagination to `GET /events`, ordered newest first. The first page ends at an event created at 10:00. If page two uses `created_at < 10:00`, it can skip another event with the same timestamp. If it uses `created_at <= 10:00`, it can repeat the last event. The fix is a stable tie-breaker, such as `(created_at, id)`, applied in the same order and predicate on every page. This is an example endpoint, not a Review Assist API claim.",
+      { h: "Write down the page contract" },
+      "Identify the endpoint's filters, sort direction, maximum page size, and what a cursor means. Is it a position in the current ordered result, or a snapshot of the result as it existed on the first request? These are different promises. A normal keyset cursor can avoid the shifting offsets caused by inserts ahead of the boundary, but it does not freeze mutable rows or guarantee a historical snapshot. If the product needs every record exactly once across a long export, ask for a snapshot or another explicit consistency design.",
+      "Check that the sort tuple is total and stable enough for the promise. `created_at` alone is rarely unique. For newest-first `(created_at DESC, id DESC)`, the next-page condition is `(created_at, id) < (:last_created_at, :last_id)` under the same filters. The query should fetch one extra row to decide whether a next cursor exists, then return at most the documented page size. Inspect the actual database or search query, not just the token encoder. A mismatched sort direction, missing tie-breaker, or inclusive comparison is where boundary bugs live.",
+      { h: "Follow one record across a changing feed" },
+      "Take a page of three events and record their ordered keys. Insert a newer event before requesting page two. The next request should continue after the original third event, rather than repeat it because its offset moved. Then insert an event whose key falls after that boundary and check whether the documented live-feed behavior includes it. Delete the boundary row and request the next page again: a cursor based on the key can still continue, while an implementation that looks up the row by ID may fail if it is gone.",
+      "Now edit a field used for ordering. If a row moves from after the cursor to before it between requests, a plain keyset walk may never return it. If it moves the other way, it may appear twice. That is a property of a changing sort key, not something a clever encoding fixes. Prefer an immutable ordering key where the product allows it. Otherwise document the live-feed semantics or use a snapshot strategy that fits the storage system and retention window.",
+      "The earlier [API response review](/blog/how-to-review-ai-written-api-response-changes/) asks whether existing clients can still read the response. This review asks a different question: can a client walk the result without losing or repeating items under the promised consistency model? If the PR also changes response fields, run both reviews.",
+      { h: "Treat the cursor as client input" },
+      "An opaque cursor may encode the last sort tuple, but opacity is not authorization. Check what happens when a client changes the cursor, filter, sort order, tenant, or page size. The server must enforce access on every page request and keep the cursor bound to the query shape it was issued for. A signed or authenticated token can detect tampering when needed; a simple encoded tuple is enough only if the server validates every value and its use cannot cross an access boundary. Reject malformed and expired cursors with a deliberate client response rather than silently restarting at page one.",
+      "Confirm that the next cursor contains only data the API is willing to reveal. A raw internal identifier or timestamp may be acceptable for some APIs and sensitive in others. Never put a credential or private row content in a token that the client can decode. Cap the page size server-side so a cursor request cannot turn into an unbounded scan. Keep the same tenant and filter predicates in the next-page query, not just in the first-page handler.",
+      { h: "Ask for tests at the boundary" },
+      { ul: [
+        "Use several rows with the same timestamp and assert that a full walk returns each ID once in the promised order.",
+        "Insert a row before the cursor between page requests, then delete the boundary row. Assert the next page starts after the saved tuple.",
+        "Change an ordering field and show the chosen behavior, or make that field immutable and test the write path that enforces it.",
+        "Reuse a cursor with another filter or tenant, send a malformed cursor, and request an oversized page. Check the response and the query scope.",
+        "Test the actual handler and query with enough rows to cross more than one page. A mocked repository method cannot prove the comparison and sort agree."
+      ] },
+      "In Review Assist, use the Intent Document's `problem.user_asks` and `approach.requirements` to find the promised behavior, then inspect the anchored query and cursor changes. Read `assumptions` for claims about immutable sort keys or tenant scoping, and `verification.not_verified` for missing insert, deletion, or cross-tenant cases. The [coverage check](/blog/what-a-review-assist-check-means/) can show that changed hunks have explanations. It does not prove that pagination is correct.",
+      { h: "Leave a comment the author can close" },
+      "A useful review comment is: “The query sorts by `created_at DESC`, but the next page compares only the timestamp. Two events can share that value. Please add a unique tie-breaker to both the order and strict cursor predicate, then test a full walk with equal timestamps and an insert between page requests. Also show what happens if the boundary row is deleted.”",
+      "Approve when the order and cursor predicate agree, the live-data behavior is stated, each request enforces the same access and filter scope, and tests cross real page boundaries. If the product requires snapshot semantics, make that requirement explicit before treating a keyset cursor as the solution."
+    ]
+  },
+  {
     slug: "how-to-review-ai-written-api-rate-limiting",
     date: "21 Oct 2026",
     modified: "21 Oct 2026",
