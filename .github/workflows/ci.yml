@@ -43,3 +43,11 @@ jobs:
       # absence of a hand-written version literal.
       - name: Release consistency
         run: npm run check:release
+
+      # The plugin and its marketplace, checked the way Claude Code loads them. A pinned
+      # version, so a new Claude Code release cannot turn CI red overnight; 2.1.281 or later
+      # is needed to know the directory's listing fields under --strict.
+      - name: Claude Code plugin validates
+        run: |
+          npx --yes @anthropic-ai/claude-code@2.1.295 plugin validate --strict plugins/review-assist
+          npx --yes @anthropic-ai/claude-code@2.1.295 plugin validate --strict .

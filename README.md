@@ -51,10 +51,12 @@ claude mcp add -s user review-assist -- npx -y review-assist-mcp
 Or install it as a plugin, which ships the server and both review agents together, so
 nothing is written to `~/.claude/agents`:
 
-```bash
-claude plugin marketplace add uditk2/review-assist
-claude plugin install review-assist@review-assist
 ```
+/plugin install review-assist --marketplace uditk2/review-assist
+```
+
+(On Claude Code before 2.1.275: `claude plugin marketplace add uditk2/review-assist`, then
+`claude plugin install review-assist@review-assist`.)
 
 Use one or the other, not both. The [plugin's README](plugins/review-assist/README.md) lists
 everything it reads and writes.

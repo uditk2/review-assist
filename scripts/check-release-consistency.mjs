@@ -41,6 +41,18 @@ if (!notes.some((r) => r.v === pkg.version)) {
   problems.push(`apps/github-app/viewer/releases.json has no entry for ${pkg.version}`);
 }
 
+// The Claude Code plugin ships the server it was built from. Its version moves with every
+// release (scripts/build-plugin.mjs), and the marketplace and directory read it there.
+const pluginManifest = read("plugins/review-assist/.claude-plugin/plugin.json");
+const pluginServer = read("plugins/review-assist/server/package.json");
+const pluginMcp = read("plugins/review-assist/.mcp.json");
+eq(pluginManifest.version, pkg.version, "plugin.json version vs package.json");
+eq(pluginServer.version, pkg.version, "plugin server/package.json version vs package.json");
+// Without this the bundled server installs agent files into ~/.claude/agents on every start,
+// duplicating the agents the plugin ships, with tool names that do not resolve in a plugin.
+const pluginEnv = Object.values(pluginMcp.mcpServers ?? {})[0]?.env ?? {};
+eq(pluginEnv.REVIEW_ASSIST_HOST, "claude-plugin", "plugin .mcp.json REVIEW_ASSIST_HOST");
+
 // The registry verifies ownership by matching this against the published package.
 eq(pkg.mcpName, server.name, "package.json mcpName vs server.json name");
 if (!/^io\.github\.[^/]+\/.+/.test(server.name ?? "")) {
