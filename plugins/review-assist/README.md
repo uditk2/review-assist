@@ -6,10 +6,25 @@ dropped, and what was tested, and it is checked against the diff before it is wr
 reviewer reads it next to the pull request instead of reconstructing your reasoning from
 the diff.
 
+## Install
+
+```
+/plugin install review-assist --marketplace uditk2/review-assist
+```
+
+That needs Claude Code 2.1.275 or later. On an older version, run
+`claude plugin marketplace add uditk2/review-assist`, then
+`claude plugin install review-assist@review-assist`.
+
 ## Use it
 
-Ask Claude to "write the Intent Document for this branch", or run
-`/review-assist:intent-document`. Claude starts two agents that work in parallel:
+Ask Claude in your own words, for example:
+
+- "Write the Intent Document for this branch."
+- "Explain this change for review before I open the pull request."
+- "Run Review Assist on this branch against origin/develop."
+
+Or run `/review-assist:intent-document`. Claude starts two agents that work in parallel:
 
 - **review-assist:intent-author** reads your coding session and answers questions about it.
   It cannot write the document.

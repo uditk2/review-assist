@@ -87,6 +87,10 @@ jobs:
           # The note goes in the release commit itself, built from the commits the release
           # ships, so no version reaches npm without one. 1.0.6 to 1.0.9 shipped with none.
           node apps/github-app/viewer/build/release-notes.mjs add --version "$V"
+          # The Claude Code plugin ships this release's server and agents. From this job's
+          # own build: a clean checkout, so the bundle names no machine's paths, and the same
+          # bytes `npm publish` packs below.
+          node scripts/build-plugin.mjs
           git add -A
           git commit -m "release(mcp-server): v$V"
           # Annotated, not lightweight: `git push --follow-tags` below only pushes
@@ -110,6 +114,14 @@ jobs:
       - name: Push version commit and tag
         if: ${{ !inputs.dry_run && !inputs.release_only }}
         run: git push origin HEAD:${{ github.ref_name }} --follow-tags
+
+      # Anthropic's plugin directory follows one branch and scans every new commit on it. On
+      # main that would be every blog post; this branch moves only with a release, so each
+      # scan is a real new version. A plain push, not a forced one: it only ever moves
+      # forward along main, and a refusal means something rewrote history.
+      - name: Point the plugin directory's branch at this release
+        if: ${{ !inputs.dry_run && !inputs.release_only }}
+        run: git push origin HEAD:refs/heads/claude-plugin
 
       # The MCP registry namespaces servers by identity: io.github.uditk2/* belongs to
       # whoever controls that GitHub account. github-oidc proves it from the workflow,
