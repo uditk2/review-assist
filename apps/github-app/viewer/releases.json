@@ -1,5 +1,41 @@
 [
   {
+    "v": "1.1.0",
+    "date": "22 Oct 2026",
+    "title": "Ask before reading a repository's sessions, not only before writing its document",
+    "summary": "Consent was checked at submit_document, which is the right place for the write and the wrong one for everything before it: by submit, the author had already read the session in full.",
+    "body": [
+      "Reading a developer's coding sessions is the part a user would most want to be asked about, and the part the directories' reviewers ask about first.",
+      "The one per-repository decision now covers both. Every tool that reads a session (list_transcripts, get_spine, read_transcript, get_contexts, record_contexts, read_context, find_sessions_touching, import_session) refuses with `consent_required` until it is settled, and the prompt now says what it allows: the project's sessions are read on this machine, read-only, sent nowhere, and the document is written to .intent/.",
+      {
+        "ul": [
+          "A \"once\" is recorded on the run when set_consent is given the run_id. Under Codex each role runs its own server process, and a \"once\" held only in the reviewer's memory would leave the author refused for a change the user had just allowed. A persisted decision made after it wins, so a \"never\" mid-distillation means never.",
+          "The author can call set_consent: it is the role the gate stops, and in Claude Code it can ask the developer itself. It records only their answer.",
+          "compute_diff and get_generation_guide carry the exact prompt when consent is unsettled, and every client's dispatch instructions say to settle it before starting the roles.",
+          "A session read without a run_id is checked against the server's own repository, and the refusal says to pass the run_id."
+        ]
+      },
+      "Checked end to end with separate server processes sharing one home: refused before consent, allowed in a fresh author process after the reviewer's process recorded \"once\", refused again after \"never\".",
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**Shrink the repository under the plugin directory's archive limit.** Anthropic's plugin directory validates a submission from GitHub's archive of the whole repository, and stops before any check runs when that archive is over 50 MiB. This one archived at 65 MiB, almost all of it blog artwork, and is now 10.8 MiB.",
+          "**Write each release's note from the commits it ships, and backfill 1.0.6 to 1.0.10.** The release notes were a hand-kept list inside index.html, and nothing made anyone add to it. 1.0.6 to 1.0.10 reached npm with no note, so the releases page still ended at 1.0.5.",
+          "**Hold a waiting get_answers call for up to 50s, so the reviewer polls once a minute.** Observed in a distillation on another repo: while the author worked, the reviewer called get_answers every 10 to 20 seconds. It has no clock and no way to sleep, so it calls again the moment its turn ends, and each call is a tool round trip and a reread of the same \"still waiting\".",
+          "**Report an author that was never dispatched in two minutes, not seven.** The stall gate was eight polls without progress, sized for a reviewer calling every 10 to 20 seconds, which made it about two minutes. With each waiting call now held for up to 50s, eight calls are about seven minutes, and that is how long a reviewer would wait on an author that was never coming.",
+          "**Fix what the review of the get_answers hold found.** A two-agent distillation of this PR read the diff cold and found four things worth fixing before merge.",
+          "**Post a neutral check when the Intent Document cannot be read, instead of nothing.** Nothing in the webhook validates the schema, and the renderers assume its types. A document that parses but has a wrong-typed field (`tour: {}`, `assumptions: {}`, `not_verified: \"x\"`) threw inside computeCoverage or commentBody, before the comment and the check were posted.",
+          "**Document self-hosting, and make the README and SPEC say what the App checks.** The site, README and SPEC all offered self-hosting as the answer for a strict privacy policy, and nothing explained how. docs/SELF_HOSTING.md now covers the App registration (callback, setup and webhook URLs, the four permissions, the pull_request event), the six secrets, the routes to change, and the build.",
+          "**Rewrite the blog against the code, sign it, and add the story of .reviewer/.** A review of every post against the code found stale UI (the assumptions post described the Flag for discussion flow the redesign removed), overclaims (a \"frozen\" format, a Reviewer that cannot read files in any client, a document that attributes each answer), and mostly invented examples.",
+          "**Say what every tool does to the user's machine.** Both directories that could list this server read MCP tool annotations. Anthropic's Software Directory Policy requires readOnlyHint, destructiveHint and a title on every tool, and OpenAI's plugin guidelines require all three hints as explicit booleans. None of the 23 tools carried any.",
+          "**Run inside a Claude Code plugin without touching the user's agent directory.** A plugin ships its own agents, and two things about the server were wrong for that. On every handshake it writes ~/.claude/agents/intent-*.md and sweeps stale copies, which inside a plugin is a change to the user's machine that nothing they did asked for, and the plugin directory's security scan looks for exactly that."
+        ]
+      }
+    ]
+  },
+  {
     "v": "1.0.10",
     "date": "12 Oct 2026",
     "title": "Quiet the prerender's window.scrollTo stack trace",
