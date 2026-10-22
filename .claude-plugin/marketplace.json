@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "review-assist",
+  "description": "Review Assist for Claude Code, installed straight from its repository.",
+  "owner": {
+    "name": "Udit Khandelwal",
+    "url": "https://github.com/uditk2"
+  },
+  "plugins": [
+    {
+      "name": "review-assist",
+      "description": "Turn the coding session behind a branch into a reviewable Intent Document, checked against the diff before it is written.",
+      "source": "./plugins/review-assist",
+      "category": "development",
+      "homepage": "https://reviewassist.dev"
+    }
+  ]
+}

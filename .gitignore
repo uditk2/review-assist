@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# Except the plugin's server: the plugin directory installs a plugin from the repository as
+# committed, so its built server has to be in git. scripts/build-plugin.mjs writes it.
+!plugins/review-assist/server/dist/
 *.log
 .wrangler/
 
