@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "review-assist": {
+      "source": {
+        "source": "directory",
+        "path": "./"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "review-assist@review-assist": true
+  }
+}
