@@ -1541,6 +1541,36 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    slug: "how-to-review-ai-written-cache-invalidation",
+    date: "23 Oct 2026",
+    modified: "23 Oct 2026",
+    title: "How to review an AI-written cache invalidation change",
+    summary: "Trace every write to its cached read, test a stale fill racing an invalidation, and define the acceptable stale window before approving.",
+    hero: "/blog/how-to-review-ai-written-cache-invalidation.png",
+    alt: "A database update and two cache tiles with a stale refill path stopped before it can restore old data",
+    caption: "An invalidation can succeed and still lose a race to an older cache fill.",
+    body: [
+      "To review an AI-written cache invalidation PR, start with the data's freshness rule. Identify the value a reader is allowed to see after a write, every cache layer that can serve that value, and the event that makes an entry obsolete. Then follow a write through commit, invalidation, and the next read. A delete call in the write handler is not enough evidence: another reader may already be filling the cache with the old value.",
+      "Suppose a service caches an organization's feature settings. An agent adds a Redis delete after `PATCH /orgs/:id/settings`. The endpoint and cache are examples for this review, not Review Assist features. The question is whether a successful settings update can still leave an old setting visible to a reader, including a reader in another process or tenant.",
+      { h: "Define the freshness contract" },
+      "Write down the source of truth, cache key, readers, writers, and maximum acceptable stale window. Settings that control access may need a stronger contract than a dashboard count. If an old value is acceptable for 30 seconds, say so and test that limit. If reads after a successful write must see the new value, a time-to-live setting alone does not establish that guarantee.",
+      "Inspect the key shape before the invalidation code. It must include every dimension that changes the answer, such as organization, environment, or permission scope. A key that omits the organization can leak one tenant's settings to another. A delete using a different key format can appear to work in a unit test while leaving the production entry untouched. Check whether there are process-local, Redis, HTTP, or CDN caches in front of the source, and which one the PR actually clears.",
+      { h: "Trace every write to the cached read" },
+      "Find all paths that mutate the cached value: the API handler, background job, admin tool, migration, and bulk import if they exist. The review should name the actual paths in the service under review. For each one, check when the source-of-truth write becomes durable and when the old cache entry is removed or replaced. Invalidating before a transaction commits lets another reader reload the old value. Invalidating after commit creates a window in which reads can see the old entry. That window may be acceptable, but it should match the contract.",
+      "Ask what happens if invalidation fails after the database commit. Retrying the entire write may duplicate effects, while silently ignoring the failure leaves stale data until another mechanism repairs it. A short TTL can bound that failure only if every relevant key really expires and the maximum age is acceptable. For a stricter contract, the design may need a durable invalidation event, a versioned key, or another mechanism that couples reads to the committed version. Review the failure path the PR chose rather than assuming the cache library handles it.",
+      { h: "Reproduce the stale fill race" },
+      "A common race starts with a cache miss. Reader A fetches version 1 from the database but pauses before filling the cache. Writer B commits version 2 and deletes the cache key. Reader A resumes and stores version 1. The invalidation succeeded, yet later readers keep receiving stale data until expiry or another write. A test that calls update and then read in sequence will miss this interleaving.",
+      "Use a barrier in the test to pause reader A after its source read, commit writer B, perform the invalidation, then let A fill. Assert what a subsequent reader sees. A version check on fill, a key that includes the committed version, or a read strategy that refuses an older value can close this race when the contract requires it. A mutex around one process's cache is not enough when readers and writers run on different instances. If the product accepts temporary staleness, document its bound and make the test assert that bound instead.",
+      { h: "Check expiry and refill load" },
+      "Cache TTL and invalidation answer different questions. TTL caps how long an entry survives without a successful invalidation. Invalidation can make a recent write visible sooner. Neither automatically prevents a cache stampede when many requests miss the same hot key after a purge or expiry. Check whether the proposed change evicts one key or a whole namespace, how many callers can refill it at once, and what the backing store can tolerate. Single-flight loading or a bounded stale-while-revalidate policy can help, but only if stale responses are allowed by the data's contract.",
+      "Test the real cache adapter with at least two service instances or equivalent independent clients when the implementation depends on shared state. Add a key-scope test for two organizations, a failure test for the invalidation path, and the deterministic race test. These checks establish more than a mock asserting that `delete` was called once. Measure the refill path if the change turns a targeted eviction into a broad purge.",
+      { h: "Ask for a reviewable decision" },
+      "In Review Assist, read `problem.user_asks` and `approach.requirements` for the intended freshness rule. Use the anchored tour to locate the write, cache read, and invalidation changes. Check `assumptions` for claims about one writer, one cache layer, or acceptable staleness, and `verification.not_verified` for missing failure or race cases. The [coverage check](/blog/what-a-review-assist-check-means/) tells you whether changed hunks have explanations; it cannot establish cache consistency. The [untested-path review](/blog/how-to-review-untested-paths-in-ai-prs/) is useful when a specific interleaving remains unverified.",
+      "A comment the author can close is: “The update commits version 2 and deletes the Redis key, but a read that fetched version 1 before the delete can fill the key afterward. Please add a test that pauses the fill across the update and show the mechanism that prevents version 1 from being stored, or state the accepted stale window and its TTL bound. Also confirm the key includes the organization ID.”",
+      "Approve when the freshness promise is explicit, the key and invalidation cover the actual readers and writers, the failure path has a defined bound or repair, and tests exercise the interleaving that could restore old data. If the team chooses bounded staleness, make that a product decision visible in the PR."
+    ]
+  },
+  {
     slug: "how-to-review-ai-written-cursor-pagination",
     date: "22 Oct 2026",
     modified: "22 Oct 2026",
