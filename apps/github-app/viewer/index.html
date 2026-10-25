@@ -1541,6 +1541,43 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    slug: "how-to-review-ai-written-inventory-race-conditions",
+    date: "25 Oct 2026",
+    modified: "25 Oct 2026",
+    title: "How to review an AI-written inventory reservation for race conditions",
+    summary: "Run two buyers against the last unit, then check the database guard, reservation transaction, and failure paths before approving.",
+    hero: "/blog/how-to-review-ai-written-inventory-race-conditions.png",
+    alt: "Two request paths meet at one guarded inventory row; one succeeds while the other stops without a reservation",
+    caption: "The last unit is a concurrency test, not a sequential happy path.",
+    body: [
+      "To review an AI-written inventory reservation, start with two buyers trying to take the last unit at the same time. The result must be one confirmed reservation, one clear sold-out response, and no negative stock. Trace that outcome through the database write, reservation record, and response. A test that buys the last unit twice in sequence does not exercise the race condition.",
+      "Suppose an agent adds `POST /reservations` to a shop with one unit of a SKU left. This shop is an example for the review, not a Review Assist feature. The PR reads `available`, checks that it is positive, decrements it, and creates a reservation. Every line looks reasonable in isolation. Two requests can still read the same value before either writes, and both can tell a customer they have the item. If each writes a new count of zero, one decrement is lost even though two reservations succeeded.",
+      { h: "Write down the invariant and the source of truth" },
+      "Find the authoritative stock row and every path that changes it: reservation, cancellation, expiry, fulfillment, and administrative adjustment. State the invariant in terms of durable records. For this example, each successful reservation consumes one unit, available stock never falls below zero, and a failed reservation consumes none. If stock is derived from a ledger instead of a counter, review the equivalent invariant there. Do not assume the API handler is the only writer.",
+      "Check the scope of the stock key. A SKU alone may be insufficient if the system tracks warehouse, seller, or tenant separately. The lock or conditional update must guard the same unit of inventory the response promises. A cache can make the listing feel current, but it cannot be the authority for the final reservation decision unless the design explicitly makes it so.",
+      { h: "Find the single database decision" },
+      "A read-then-write sequence is vulnerable if the read and update are separate decisions. In PostgreSQL, one simple counter design can use a conditional statement like `UPDATE inventory SET available = available - 1 WHERE sku = $1 AND available > 0 RETURNING available`. Assuming one stock row per scoped SKU, one returned row means this request claimed a unit; zero means it did not. The reservation insert belongs in the same database transaction, so an insert failure rolls the decrement back. PostgreSQL's [UPDATE documentation](https://www.postgresql.org/docs/current/sql-update.html) defines which rows `RETURNING` reports. The exact SQL and locking behavior depend on the database and schema in the PR, but the reviewer should be able to point to one durable point where competing requests are decided.",
+      "An optimistic locking design can instead update only when a version still matches the one read. Its conflict result must retry against fresh state or return a deliberate unavailable response. A row lock such as `SELECT ... FOR UPDATE` can work when the transaction locks the right row before checking stock and holds it through the write. PostgreSQL's [locking documentation](https://www.postgresql.org/docs/current/explicit-locking.html) describes that row-lock behavior. Compare these choices against the actual write set. A lock in one process, an in-memory mutex, or a transaction around the old read-then-write code may leave the shared invariant unprotected.",
+      "Watch for a broader invariant. If reserving one bundle consumes several SKUs, a successful update to the first row followed by failure on the second must roll back both. If lock acquisition order differs across code paths, database deadlocks become possible. Ask which operation is retried, how many times, and whether that retry can create a second reservation. A retry is safe only when the transaction's identity and outcome are understood.",
+      { h: "Follow failures beyond the stock counter" },
+      "Trace what happens after the database commits but before the HTTP response reaches the buyer. A client retry could otherwise make a second reservation. The endpoint needs a way to recognize an earlier attempt, such as a stable request identity with a uniqueness rule, and return its recorded outcome. This is a different boundary from protecting the stock row. The [payment idempotency review](/blog/how-to-review-ai-written-idempotency-key-changes/) goes deeper on retries with an uncertain external outcome.",
+      "Cancellation and expiry must restore stock at most once. Inspect the reservation state transition that authorizes release, including two workers racing to expire the same hold or a cancellation arriving after fulfillment. A `finally` block that increments stock on every error can return a unit that was never claimed, or return the same unit twice. If the system sends an email or calls a payment provider, keep those external side effects outside the database transaction and define how a committed reservation reaches them reliably. A database rollback cannot undo an external call.",
+      { h: "Test the competing requests, not just the helper" },
+      { ul: [
+        "Start with one available unit and two independent database connections. Release both requests from a barrier at the stock decision. Assert one reservation, one unavailable result, and stock of zero. Repeat at the API boundary so the returned status matches the durable result.",
+        "Inject a failure after the stock update but before the reservation insert completes. Assert that the transaction leaves stock and reservations unchanged.",
+        "Make the first reservation commit, then drop its response and retry the same request identity. Assert that the recorded reservation is returned or a defined conflict is reported, without a second decrement.",
+        "Race two cancellation or expiry workers against one reservation. Assert one release and a final stock count that matches the reservation state.",
+        "If the PR reserves multiple rows, force one row to fail after another succeeds. Assert all-or-nothing behavior and exercise the deadlock or conflict retry path."
+      ] },
+      "Use the database engine and transaction settings the service actually runs, or a close integration environment. A mock that returns one row from the conditional update proves the handler's branch, not the database's concurrency behavior. Keep the barrier or failure injection deterministic so the test can reproduce the interleaving without timing guesses.",
+      { h: "Turn the finding into a merge decision" },
+      "In Review Assist, read `problem.user_asks` and `approach.requirements` for the promised reservation behavior. Use the anchored tour to find the stock update, reservation write, and cancellation path. Check `assumptions` for claims about one writer, transaction isolation, or retry identity, then read `verification.not_verified` for missing concurrent and failure cases. The [coverage check](/blog/what-a-review-assist-check-means/) tells you whether changed hunks have explanations. It does not run competing transactions or prove that stock cannot oversell.",
+      "A useful review comment is: “With one unit left, two requests can both read `available = 1` before either writes. Please show the database operation that makes one request win, keep the reservation insert in the same transaction, and add a two-connection test that asserts one reservation, one unavailable response, and stock of zero. What happens if the winning response is lost and the client retries?”",
+      "Approve when the invariant is explicit, every stock writer follows it, the database makes a single claim decision, and tests cover contention plus rollback and retry boundaries. If the team accepts backorders or temporary negative stock, state that contract in the PR and test it instead of silently assuming the stricter one."
+    ]
+  },
+  {
     slug: "how-to-review-ai-written-dead-letter-queue-handling",
     date: "24 Oct 2026",
     modified: "24 Oct 2026",
