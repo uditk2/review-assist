@@ -1541,6 +1541,48 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    "slug": "how-to-review-single-responsibility-in-ai-written-code",
+    "date": "26 Oct 2026",
+    "modified": "26 Oct 2026",
+    "title": "How to review single responsibility in AI-written code",
+    "summary": "When an order handler adds receipt delivery, ask whether a mail failure should change the order result before approving the new boundary.",
+    "hero": "/blog/how-to-review-single-responsibility-in-ai-written-code.png",
+    "alt": "One code path divides into order persistence and receipt delivery at a clearly marked boundary",
+    "caption": "The review question is whether two changes should share one failure boundary.",
+    "body": [
+      "Single responsibility is useful in review when it exposes two reasons for code to change. It is not a rule that every function must perform one tiny action. In an AI-written PR, ask what happens when one responsibility fails while the other succeeds. If the code makes those outcomes inseparable without a product reason, the boundary deserves another look.",
+      "Suppose an agent changes a hypothetical `POST /orders` handler. The old hunk called `orders.insert(input)` and returned `201` with the order. In diff terms, the added lines put `+ await mailer.sendReceipt(order)` between those steps and add a broad `catch` that returns `500`. That is a small diff with a large consequence: the order can be committed, the mail call can fail, and the client receives a failure. A retry may then create another order. The example is a review exercise, not Review Assist application code.",
+      {
+        "h": "Ask which change should affect which outcome"
+      },
+      "The precise question is: **If the receipt provider or template changes, should the order-creation contract change?** The handler can coordinate both steps and still have a clear responsibility. The problem is the shared error result. A mail outage is now reported as if order creation failed, even though the database write succeeded. A reviewer should identify the committed order as the first durable boundary, then ask what the API promises after it.",
+      "Do not assume the answer is always to move mail to a queue. Some products require a synchronous notification before reporting success. If that is the requirement, the PR must say what to do when the order commits but delivery fails, since a database rollback cannot recall a message or necessarily undo an external action. The design may need an explicit partial-success state, reconciliation, or a different ordering. The principle points to the decision; it does not make it for the team.",
+      {
+        "h": "Read the hunk and its neighboring tests"
+      },
+      {
+        "ul": [
+          "Find the line that makes the order durable. Check whether the new mail call runs before or after it, and whether the `catch` covers both operations. A broad `catch` that returns `500` erases which step failed.",
+          "Trace the response for three cases: insert fails, insert succeeds and mail succeeds, insert succeeds and mail fails. The third case is the reason this hunk needs review.",
+          "Check what the client does after a `500`. If it retries, look for a stable request identity or another guard against a second order. Do not infer one from a unit test that calls the handler once.",
+          "Look at test doubles. A mocked `mailer.sendReceipt` that always resolves cannot establish the order result during a provider failure. Inject a rejection after a real or faithful committed insert and assert the response plus stored order count."
+        ]
+      },
+      "A narrow change might separate `createOrder` from `requestReceiptDelivery` and make the handler report an order success once the order is durable. Delivery could be recorded for later retry. That is one possible contract, not a mandatory architecture. The reviewer needs evidence that the chosen boundary matches the actual requirement and that a failed delivery has an owner.",
+      {
+        "h": "Keep the principle from becoming a false alarm"
+      },
+      "A controller that parses input, calls a domain operation, and maps its result to HTTP is not automatically a single responsibility violation. Those are ordinary parts of one request boundary. Nor does placing mail logic in another file fix the issue if the handler still turns a post-commit mail failure into an order failure. Count independent reasons to change and the behavior they couple, not methods or file length.",
+      "Splitting every step into an interface can make a small change harder to follow. Conversely, keeping related steps together can be correct when they must succeed or fail as one operation and the implementation can enforce that contract. Ask for the failure case that distinguishes the alternatives. If no such case matters to the product, a refactor on principle alone is weak review feedback.",
+      {
+        "h": "Make the merge decision from evidence"
+      },
+      "Review Assist's Intent Document can help locate the decision. Compare `problem.user_asks` and `approach.requirements` with the order and mail hunks in the anchored tour. Check `assumptions` for claims about delivery guarantees and `verification.not_verified` for the mail-failure path. The [coverage check](/blog/what-a-review-assist-check-means/) can show that both hunks have explanations; it cannot tell you whether their shared failure result is correct.",
+      "A useful review comment is: “The order is inserted before `sendReceipt`, but this `catch` returns `500` when mail fails. Should the client treat the order as created in that case? Please show the intended contract, a test that rejects the mail call after the insert, and the retry behavior for the same request.” That asks for a decision the author can demonstrate.",
+      "Approve when the PR states the order and receipt contract, preserves the correct response after each failure, and tests the post-commit mail failure and retry path. Request changes if a committed order is reported as a failed creation without an explicit, safe recovery plan. Leave a style-only split alone when the behavior already matches the requirement."
+    ]
+  },
+  {
     slug: "how-to-review-ai-written-inventory-race-conditions",
     date: "25 Oct 2026",
     modified: "25 Oct 2026",
