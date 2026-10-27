@@ -1502,6 +1502,7 @@ function renderArticle(a){
   for (const b of a.body){
     if (typeof b === "string"){ body.append(el("p",{class:"mt-4 text-ink-700", html:richHtml(b)})); continue; }
     if (b.h){ body.append(el("h2",{class:"section-h mb-1 mt-8"}, b.h)); continue; }
+    if (b.code){ body.append(el("div",{class:"mt-4"}, codeBlock(b.code))); continue; }
     if (b.ul){ body.append(el("ul",{class:"mt-4 space-y-2"}, ...b.ul.map(t =>
       el("li",{class:"flex gap-2.5 text-ink-700"},
         el("span",{class:"select-none pt-0.5 text-ink-400"},"•"),
@@ -1540,6 +1541,39 @@ function renderArticle(a){
 const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk2" };
 
 const ARTICLES = [
+  {
+    slug: "how-to-review-dry-refactors-in-ai-written-code",
+    date: "27 Oct 2026",
+    modified: "27 Oct 2026",
+    title: "How to review a DRY refactor in AI-written code",
+    summary: "Before approving a shared helper, check whether similar code enforces the same rule. A document query shows when duplication is safer.",
+    hero: "/blog/how-to-review-dry-refactors-in-ai-written-code.png",
+    alt: "Two document query paths converge on one helper while their separate access boundaries remain visible",
+    caption: "Similar lines are safe to combine only when their rules are the same.",
+    body: [
+      "An AI-written refactor can remove duplicate lines and still change behavior. DRY is a useful review prompt when two copies encode one decision that must stay in sync. It is a poor reason to combine code that only looks alike. The review question is whether the callers share a rule, including its failure and access boundaries, rather than whether a duplication counter went down.",
+      "Consider a hypothetical document service. One endpoint lists documents a user owns. Another lists documents explicitly shared with that user. Both queries exclude deleted records and return the same columns. An agent extracts a helper to remove the repeated query shape. This is example application code, not Review Assist code.",
+      { h: "Read the predicate the refactor removed" },
+      { code: "- listOwned:  where: { ownerId: user.id, deletedAt: null }\n- listShared: where: { shares: { some: { userId: user.id } }, deletedAt: null }\n+ listOwned:  return listDocuments(user.id, \"owned\")\n+ listShared: return listDocuments(user.id, \"shared\")\n+ listDocuments: where: { deletedAt: null,\n+   ...(scope === \"owned\" ? { ownerId: userId } : {}) }" },
+      "The shared call now has no user predicate. It can return every non-deleted document. The helper preserved the common `deletedAt` filter but treated the two visibility rules as optional formatting. That is the precise failure in this hunk. The abstract lesson is narrower than 'never deduplicate queries': two similar implementations are not duplicate knowledge when they answer different authorization questions.",
+      { h: "Ask whether both callers obey one invariant" },
+      "The reviewer should ask: **What rule must remain true for every document returned by each caller, and does the helper enforce that rule for both values of `scope`?** For `owned`, each result must have `ownerId` equal to the current user. For `shared`, each result must have a share grant for that user. Excluding deleted rows is common to both, but it is not sufficient for either. A name like `listDocuments` or a passing typecheck cannot establish that distinction.",
+      "Trace the callers as well as the helper. Check that the user ID comes from the authenticated request, not a query parameter supplied by the client. Look for another route, job, or export that calls the new helper with a missing or unexpected scope. If the helper has a default branch that returns unscoped data, the same mistake may appear beyond these two endpoints. Keep the question on the new abstraction and its callers; this is not a request to redesign the whole authorization system.",
+      { h: "Use evidence that can distinguish the two rules" },
+      { ul: [
+        "Compare the old and new predicates line by line, including joins, tenant filters, soft deletion, sort order, and pagination. Record any removed condition. A refactor claim needs behavior equivalence, not just matching return types.",
+        "Seed three non-deleted documents in an integration test: one owned by user A, one shared with A but owned by B, and one private to B. Call both endpoints as A. The owned response should contain only the first; the shared response should contain only the second. The third must appear in neither.",
+        "Run the test against the query layer or database behavior used in production. A mocked `listDocuments` that returns a hand-picked array cannot prove the generated predicate limits rows.",
+        "If the PR claims both callers now deliberately use one visibility policy, find the approved requirement and an explicit test for the new policy. Otherwise treat the changed result set as an unexplained behavior change."
+      ] },
+      "A safe extraction is possible. The helper could accept an explicit, typed visibility rule and build a required predicate for every case, with no unscoped fallback. It may also be simpler to share only the projection and sort while leaving each access predicate at its call site. If these queries are still short and their policies evolve independently, keeping both copies is a reasonable choice. Duplication has a maintenance cost, but a premature abstraction can make a policy change in one path silently affect the other.",
+      { h: "Avoid a false positive, then decide" },
+      "Do not flag two identical lines merely because they are in two functions. They may be intentionally repeated at separate policy boundaries. Equally, do not reject a shared helper on principle when tests and requirements show the callers have the same rule. DRY is a heuristic for finding repeated decisions, not an automatic merge rule. The tradeoff is between keeping one real invariant in sync and coupling two rules that can diverge.",
+      "Review Assist can help locate the evidence. Read `problem.user_asks` and `approach.requirements` for the stated refactor scope, then follow the anchored tour to the removed predicates and new helper. Check `assumptions` for any claim that owned and shared visibility are equivalent, and `verification.not_verified` for the cross-user case. Its [coverage check](/blog/what-a-review-assist-check-means/) can show that both hunks were explained. It cannot prove the query preserves access control.",
+      "A useful comment is: “The old shared query required a share grant for this user. In the new helper, the `shared` branch adds no user predicate. Can you show the intended visibility rule and a database-backed test with another user's private document? Please keep that document out of both results before we merge.”",
+      "Request changes for the hunk shown: it broadens the shared result set. Approve an extraction only when every scope has a required visibility predicate and the two endpoint tests prove the intended results. If the policies are separate and the helper makes that harder to see, keep the small duplication and revisit abstraction when a stable shared rule emerges."
+    ]
+  },
   {
     "slug": "how-to-review-single-responsibility-in-ai-written-code",
     "date": "26 Oct 2026",
