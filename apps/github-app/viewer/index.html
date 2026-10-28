@@ -1542,6 +1542,39 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    slug: "how-to-review-ai-written-shipping-quote-adapters",
+    date: "28 Oct 2026",
+    modified: "28 Oct 2026",
+    title: "How to review an AI-written shipping quote adapter",
+    summary: "A missing carrier quote must not become free shipping. Review the boundary that translates provider responses into order decisions.",
+    hero: "/blog/how-to-review-ai-written-shipping-quote-adapters.png",
+    alt: "Three carrier signals enter a blue adapter boundary; a valid quote proceeds while unavailable and unknown results stop separately",
+    caption: "Keep a missing quote distinct from a real zero-price quote.",
+    body: [
+      "A useful architecture rule for code review is to translate an external provider's response before the rest of the application makes a business decision. An anti-corruption layer is a name for that boundary, but the name alone proves nothing. In an AI-written shipping change, the review target is the mapping: can a provider failure look like a valid price after it crosses the adapter?",
+      "Consider a hypothetical checkout that requests a carrier quote before showing an order total. The carrier can return a priced quote, say that no service is available, or fail before it can answer. A legitimate promotion can also produce a zero-price quote. An agent adds a small adapter and changes checkout to read its result. This is example application code, not Review Assist code.",
+      { h: "Find the state that disappeared in the diff" },
+      { code: "- if (rate.kind !== \"quoted\") return { kind: \"no_quote\" };\n- return { kind: \"quoted\", cents: rate.amountCents };\n+ return { cents: rate.amountCents ?? 0, service: rate.service ?? \"standard\" };\n+ checkout: totalCents = subtotalCents + shipping.cents\n+ checkout: await orders.create({ totalCents })" },
+      "The new adapter returns the same shape for a real free quote and for a response without an amount. Checkout can now show a payable total and accept the order after the carrier said no service was available, or after its response could not be understood. That is the defect to assess. The problem is not the number of files or whether the code uses an interface. The boundary erased a distinction the order policy needs.",
+      { h: "Ask what the domain can know from the adapter result" },
+      "The reviewer should ask: **Does every result that reaches checkout as `cents: 0` correspond to an actual zero-price carrier quote?** Trace the provider contract and the adapter branch for a priced quote, a valid free quote, unavailable service, malformed data, timeout, and any fallback. Decide which of those states permits an order. If the product explicitly allows a provisional order without a quote, that needs its own state and downstream handling. It should not be represented as a confirmed free shipment.",
+      "This is the narrow value of an anti-corruption layer in a third-party API integration. It gives the application a stable vocabulary such as `quoted`, `unavailable`, and `unknown`, while the adapter owns provider fields and error codes. A renamed provider field then changes one translation boundary instead of silently changing checkout policy. The review question is whether that vocabulary preserves the distinctions this feature actually uses, not whether the repository follows a named architecture pattern.",
+      { h: "Use evidence that separates free from missing" },
+      { ul: [
+        "Read the carrier's response contract and the old branch. Confirm which field means an amount is present, whether zero is valid, and how unavailable service and transport failure are represented. Do not infer semantics from `?? 0` or a TypeScript type alone.",
+        "Run adapter tests with a quoted positive amount, an explicitly quoted zero amount, an unavailable response, and a missing or malformed amount. Assert distinct application results for the last two cases.",
+        "At the checkout boundary, assert that only a confirmed quote reaches the payable total under the stated product rule. Test the error or retry path with a failed carrier call rather than a mock that always returns a number.",
+        "Check the order record and any later fulfillment step. If the order can be placed before a quote is known, find the provisional state, the later pricing or customer approval rule, and an owner for unresolved quotes."
+      ] },
+      "A test that checks only `subtotal + 0` is a false comfort: it proves arithmetic, not the origin of zero. A static fixture with `amountCents: 0` also misses the unavailable response unless the adapter sees both. The evidence should make a real free shipment and an absent quote produce different observable outcomes.",
+      { h: "Avoid a style-only objection and make the merge call" },
+      "Do not require a separate adapter package for a small integration. A local mapping function can be a clear boundary if all callers use it and it covers the relevant provider states. Equally, a raw provider response can be acceptable in a diagnostic screen that makes no order decision. The architectural heuristic matters here because checkout turns the mapped value into a price and an order promise. Added abstraction has a maintenance cost; losing a business state has a correctness cost.",
+      "Review Assist can help the reviewer locate why the mapping changed. Compare `problem.user_asks` and `approach.requirements` with the anchored adapter and checkout hunks. Look in `assumptions` for a claim that missing amounts mean free shipping, and in `verification.not_verified` for provider failure cases. Its [coverage check](/blog/what-a-review-assist-check-means/) can show that the changed hunks have explanations. It cannot establish the carrier's response semantics or approve the pricing decision.",
+      "A useful review comment is: “The adapter maps a missing carrier amount to `0`, and checkout treats that as a confirmed shipping price. Does the carrier use a missing amount for unavailable service or errors? Please show the provider contract and tests that distinguish a quoted zero from no quote, then show what checkout does in each case.”",
+      "Request changes for the hunk shown, since an absent amount becomes a valid price. Approve when the adapter preserves the product's required quote states, checkout permits orders only under the documented rule, and tests cover both a real zero quote and a missing quote. If the product allows a provisional order, approve that explicit path with its follow-up behavior, not an invented free rate."
+    ]
+  },
+  {
     slug: "how-to-review-dry-refactors-in-ai-written-code",
     date: "27 Oct 2026",
     modified: "27 Oct 2026",
