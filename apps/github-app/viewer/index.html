@@ -1548,7 +1548,7 @@ const ARTICLES = [
     "title": "How to write one useful .reviewer/ question for an AI-written status change",
     "summary": "A new subscription status can inherit an old access rule by accident. Write one repository question that makes its entitlement explicit.",
     "hero": "/blog/how-to-write-a-reviewer-question-for-ai-written-status-changes.png",
-    "alt": "A new status branch passes through one blue review decision before separating into allowed and denied outcomes",
+    "alt": "A paused subscription status leads to one .reviewer/ question about export access, with API and queued worker paths to verify",
     "caption": "Make the new state's access decision explicit before approving the diff.",
     "body": [
       "A good repository review rule names a decision the diff alone cannot settle. If an AI-written change adds a subscription status, the code may compile while an existing default branch gives that status access nobody chose. The useful rule is a question about the new state and the evidence for its access behavior, not a blanket instruction to reject every new enum value.",
@@ -1596,7 +1596,7 @@ const ARTICLES = [
     title: "How to review an AI-written shipping quote adapter",
     summary: "A missing carrier quote must not become free shipping. Review the boundary that translates provider responses into order decisions.",
     hero: "/blog/how-to-review-ai-written-shipping-quote-adapters.png",
-    alt: "Three carrier signals enter a blue adapter boundary; a valid quote proceeds while unavailable and unknown results stop separately",
+    alt: "A free shipping quote and a missing quote both become zero through a default, obscuring whether checkout may create the order",
     caption: "Keep a missing quote distinct from a real zero-price quote.",
     body: [
       "A useful architecture rule for code review is to translate an external provider's response before the rest of the application makes a business decision. An anti-corruption layer is a name for that boundary, but the name alone proves nothing. In an AI-written shipping change, the review target is the mapping: can a provider failure look like a valid price after it crosses the adapter?",
@@ -1629,7 +1629,7 @@ const ARTICLES = [
     title: "How to review a DRY refactor in AI-written code",
     summary: "Before approving a shared helper, check whether similar code enforces the same rule. A document query shows when duplication is safer.",
     hero: "/blog/how-to-review-dry-refactors-in-ai-written-code.png",
-    alt: "Two document query paths converge on one helper while their separate access boundaries remain visible",
+    alt: "Owned and shared document paths enter listDocuments, where the shared grant filter is lost",
     caption: "Similar lines are safe to combine only when their rules are the same.",
     body: [
       "An AI-written refactor can remove duplicate lines and still change behavior. DRY is a useful review prompt when two copies encode one decision that must stay in sync. It is a poor reason to combine code that only looks alike. The review question is whether the callers share a rule, including its failure and access boundaries, rather than whether a duplication counter went down.",
@@ -1662,7 +1662,7 @@ const ARTICLES = [
     "title": "How to review single responsibility in AI-written code",
     "summary": "When an order handler adds receipt delivery, ask whether a mail failure should change the order result before approving the new boundary.",
     "hero": "/blog/how-to-review-single-responsibility-in-ai-written-code.png",
-    "alt": "One code path divides into order persistence and receipt delivery at a clearly marked boundary",
+    "alt": "An order commits, receipt delivery fails, and the request returns HTTP 500 despite the saved order",
     "caption": "The review question is whether two changes should share one failure boundary.",
     "body": [
       "Single responsibility is useful in review when it exposes two reasons for code to change. It is not a rule that every function must perform one tiny action. In an AI-written PR, ask what happens when one responsibility fails while the other succeeds. If the code makes those outcomes inseparable without a product reason, the boundary deserves another look.",
@@ -1704,7 +1704,7 @@ const ARTICLES = [
     title: "How to review an AI-written inventory reservation for race conditions",
     summary: "Run two buyers against the last unit, then check the database guard, reservation transaction, and failure paths before approving.",
     hero: "/blog/how-to-review-ai-written-inventory-race-conditions.png",
-    alt: "Two request paths meet at one guarded inventory row; one succeeds while the other stops without a reservation",
+    alt: "Two buyers compete for one stock unit; a guarded reservation admits one and rejects the other",
     caption: "The last unit is a concurrency test, not a sequential happy path.",
     body: [
       "To review an AI-written inventory reservation, start with two buyers trying to take the last unit at the same time. The result must be one confirmed reservation, one clear sold-out response, and no negative stock. Trace that outcome through the database write, reservation record, and response. A test that buys the last unit twice in sequence does not exercise the race condition.",
@@ -1741,7 +1741,7 @@ const ARTICLES = [
     title: "How to review an AI-written dead letter queue worker",
     summary: "Follow a failed job from delivery to retry, acknowledgment, and redrive before approving a worker change.",
     hero: "/blog/how-to-review-ai-written-dead-letter-queue-handling.png",
-    alt: "A queued message enters a worker, loops through bounded retries, then moves to a separate holding queue after failure",
+    alt: "A worker retries a queued message before a dead letter queue handoff, with acknowledgment timing called out",
     caption: "The review starts at the failure boundary, where a job can be retried, lost, or repeated.",
     body: [
       "To review an AI-written worker that adds a dead letter queue, follow one message through every outcome: success, a temporary failure, a permanent failure, a worker crash, and a later redrive. The main question is not whether the code declares a retry count. It is when the original message is acknowledged and whether the job can be lost or its side effect repeated at each handoff.",
@@ -1772,7 +1772,7 @@ const ARTICLES = [
     title: "How to review an AI-written cache invalidation change",
     summary: "Trace every write to its cached read, test a stale fill racing an invalidation, and define the acceptable stale window before approving.",
     hero: "/blog/how-to-review-ai-written-cache-invalidation.png",
-    alt: "A database update and two cache tiles with a stale refill path stopped before it can restore old data",
+    alt: "An old cache fill finishes after a write and invalidation, restoring a stale value",
     caption: "An invalidation can succeed and still lose a race to an older cache fill.",
     body: [
       "To review an AI-written cache invalidation PR, start with the data's freshness rule. Identify the value a reader is allowed to see after a write, every cache layer that can serve that value, and the event that makes an entry obsolete. Then follow a write through commit, invalidation, and the next read. A delete call in the write handler is not enough evidence: another reader may already be filling the cache with the old value.",
@@ -1802,7 +1802,7 @@ const ARTICLES = [
     title: "How to review AI-written cursor pagination on a changing feed",
     summary: "Check the sort key, cursor boundary, changing-data behavior, and access scope before approving a paginated API change.",
     hero: "/blog/how-to-review-ai-written-cursor-pagination.png",
-    alt: "Two pages of ordered records meet at a cursor boundary while a new record enters the feed",
+    alt: "Two feed pages share a timestamp at the boundary; a time and ID cursor avoids skipping a row",
     caption: "A cursor must preserve the page boundary as the feed changes.",
     body: [
       "To review an AI-written cursor pagination PR, start with the order the API promises, then follow the last item on page one into the page-two query. The cursor must identify a position in a total order, and the query must continue strictly after that position. Test the boundary while rows are inserted, deleted, and edited. A test that only fetches two pages from a static fixture can miss duplicate or skipped records in a live feed.",
@@ -1838,7 +1838,7 @@ const ARTICLES = [
     title: "How to review an AI-written API rate limiter",
     summary: "Check who owns the quota, how concurrent requests share it, and what clients can do after a 429 before approving a rate limiting change.",
     hero: "/blog/how-to-review-ai-written-api-rate-limiting.png",
-    alt: "Request paths meet a shared quota gate, with one admitted path and one rejected path",
+    alt: "Two server instances count requests separately while a shared quota would enforce one account limit",
     caption: "Review the quota decision at the request boundary and under concurrent load.",
     body: [
       "To review an AI-written API rate limiter, write down the rule it is meant to enforce before reading the counter code. Which caller gets a quota, which requests spend it, over what interval, and what happens at the limit? Then trace that rule through authentication, shared state, the route handler, and the response. A unit test that gets a 429 after N calls can pass while two workers each admit N calls or while unrelated users share one bucket.",
@@ -1870,7 +1870,7 @@ const ARTICLES = [
     "title": "How to review an AI-written webhook signature verification change",
     "summary": "Check the signed payload, failure path, event boundary, and duplicate delivery behavior before trusting a webhook security change.",
     "hero": "/blog/how-to-review-ai-written-webhook-signature-verification.png",
-    "alt": "A webhook packet reaches a signature comparison gate, with verified, rejected, and repeated delivery paths",
+    "alt": "A webhook raw body passes an HMAC check before side effects, with invalid and repeated deliveries shown separately",
     "caption": "A valid signature identifies the sender and payload; delivery handling is a separate review question.",
     "body": [
       "To review an AI-written PR that changes webhook signature verification, start at the HTTP request boundary. Find the exact body passed to HMAC, the secret and header used for comparison, and the first possible side effect. Then send altered, unsigned, and repeated deliveries through the proposed code. A valid signature proves that the payload matches the configured secret. It does not make every event type safe to process or prevent the same valid delivery from being processed again.",
@@ -1919,7 +1919,7 @@ const ARTICLES = [
     title: "How to review an AI-written payment idempotency key change",
     summary: "Trace the durable claim, concurrent retries, and uncertain payment outcome before trusting an idempotency key change.",
     hero: "/blog/how-to-review-ai-written-idempotency-key-changes.png",
-    alt: "Two retry paths converge on one durable record and one result, with a mismatched request rejected",
+    alt: "Two requests with the same key converge on one charge while a changed payload using that key is rejected",
     caption: "Two requests with one key should lead to one effect, even when they arrive together.",
     body: [
       "To review an AI-written PR that adds an idempotency key to a payment endpoint, follow the key from the incoming request to the durable payment record and the external provider call. Check what happens when two requests arrive together, when a retry changes the payload, and when the provider succeeds but the service times out. A key in a header is only an input. The review question is whether every retry can cause at most one charge and return an honest result.",
@@ -1948,7 +1948,7 @@ const ARTICLES = [
     title: "How to review an AI-written request logging change without leaking sensitive data",
     summary: "Inspect every log path, allowlist useful fields, and test emitted records with secret sentinels before approving.",
     hero: "/blog/how-to-review-ai-written-request-logging.png",
-    alt: "A request path sends selected safe fields into a log record while a sensitive field stops at the boundary",
+    alt: "An allowlist passes request ID and path into logs while blocking a token",
     caption: "A useful request log carries diagnostic context without copying sensitive input.",
     body: [
       "When an AI-written PR adds request logging, review the records it can emit, not just the new logger call. List the fields that leave the request, follow every success and failure path to the log sink, and run a test that puts a unique secret in the request and asserts that it never appears in the captured output. The useful outcome is a log that helps diagnose a request without copying credentials or private payloads into it.",
@@ -1977,7 +1977,7 @@ const ARTICLES = [
     title: "How to review an AI-written API response change without breaking clients",
     summary: "Trace the response field through existing consumers, compare the contract, and test the old client path before approving.",
     hero: "/blog/how-to-review-ai-written-api-response-changes.jpg",
-    alt: "An API response shape branches to three clients, with one incompatible path marked for review",
+    alt: "An old client reads total_cents, but the new API response provides total, leaving a missing field",
     caption: "A response change is only safe when the clients that receive it still work.",
     body: [
       "When an AI-written PR changes an API response, start with the clients that already consume it. Identify the exact field or behavior that changed, find every known consumer, and run at least one check using the old client against the new provider. An updated schema and passing provider tests are useful, but neither tells you how a deployed client will behave.",
@@ -2006,7 +2006,7 @@ const ARTICLES = [
     title: "How to review an AI-written feature flag rollout",
     summary: "Check both flag states, the evaluation failure path, rollout scope, rollback, and cleanup before approving.",
     hero: "/blog/how-to-review-ai-written-feature-flag-rollouts.jpg",
-    alt: "Two code paths controlled by a feature flag, with a rollback path from a failed rollout",
+    alt: "Off, on, and unavailable flag states are checked against the rule that displayed price equals charged price",
     caption: "The flag adds a second production path. Review both.",
     body: [
       "When an agent puts a change behind a feature flag, review the two behaviors it creates. Check what runs with the flag off, what runs with it on, and what happens when the flag value cannot be read. Then ask who can turn it on, how they will observe the rollout, and how they will turn it off. A flag can limit exposure, but it does not make the new path correct.",
@@ -2035,7 +2035,7 @@ const ARTICLES = [
     title: "How to review an AI-written npm audit fix pull request",
     summary: "Trace the advisory through the dependency tree, inspect what the fix actually changed, and test the affected behavior before approving.",
     hero: "/blog/how-to-review-ai-written-npm-audit-fix-prs.jpg",
-    alt: "A dependency graph before and after a fix, with one changed package highlighted for review",
+    alt: "An audit advisory is traced through the installed dependency path, lockfile diff, and consumer test",
     caption: "Follow the changed dependency path, not just the new audit count.",
     body: [
       "When an agent opens a PR after running `npm audit fix`, review the change as a dependency upgrade with a security reason. First identify the advisory and the installed package path it affects. Then inspect the manifest and lockfile changes, run a clean install, and test the code that consumes the changed packages. A lower vulnerability count is useful evidence, but it is not an approval decision.",
@@ -2065,7 +2065,7 @@ const ARTICLES = [
     title: "How to review an AI-written database migration",
     summary: "Check the rollout order, old and new code compatibility, backfill behavior, and recovery plan before approving a schema change.",
     hero: "/blog/how-to-review-ai-written-database-migrations.jpg",
-    alt: "A reviewer traces a schema change through old, transitional, and new table shapes",
+    alt: "A migration moves from nullable rows through backfill to a not null constraint, with old rows called out",
     caption: "Review the transitional state, not just the final schema.",
     body: [
       "For an AI-written database migration, review the sequence of states the system will actually pass through. Ask whether the old application can run with the new schema, whether new code can run before every row is backfilled, and what happens if the deploy stops halfway. A migration file that works on an empty test database answers none of those questions.",
@@ -2094,7 +2094,7 @@ const ARTICLES = [
     title: "Code review guidelines in the repo, applied before the PR opens",
     summary: "The .reviewer/ folder holds what an experienced reviewer always asks in this repository. Before the PR opens, the cold reviewer reads it and puts those questions to the Author, which answers from the coding session.",
     hero: "/blog/how-to-add-repository-review-rules-for-ai-prs-v2.jpg",
-    alt: "A card file of repository review rules, with one card linked by a blue line to a specific change in a code diff",
+    alt: "A repository rule in .reviewer/ reaches one changed hunk and prompts author evidence",
     caption: "One house rule, tied to the line of the diff it asks about.",
     body: [
       "Every repository has a reviewer who knows where it breaks. They know the schema change that needs a migration, the directory whose churn is never incidental, and the test suite that looks green and proves nothing. When an agent writes the code, that knowledge has to reach the review some other way.",
@@ -2164,7 +2164,7 @@ const ARTICLES = [
     title: "How to review authorization changes in an AI-written PR",
     summary: "Trace who can reach the changed path, challenge the permission assumptions, and ask for denial-path evidence before approving.",
     hero: "/blog/how-to-review-authorization-changes-in-ai-prs.jpg",
-    alt: "Two reviewers trace allowed and denied paths through an authorization boundary in a code change",
+    alt: "User and project membership enter an access gate that must deny access after a role is removed",
     caption: "Trace the allowed path and the denied path before approving an access change.",
     body: [
       "When an AI-written PR changes an authorization check, start with the rule it is meant to preserve: which identity may do which operation on which resource. Then trace every changed route to the decision point, including the path that must be denied. A plausible explanation and a green check help you navigate. The approval still depends on the code and the evidence.",
@@ -2221,7 +2221,7 @@ const ARTICLES = [
     title: "How to re-review an AI-written PR after a new push",
     summary: "Use the new PR head as the review boundary: inspect changed behavior, refresh the explanation and evidence, then decide what needs another look.",
     hero: "/blog/how-to-re-review-an-ai-pr-after-a-new-push.jpg",
-    alt: "An engineer examines a revised code change handed over by a teammate while the earlier version sits aside",
+    alt: "A new push changes the PR head from A to B and prompts a fresh check of the evidence",
     caption: "A new push changes the evidence the review decision rests on.",
     body: [
       "After an AI agent pushes more commits to a pull request, treat the new head as a new state of the change. Find what changed since your last read. Check whether the Intent Document still explains the current diff, and whether the new code changes any assumption, test result, or accepted risk. Do not carry an earlier approval forward from memory.",
@@ -2272,7 +2272,7 @@ const ARTICLES = [
     title: "How to check scope drift in an AI-written PR",
     summary: "Compare the original ask with the changed behavior, then decide whether extra work belongs in this PR, needs approval, or should be split out.",
     hero: "/blog/how-to-check-scope-drift-in-ai-written-prs.jpg",
-    alt: "A reviewer compares a small request with a larger stack of code changes and points to a sheet outside the agreed boundary",
+    alt: "An extra behavior change sits outside the diff expected from the user request",
     caption: "A related change still needs a reason to be in this pull request.",
     body: [
       "To check scope drift in an AI-written PR, compare the original request with what the diff actually changes. For each behavior that goes beyond the request, ask who authorized it, what it depends on, and whether it can be reviewed and shipped separately. A tidy explanation from the agent is context. It is not approval for extra work.",
@@ -2313,7 +2313,7 @@ const ARTICLES = [
     title: "How to review an untested path in an AI-written PR",
     summary: "Trace the untested behavior to the changed code, ask for one check that would settle the risk, and make the merge decision explicit.",
     hero: "/blog/how-to-review-untested-paths-in-ai-prs.jpg",
-    alt: "A reviewer traces a code path that ends in an untested gap while another engineer prepares to check it",
+    alt: "A changed path forks into tested and unverified outcomes, ending in a review decision about risk",
     caption: "A missing check is a review decision with a specific path and consequence.",
     body: [
       "If an AI-written PR says a path was not tested, find the changed behavior it affects, ask what would fail if it is wrong, and request the smallest check that would answer that. If the risk is too high to leave open, request changes. If you accept the gap, say why in the review, so the next person does not mistake silence for evidence.",
@@ -2364,7 +2364,7 @@ const ARTICLES = [
     title: "What a green Review Assist check tells you",
     summary: "A complete coverage count means each counted hunk has a tour anchor. A green check without a count needs a closer look, and no check approves the code.",
     hero: "/blog/what-a-review-assist-check-means-v3.jpg",
-    alt: "A reviewer inspects a fragile component despite the green coverage light beside the explained diff",
+    alt: "Five diff hunks are explained, while a separate human review question asks whether the code is correct",
     caption: "Coverage is a map of explanations, not a merge decision.",
     body: [
       "A green Review Assist check is a narrow signal. With a complete count, every counted substantive hunk (a changed block that adds or removes at least one non-blank line) overlaps a tour anchor in the Intent Document. That is the JSON file committed at `.intent/<branch>.json` that explains the change. Without a count, a green check does not establish even that. Neither tells you the change is correct, the tests are enough, or the PR is ready to merge.",
@@ -2415,7 +2415,7 @@ const ARTICLES = [
     title: "Where your code and transcript go in Review Assist",
     summary: "The raw transcript stays local. The Intent Document lives in GitHub. The hosted App sees the diff in transit on each PR push and when a reviewer opens the guided review.",
     hero: "/blog/where-code-and-transcript-go-in-review-assist-v3.jpg",
-    alt: "A developer keeps a large session archive behind while passing a slim review folder to another engineer",
+    alt: "A local raw session stays on the developer machine while an intent document and PR diff follow separate review paths",
     caption: "Follow each artifact to the place it actually lives.",
     body: [
       "If your team reviews private code, “we do not store your code” answers only part of the question. You also need to know what leaves the developer’s machine, what gets committed to GitHub, and what a hosted service handles while someone reads the pull request.",
@@ -2463,7 +2463,7 @@ const ARTICLES = [
     title: "How to add repository-specific review questions for AI-written PRs",
     summary: "Put the invariants your team learned the hard way in .reviewer/, then check that they become specific questions during AI PR review.",
     hero: "/blog/how-to-add-repository-review-rules-for-ai-prs-v3.jpg",
-    alt: "Two engineers use a blue repository rule card to focus on a risky part of the changed code",
+    alt: "A repository rule names a code change trigger, one .reviewer/ question, and a test that would answer it",
     caption: "Ask the repository's question where the changed code can answer it.",
     body: [
       "A team knows things a generic reviewer cannot infer from a diff. A schema edit may need a backfill. A change to an authentication path may need a logout test. If that knowledge lives only in a senior engineer’s head, an AI-written pull request can look complete while skipping the one question that matters.",
@@ -2499,7 +2499,7 @@ const ARTICLES = [
     title: "How to comment on an unverified assumption in an AI-written PR",
     summary: "Find the assumption, tie it to the affected code, and ask for evidence or a change the author can act on.",
     hero: "/blog/how-to-comment-on-unverified-assumptions-in-ai-prs-v3.jpg",
-    alt: "A reviewer places a blue question note beside a fragile connection in the code diff",
+    alt: "A review comment connects an assumption to the affected hunk and names the evidence needed",
     caption: "Put the question where its answer will help the next reviewer.",
     body: [
       "An AI-written pull request can explain every changed line and still rest on a guess. As the reviewer, find the guess that matters, tie it to the code, and ask for an answer that can be checked. “Are you sure?” gives the author almost nothing to work with.",
@@ -2551,7 +2551,7 @@ const ARTICLES = [
     title: "How to spot unexplained changes in an AI-written pull request",
     summary: "Use diff coverage to find changes the review narrative missed, then decide what the author needs to explain or fix before approval.",
     hero: "/blog/how-to-spot-unexplained-changes-in-ai-written-prs-v3.jpg",
-    alt: "A reviewer lifts one overlooked change from a wall of changes with blue explanation tabs",
+    alt: "Three diff hunks have explanations while a fourth is marked unexplained for the reviewer to investigate",
     caption: "An uncovered hunk is a question to investigate, not a verdict about the code.",
     body: [
       "How do you tell whether an AI-written pull request explains every change it made? Compare the review narrative with the actual diff, one hunk at a time. A polished summary can describe the main feature and still miss a config edit, a removed check, or a test change that alters what the PR proves.",
@@ -2600,7 +2600,7 @@ const ARTICLES = [
     title: "The conversation spine: turning an agent session into useful code review context",
     summary: "Reviewers need more than a diff. The spine keeps the decisions, failures, edits, and verification that explain how the code got there.",
     hero: "/blog/conversation-spine-code-review-context-v4.jpg",
-    alt: "A developer follows a blue thread through scattered session notes and hands a compact booklet to a reviewer",
+    alt: "A full coding session yields selected spine pages that inform an author answer to the reviewer",
     caption: "The spine preserves useful evidence and carries its source into one reviewer-ready view.",
     body: [
       "A pull request shows what changed. It rarely shows how the change got there.",
@@ -2658,7 +2658,7 @@ const ARTICLES = [
     title: "How Review Assist’s architecture catches bugs before code review",
     summary: "A two-agent, evidence-gated approach to reviewing AI-generated code while the implementation can still change.",
     hero: "/blog/how-review-assist-architecture-catches-bugs-early-v4.jpg",
-    alt: "An independent reviewer points out a small gap as the author prepares the piece to fix it",
+    alt: "A cold reviewer asks the author about a diff, leading to an intent document, validation, or a code fix",
     caption: "Independent review makes hidden defects visible while the change can still be corrected.",
     body: [
       "AI coding agents can produce a plausible pull request in minutes. The hard part is no longer writing the diff. It is recovering the reasoning behind it: what the agent believed, what it tried, what it verified, and where it is still unsure.",
