@@ -1542,6 +1542,54 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    "slug": "how-to-write-a-reviewer-question-for-ai-written-status-changes",
+    "date": "29 Oct 2026",
+    "modified": "29 Oct 2026",
+    "title": "How to write one useful .reviewer/ question for an AI-written status change",
+    "summary": "A new subscription status can inherit an old access rule by accident. Write one repository question that makes its entitlement explicit.",
+    "hero": "/blog/how-to-write-a-reviewer-question-for-ai-written-status-changes.png",
+    "alt": "A new status branch passes through one blue review decision before separating into allowed and denied outcomes",
+    "caption": "Make the new state's access decision explicit before approving the diff.",
+    "body": [
+      "A good repository review rule names a decision the diff alone cannot settle. If an AI-written change adds a subscription status, the code may compile while an existing default branch gives that status access nobody chose. The useful rule is a question about the new state and the evidence for its access behavior, not a blanket instruction to reject every new enum value.",
+      "Consider a hypothetical service that lets paid customers export reports. Its API and queued export worker both call `canUseExport`. Today the service has `active` and `canceled` subscriptions. An agent adds `paused` when a billing webhook arrives, but leaves the entitlement check alone. This is example application code, not Review Assist code.",
+      {
+        "h": "Find the inherited decision in the diff"
+      },
+      {
+        "code": "- type SubscriptionStatus = \"active\" | \"canceled\";\n+ type SubscriptionStatus = \"active\" | \"paused\" | \"canceled\";\n+ case \"subscription.paused\": return saveStatus(id, \"paused\");\n  function canUseExport(s) {\n    return s.status !== \"canceled\";\n  }"
+      },
+      "The new value falls through the existing predicate as allowed. That may be the right policy during a paid grace period, or it may let an account keep exporting after a pause should take effect. The diff shows the behavior; it does not establish the business decision. A reviewer needs the subscription contract and the paths that consume this predicate.",
+      {
+        "h": "Write the house rule as one answerable question"
+      },
+      "Put a narrow rule in the repository-root `.reviewer/README.md`, for example:",
+      {
+        "code": "+ When a diff adds or remaps a subscription status, ask: what export access\n+ should that status grant, and which test proves the API and queued worker\n+ apply the same decision? If access is temporary, ask what ends it."
+      },
+      "This has a trigger, one decision, and evidence to request. It avoids a vague “check all subscription logic” instruction that produces a long checklist without identifying the risk. It also avoids declaring that `paused` must mean denied. The policy may allow exports until the billing period ends. In that case, the reviewer should find the approved grace-period rule, its end condition, and tests for the boundary.",
+      "Review Assist reads committed Markdown in `.reviewer/` through `get_reviewer_instructions` after the Reviewer has read the diff and before its first interview round. Those repository questions add to the standing questions and questions raised by the diff. The folder is reference material, and the server does not decide whether the code is safe. [The general guide to repository review rules](/blog/how-to-add-repository-review-rules-for-ai-prs/) explains the folder; this example is about making one status rule precise.",
+      {
+        "h": "Check evidence at the two access paths"
+      },
+      {
+        "ul": [
+          "Find the product or billing rule for `paused`: immediate denial, access through a known date, or another explicit outcome. A webhook event name alone does not define entitlement.",
+          "Trace `canUseExport` from the API request and from the queued worker. Confirm both recheck the current status at the point that starts an export, rather than trusting a status captured before the pause.",
+          "Run tests that set the subscription to `paused` and exercise both paths. If grace access is intended, test the last allowed moment and the first denied moment, including a job already queued when the status changed.",
+          "Inspect any other default branch over `SubscriptionStatus`. A typecheck can pass even when a broad inequality silently gives the new value an old behavior."
+        ]
+      },
+      "A test of the webhook mapping alone proves storage, not access. A unit test that calls `canUseExport` with `active` and `canceled` also misses the new value. The useful evidence is an observable result for `paused` at each consumer, tied to the approved rule.",
+      {
+        "h": "Avoid false positives and make the merge call"
+      },
+      "Do not raise this rule for a status that is only displayed and never used in an entitlement decision. Do not demand that every consumer duplicate the status matrix if both paths already call one tested policy function. The house rule is a review heuristic: it makes an unstated decision visible and asks for proof, but it does not set the policy for the team.",
+      "For the diff shown, request changes until the intended `paused` access rule is stated and tests cover the API and worker under that rule. Approve if the current allowed behavior is deliberate, bounded where necessary, and demonstrated at both paths. If pause means no exports, change the predicate or use an explicit status match before merging. Then keep this one question in `.reviewer/` so the next status addition gets the same scrutiny."
+    ]
+  },
+
+  {
     slug: "how-to-review-ai-written-shipping-quote-adapters",
     date: "28 Oct 2026",
     modified: "28 Oct 2026",
