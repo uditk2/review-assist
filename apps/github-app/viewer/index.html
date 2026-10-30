@@ -1542,6 +1542,37 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    slug: "when-the-current-coding-session-cannot-explain-an-ai-written-hunk",
+    date: "30 Oct 2026",
+    modified: "30 Oct 2026",
+    title: "When the current coding session cannot explain an AI-written hunk",
+    summary: "Find the session that wrote the added lines before calling a change unexplained, then test the decision it reveals.",
+    hero: "/blog/when-the-current-coding-session-cannot-explain-an-ai-written-hunk.png",
+    alt: "An added session expiry line matches an earlier writing session, while the current session only read it; the reviewer still asks why 15 minutes and checks policy and a boundary test",
+    caption: "A writing session can recover the reason for a hunk. It cannot prove the reason is sound.",
+    body: [
+      "A coding session can end before a change is finished. When a reviewer asks why an AI-written hunk exists, the session attached to the current work may have no answer even though an earlier session wrote the line. Before marking the hunk unexplained, look for the session that actually wrote its added lines. Then review the decision on its merits.",
+      "Consider a hypothetical login service. The current session transcript shows an agent reading `src/session.ts` and updating a test name. It never discusses the new expiry. The PR diff contains this hunk:",
+      { code: "  const token = createToken(user);\n+ const expiresAt = new Date(now.getTime() + 15 * 60_000);\n  await saveSession(token, expiresAt);" },
+      "The review question is: **Why is this login session valid for 15 minutes, and what enforces that limit when the token is used?** The current transcript cannot answer the first half. The diff alone cannot answer whether the value came from a product decision or an agent guess. This service and its code are an example, not Review Assist implementation code.",
+      { h: "Find a writer, not a file match" },
+      "Review Assist's local Author role has a shipped `find_sessions_touching` tool for this case. Given a run ID and hunk IDs, it recomputes the run's diff and first narrows to sessions on this machine that named the hunk's files. It then matches distinctive added lines against those sessions. `authored` counts lines in tool input, where a session wrote them; `observed` counts lines in tool output, where it read them back. The Author passes `exclude` for the transcript it already read.",
+      "In this example, the current session may have a high file-touch count or many observed lines because it read `src/session.ts`. That is not evidence it chose the 15-minute value. If an earlier session has an authored match for the added expiry line, the Author can read that session's spine and answer the same review question again. A plausible answer might be that the developer asked for a shorter login lifetime. The answer should cite that session, rather than present the reason as something inferred from the code.",
+      "The lookup is bounded. It uses added lines long enough to distinguish a change, up to 30 lines by default. A removed-only hunk or a short line such as `+ return true;` has no useful content match. A file-only lookup gives candidates, not authors. If no matching writer is in the local or imported sessions available on this machine, the Author should report that the transcript does not cover the choice. An absent match is not proof that nobody ever made the decision elsewhere.",
+      { h: "Check the recovered reason against the behavior" },
+      { ul: [
+        "Find the requirement or policy that sets the 15-minute lifetime. A session quote shows what was requested or decided during coding; it does not by itself establish that the policy is current or approved.",
+        "Trace the token validation path. Confirm it rejects a token after `expiresAt`, rather than only storing a timestamp that no reader checks.",
+        "Test the boundary with a controlled clock: valid just before expiry, invalid at expiry and afterward. Check whether refresh or renewal intentionally changes the lifetime.",
+        "Check the scope of the change. If the same helper creates password-reset, API, and login tokens, verify that this new value applies only to the intended token class."
+      ] },
+      "An earlier transcript could settle why the agent typed `15 * 60_000` while revealing an error: perhaps the developer meant a password-reset link, not a login session. That is exactly why the retrieved conversation is evidence to inspect, not an automatic approval. Conversely, a clear policy and passing boundary tests can settle the concern even if no session is available. The principle is to recover available intent before declaring a gap, then verify the actual contract.",
+      { h: "Make the merge decision" },
+      "For the hunk shown, request changes or hold approval until the 15-minute rule is tied to the intended login policy and the token validation boundary is tested. Approve if the earlier session and current requirement agree, the change affects the right token class, and the server enforces the expiry in tests. If the lookup finds only read-only sessions, leave the reason open and ask the developer directly. Do not turn a file match into a story about intent.",
+      "This local lookup happens during the Author's interview, after repository session-read consent. The hosted guided review receives the curated [Intent Document](/blog/conversation-spine-code-review-context/), not the raw adjacent transcript. The [coverage check](/blog/what-a-review-assist-check-means/) can show that the hunk has an explanation; it does not certify the 15-minute policy or the tests."
+    ]
+  },
+  {
     "slug": "how-to-write-a-reviewer-question-for-ai-written-status-changes",
     "date": "29 Oct 2026",
     "modified": "29 Oct 2026",
