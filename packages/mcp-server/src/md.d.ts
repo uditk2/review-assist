@@ -1,4 +1,4 @@
-// esbuild inlines these with `--loader:.md=text --loader:.toml=text`; tsc needs the shape.
+// The build (build.mjs) inlines these with esbuild's text loader; tsc needs the shape.
 declare module "*.md" {
   const content: string;
   export default content;

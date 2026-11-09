@@ -10,9 +10,9 @@
  * version sync-version did not know it owned, and the registry's required mcpName was
  * missing entirely. A "did you run the generator" hook catches neither.
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => JSON.parse(readFileSync(join(root, p), "utf8"));
@@ -83,6 +83,20 @@ const unannotated = registered.filter((t) => !annotated.includes(t));
 const staleMeta = annotated.filter((t) => !registered.includes(t));
 if (unannotated.length) problems.push(`tools registered with no entry in tool-meta.ts: ${unannotated.join(", ")}`);
 if (staleMeta.length) problems.push(`tool-meta.ts entries for tools the server does not register: ${staleMeta.join(", ")}`);
+
+// Anthropic's plugin directory holds a version for a human when it cannot read every file:
+// any file that isn't an image or font at 256 KiB or more, or more than 512 files. 1.1.0 sat
+// held on a 985 KiB server bundle; the build now splits it, and this keeps it split.
+const pluginRoot = join(root, "plugins/review-assist");
+const pluginFiles = readdirSync(pluginRoot, { recursive: true })
+  .map((p) => join(pluginRoot, p))
+  .filter((p) => statSync(p).isFile());
+if (pluginFiles.length > 512) problems.push(`plugins/review-assist has ${pluginFiles.length} files; the directory reads at most 512`);
+for (const p of pluginFiles) {
+  if (/\.(?:png|jpe?g|gif|webp|woff2?|ttf|otf)$/i.test(p)) continue;
+  const size = statSync(p).size;
+  if (size >= 256 * 1024) problems.push(`${relative(root, p)} is ${size} bytes; the plugin directory reads files under 262144`);
+}
 
 if (problems.length) {
   console.error("release consistency check failed:\n" + problems.map((p) => `  - ${p}`).join("\n"));
