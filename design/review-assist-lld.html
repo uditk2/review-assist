@@ -284,8 +284,9 @@
 
   <h3 id="mcp-process">4.1 Process model and the role gate</h3>
   <p>
-    One stdio process per agent session, spawned by the client, bundled by esbuild into a single ESM
-    file with the role markdown and TOML templates inlined as text. It calls no model and makes no
+    One stdio process per agent session, spawned by the client, bundled by esbuild into ESM
+    (<code>dist/index.js</code> and the chunks it imports) with the role markdown and TOML templates
+    inlined as text. It calls no model and makes no
     network requests. The repository it operates on is <code>REVIEW_ASSIST_REPO</code> or the
     process working directory.
   </p>
@@ -897,9 +898,10 @@ interface InterviewRound {
 
   <h3>7.2 Build</h3>
   <ul>
-    <li><strong>MCP server:</strong> <code>sync-version</code> then esbuild to a single ESM file
-      targeting Node 18, with <code>--loader:.md=text --loader:.toml=text</code> so the role templates
-      are authored as real files and inlined at build time. The version is read from
+    <li><strong>MCP server:</strong> <code>sync-version</code> then <code>build.mjs</code>: esbuild to
+      ESM targeting Node 18, split into <code>dist/index.js</code> and chunks along package lines so
+      every file stays under the plugin directory's 256 KiB limit, with the role templates loaded as
+      text so they are authored as real files and inlined at build time. The version is read from
       <code>package.json</code> at runtime rather than written as a literal, because a hand-maintained
       copy drifts the moment <code>npm version</code> runs.</li>
     <li><strong>Desktop bundle:</strong> <code>mcpb pack</code> produces

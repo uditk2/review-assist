@@ -2,8 +2,10 @@
  * Refresh the generated parts of the Claude Code plugin in plugins/review-assist/ from the
  * server build. Run after `npm run build`; the release workflow runs it for every release.
  *
- *   server/dist/index.js  the built server, copied as is. One file: esbuild bundles every
- *                         dependency into it, so the plugin installs nothing.
+ *   server/dist/          the built server, copied as is: index.js and the chunks it imports.
+ *                         Every dependency is bundled in, so the plugin installs nothing, and
+ *                         the build keeps each file under the directory's 256 KiB limit
+ *                         (packages/mcp-server/build.mjs says why).
  *   server/package.json   beside it, for two things the bundle needs at runtime: the server
  *                         reads its version from ../package.json, and Node needs
  *                         "type": "module" to load the bundle as ESM. Kept in server/ rather
@@ -26,7 +28,7 @@
  * paths nor any drift from what users of the npm package run.
  */
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,27 +37,32 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const plugin = join(root, "plugins/review-assist");
 const pkg = JSON.parse(readFileSync(join(root, "packages/mcp-server/package.json"), "utf8"));
 
-let bundle = join(root, "packages/mcp-server/dist/index.js");
+let dist = join(root, "packages/mcp-server/dist");
 let scratch;
 if (process.argv.includes("--from-npm")) {
   scratch = mkdtempSync(join(tmpdir(), "build-plugin-"));
   execFileSync("npm", ["pack", `${pkg.name}@${pkg.version}`, "--silent"], { cwd: scratch, stdio: "ignore" });
   execFileSync("tar", ["xzf", `${pkg.name}-${pkg.version}.tgz`], { cwd: scratch });
-  bundle = join(scratch, "package/dist/index.js");
+  dist = join(scratch, "package/dist");
 }
 
+const bundle = join(dist, "index.js");
 if (!existsSync(bundle)) {
   console.error(`build-plugin: no server bundle at ${bundle}; run \`npm run build\` first, or pass --from-npm`);
   process.exit(1);
 }
-const leaked = readFileSync(bundle, "utf8").match(/\/(?:Users|home)\/[^/\s"]+\//);
-if (leaked) {
-  console.error(`build-plugin: the bundle names a home directory (${leaked[0]}); build in a clean checkout or pass --from-npm`);
-  process.exit(1);
+for (const file of readdirSync(dist)) {
+  const leaked = readFileSync(join(dist, file), "utf8").match(/\/(?:Users|home)\/[^/\s"]+\//);
+  if (leaked) {
+    console.error(`build-plugin: dist/${file} names a home directory (${leaked[0]}); build in a clean checkout or pass --from-npm`);
+    process.exit(1);
+  }
 }
 
-mkdirSync(join(plugin, "server/dist"), { recursive: true });
-copyFileSync(bundle, join(plugin, "server/dist/index.js"));
+// Replace the folder rather than copy over it, so a chunk the new build no longer has does
+// not stay behind and ship.
+rmSync(join(plugin, "server/dist"), { recursive: true, force: true });
+cpSync(dist, join(plugin, "server/dist"), { recursive: true });
 writeFileSync(
   join(plugin, "server/package.json"),
   JSON.stringify(
