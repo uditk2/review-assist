@@ -1,5 +1,36 @@
 [
   {
+    "v": "1.1.1",
+    "date": "9 Nov 2026",
+    "title": "Package Review Assist as a Claude Code plugin",
+    "summary": "Anthropic's directory lists a local MCP server only inside a plugin, and a plugin is also the one install that brings the server and both review agents together. plugins/review-assist/ is that plugin, and the repository root is a marketplace for it:",
+    "body": [
+      "claude plugin marketplace add uditk2/review-assist claude plugin install review-assist@review-assist",
+      {
+        "ul": [
+          ".mcp.json starts the bundled server with node and REVIEW_ASSIST_HOST=claude-plugin, so it writes nothing into ~/.claude/agents.",
+          "agents/ holds intent-author and intent-reviewer, rendered by the server from the shared role prose with the plugin's tool names, mcp__plugin_review-assist_intent__*.",
+          "skills/intent-document is the entry point: settle consent, start both roles in one message, report what was written. In a claude.ai chat it says it needs Claude Code.",
+          "README, PRIVACY and TERMS say what the plugin reads, writes and keeps, and that the server sends nothing. The directory's listing fields in plugin.json point at them.",
+          "server/dist/index.js is the review-assist-mcp 1.1.0 bundle, byte-identical to the npm package. scripts/build-plugin.mjs refreshes it, the agents and the version; with --from-npm it takes the bundle from npm, and it refuses one that names a home directory, which a build in a borrowed checkout does."
+        ]
+      },
+      "Loaded with `claude --plugin-dir`, the session lists all 23 tools under the plugin's names, both agents and the skill. `claude plugin validate` passes for the plugin and the marketplace; its only warnings are the listing fields, which Claude Code before 2.1.281 does not know.",
+      {
+        "h": "Also"
+      },
+      {
+        "ul": [
+          "**Enable the Review Assist plugin in this repository.** This repository's own sessions should use the plugin it ships. .claude/settings.json registers the repository as a marketplace and enables review-assist from it, so anyone who opens the repository in Claude Code and trusts the folder gets the plugin with no install step: Claude Code loads a plugin listed by relative path straight from the marketplace.",
+          "**Rebuild the plugin with every release, and validate it in CI.** The plugin ships a copy of the server, so a release that does not rebuild it leaves the plugin a version behind npm.",
+          "**Refresh the social preview for the redesigned landing page.** The card was captured before the 12 Oct redesign, so shared links still previewed the old \"as fast as agents write it\" hero. Replaced with a capture of the current hero at 1280x640: the new headline, both calls to action, and the demo on stop T2 with its reviewer note.",
+          "**Align blog hero diagrams with review examples.**",
+          "**Split the server bundle so the plugin directory can read every file.** Anthropic's plugin directory holds a version for a human when any file that isn't an image or font is 256 KiB or more. v1.1.0 shipped one 985 KiB server/dist/index.js and sat held on \"Files or downloads the validator couldn't inspect\"."
+        ]
+      }
+    ]
+  },
+  {
     "v": "1.1.0",
     "date": "22 Oct 2026",
     "title": "Ask before reading a repository's sessions, not only before writing its document",
