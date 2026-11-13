@@ -1542,6 +1542,29 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    slug: "how-to-review-open-closed-principle-in-ai-written-code",
+    date: "13 Nov 2026",
+    modified: "13 Nov 2026",
+    title: "How to review the open-closed principle in AI-written code",
+    summary: "A new wallet method falls through a card default. Ask whether every payment method has an explicit outcome before merging.",
+    hero: "/blog/how-to-review-open-closed-principle-in-ai-written-code.png",
+    alt: "A diff adds wallet to a payment method union; card and bank have explicit processing paths, while wallet falls through to default card",
+    caption: "A new variant needs a deliberate outcome at the decision boundary.",
+    body: [
+      "The open-closed principle is a useful review prompt when an AI-written change adds a new variant to a stable decision. It does not mean every switch must become a plugin system. It asks whether adding the variant can silently inherit behavior intended for an older one.",
+      "Consider a hypothetical checkout service. Card payments use a card processor. Bank payments start a bank transfer. An agent adds wallet to the public request type, but leaves the dispatcher unchanged. This is example application code, not Review Assist code.",
+      { h: "Read the new variant against the old default" },
+      { code: "- type Method = \"card\" | \"bank\";\n+ type Method = \"card\" | \"bank\" | \"wallet\";\n  function startPayment(req: { method: Method }) {\n    switch (req.method) {\n      case \"bank\": return startBankTransfer(req);\n      default: return chargeCard(req);\n    }\n  }" },
+      "The diff makes wallet a valid input, but the default sends it to `chargeCard`. The review question is: **What should happen when method is wallet, and which test proves that path?** Do not infer support from the new type alone. Trace the request from validation to this dispatch and the provider call.",
+      "Look for the product or payment contract that says whether wallet is supported now, rejected until a later release, or mapped to an existing processor on purpose. Then run a test with `method: \"wallet\"` that asserts the provider called and the response returned. Add a negative assertion that the card processor is not called if wallet has its own flow. A compile pass cannot settle this because the default accepts every future method too.",
+      { h: "Decide how explicit the boundary needs to be" },
+      "One repair is an explicit wallet case. If wallet is not ready, reject it at validation and keep it out of the public type until launch. An exhaustive switch with a `never` check can make the next new method fail typechecking, but only if the input is narrowed to the union and runtime validation rejects unknown strings. A handler registry may help when methods are independently deployed; for three stable methods it can add indirection without improving the decision.",
+      "A default is not automatically a defect. It may be an intentional fallback for a display-only label or a documented alias. Here it triggers a charge, so the cost of a wrong fallback is high. Also avoid demanding a new class for each method merely to satisfy a slogan. The principle is a review heuristic: make the new variant's behavior explicit at the boundary that acts on it.",
+      { h: "Make the merge decision" },
+      "Request changes for the hunk shown. Approve when the wallet contract is identified, the dispatcher or validation implements that contract, and a wallet-specific test proves the provider and failure result. If wallet intentionally uses the card processor, require a documented mapping and a test for that mapping. A green [Review Assist coverage check](/blog/what-a-review-assist-check-means/) shows that a hunk was explained, not that the payment decision is correct. The guided review can surface the assumption and its verification; the human reviewer still decides whether to merge."
+    ]
+  },
+  {
     slug: "when-the-current-coding-session-cannot-explain-an-ai-written-hunk",
     date: "30 Oct 2026",
     modified: "30 Oct 2026",
