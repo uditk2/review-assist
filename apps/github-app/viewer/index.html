@@ -1542,6 +1542,30 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    slug: "how-to-review-liskov-substitution-in-ai-written-code",
+    date: "14 Nov 2026",
+    modified: "14 Nov 2026",
+    title: "How to review substitution in AI-written code",
+    summary: "A cache-backed Store returns undefined on a miss although callers expect a record or NotFound. Review the replacement against the caller contract.",
+    hero: "/blog/how-to-review-liskov-substitution-in-ai-written-code.png",
+    alt: "CacheStore.get returns a record on a hit and undefined on a miss, while the Store contract promises a record or NotFound",
+    caption: "A replacement must preserve the outcomes its callers rely on.",
+    body: [
+      "The Liskov substitution principle gives a reviewer one practical question: can the new implementation replace the old one without surprising its callers? An AI-written class may satisfy an interface name while changing a failure path that the interface does not spell out. Review the observable contract, not the inheritance diagram.",
+      "Consider a hypothetical service where `Store.get(id)` returns a record or throws `NotFound`. A route catches `NotFound` and sends HTTP 404. An agent adds a cache-backed implementation for the same `Store` port. This is example application code, not Review Assist code.",
+      { h: "Read the miss path in the diff" },
+      { code: "  interface Store { get(id: string): Promise<Item>; }\n+ class CacheStore implements Store {\n+   async get(id: string) {\n+     return cache.get(id);\n+   }\n+ }\n  const record = await store.get(id);\n  return sendJson(record);" },
+      "Assume `cache.get` returns `undefined` on a miss. The route now sends an empty or invalid success response instead of the established 404 path. A TypeScript check might catch this if the cache type accurately includes `undefined` and strict null checks are on. A loose cache client type, cast, or wrapper can hide it. The review question is: **For a missing ID, does every Store implementation give the caller the same promised outcome?**",
+      "Find the existing Store contract in documentation, tests, and call sites. Trace how the old implementation reports a missing ID, then run the same contract test against `CacheStore`: hit returns the right record; miss throws `NotFound`; the route maps that error to 404. If the cache is only an accelerator, a miss may instead load from the durable store and return that record. Test both the cache miss with a real record behind it and a genuinely absent ID. The evidence must show which behavior the service promises.",
+      { h: "Separate a contract change from a replacement" },
+      "Returning `undefined` is not inherently wrong. It can be a sound contract if all callers are written for `Record | undefined` and the API deliberately maps that case. But that is a change to the port and its consumers, not a drop-in replacement. Review every caller and update the contract tests before treating it as equivalent.",
+      "Do not flag a class solely because it uses a cache, retries, or throws a different internal error type. The relevant difference is what crosses the `Store` boundary. Conversely, passing one happy-path test does not establish substitutability. Error timing, missing-record behavior, and write visibility can matter when callers depend on them. Keep the review scoped to the contract this diff actually changes.",
+      { h: "Make the merge decision" },
+      "Request changes for the shown hunk until the miss path preserves the documented `Store.get` outcome or the port and all callers are deliberately migrated. Approve when shared contract tests run against both implementations and the route test proves the missing-ID response. The principle is a prompt to inspect a behavioral promise, not an automatic rejection of a new subtype.",
+      "In Review Assist, the anchored tour can point to the added `get` hunk, while the Intent Document's assumptions and verification fields can expose what the agent believed about cache misses and what it tested. The [coverage check](/blog/what-a-review-assist-check-means/) can show that the hunk has an explanation. It cannot prove the replacement obeys the caller contract; that decision still needs code and test evidence."
+    ]
+  },
+  {
     slug: "how-to-review-open-closed-principle-in-ai-written-code",
     date: "13 Nov 2026",
     modified: "13 Nov 2026",
