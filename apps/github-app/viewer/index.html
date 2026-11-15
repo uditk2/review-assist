@@ -1542,6 +1542,30 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    slug: "how-to-review-interface-segregation-in-ai-written-code",
+    date: "15 Nov 2026",
+    modified: "15 Nov 2026",
+    title: "How to review interface segregation in AI-written code",
+    summary: "A read-only catalog gains a save method that throws. Check which callers need writes before accepting the broader interface.",
+    hero: "/blog/how-to-review-interface-segregation-in-ai-written-code.png",
+    alt: "CatalogReader has get; proposed CatalogStore adds save, which throws in ReadOnlyCatalog. The review asks whether the caller needs save.",
+    caption: "A caller should depend on the operations it actually needs.",
+    body: [
+      "Interface segregation gives a reviewer a narrow question: does this caller depend on methods it cannot use? An AI-written refactor can make an interface look tidy while forcing a read-only implementation to pretend it supports writes. The problem is observable at the call boundary, not the number of methods in a type.",
+      "Consider a hypothetical product catalog. The search endpoint reads items from a snapshot. An admin import job reads and writes items in a database. An agent replaces the endpoint's small reader interface with a shared store interface. This is example application code, not Review Assist code.",
+      { h: "Inspect the added obligation" },
+      { code: "- interface CatalogReader { get(id: string): Promise<Item>; }\n+ interface CatalogStore {\n+   get(id: string): Promise<Item>;\n+   save(item: Item): Promise<void>;\n+ }\n- class ReadOnlyCatalog implements CatalogReader {\n+ class ReadOnlyCatalog implements CatalogStore {\n    get(id: string) { return snapshot.get(id); }\n+   save(_item: Item) { throw new Error(\"read only\"); }\n  }\n- function search(catalog: CatalogReader) { /* calls get */ }\n+ function search(catalog: CatalogStore) { /* calls get */ }" },
+      "The search endpoint still calls only `get`, but its dependency now advertises `save`. The new implementation throws if any future caller trusts that promise. Ask: **Does the search caller need `save`, and can every implementation of its dependency honor that method?** The diff answers the first part for today's search path. The interface and implementation answer the second part badly.",
+      "Trace every `CatalogStore` consumer and the actual object passed to it. Check whether search is read-only by contract, including background refresh or cache warming. A test that calls `search` with a reader exposing only `get` proves its required surface. A separate contract test for writable stores should call `save` and then read back the item. Run it against each implementation claimed to be writable. A compile pass alone cannot validate a method whose body throws.",
+      { h: "Choose the boundary that matches the callers" },
+      "For this diff, keep `CatalogReader` as the search parameter. The admin import can depend on a `CatalogWriter` or a combined `CatalogStore` if it genuinely needs both operations. A writable database adapter can implement both. The snapshot adapter should implement only the reader. This keeps the unsupported method out of its public promise and makes accidental writes fail at typechecking instead of at runtime.",
+      "Do not split every interface into one-method types on principle. A cohesive read-write repository can be appropriate when all of its consumers and implementations need both methods. Likewise, a deliberately read-only `save` that returns a typed rejection may be part of a documented capability protocol, but callers must check that capability before invoking it. The concern here is the unqualified `save` promise paired with a throwing stub. This review heuristic identifies an obligation to verify; it is not an automatic size limit for interfaces.",
+      { h: "Make the merge decision" },
+      "Request changes for the shown refactor. Approve when search depends only on its read contract, writable consumers depend on a type backed by working `save` implementations, and tests exercise both boundaries. If the team intentionally wants a single capability-aware store, require the capability check and an explicit test of the read-only case before merging.",
+      "In Review Assist, the anchored tour can point to the changed interface and throwing method. The Intent Document can record why the agent broadened the dependency and what it verified. A green [coverage check](/blog/what-a-review-assist-check-means/) means the change was explained; the reviewer still needs code and test evidence that the interface promise holds."
+    ]
+  },
+  {
     slug: "how-to-review-liskov-substitution-in-ai-written-code",
     date: "14 Nov 2026",
     modified: "14 Nov 2026",
