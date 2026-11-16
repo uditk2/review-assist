@@ -1542,6 +1542,30 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    slug: "how-to-review-dependency-inversion-in-ai-written-code",
+    date: "16 Nov 2026",
+    modified: "16 Nov 2026",
+    title: "How to review dependency inversion in AI-written code",
+    summary: "An order service constructs a Stripe client inside its charge path. Ask who owns the provider choice and prove the boundary with focused tests.",
+    hero: "/blog/how-to-review-dependency-inversion-in-ai-written-code.png",
+    alt: "OrderService directly constructs StripeClient in the proposed change; an alternative injects a PaymentPort implemented by StripeAdapter. The review asks who owns provider choice.",
+    caption: "The provider decision belongs at the composition boundary when the service promises provider-independent charging.",
+    body: [
+      "Dependency inversion gives a reviewer a specific question: does the business operation depend on a provider detail it should receive through a contract? An AI-written change can be correct for one provider today and still put the choice in the wrong place. Review the caller's promise and the path that selects its dependency before asking for an interface.",
+      "Consider a hypothetical checkout service. Its order path previously received a `PaymentPort` that returned a charge ID or a typed decline. A new agent-written hunk removes that parameter and constructs a Stripe SDK client inside the service. This is example application code, not Review Assist code.",
+      { h: "Read the dependency in the diff" },
+      { code: "- class OrderService {\n-   constructor(private payments: PaymentPort) {}\n+ class OrderService {\n+   private stripe = new StripeClient(process.env.STRIPE_KEY!);\n    async place(order: Order) {\n-     const charge = await this.payments.charge(order.total, order.id);\n+     const charge = await this.stripe.charges.create({\n+       amount: order.total, metadata: { orderId: order.id }\n+     });\n      return saveOrder(order, charge.id);\n    }\n  }" },
+      "The service now chooses Stripe, reads its credential, and speaks its request shape. Ask: **Who owns the provider choice for `OrderService`, and does this hunk preserve the payment contract its callers rely on?** A constructor parameter alone is not the goal. The boundary matters because the order path may also run in tests, local development, or a second payment environment.",
+      "Trace the production composition root and every place that constructs `OrderService`. Read the old `PaymentPort` contract and its tests: what does `charge` return on success, how does a decline surface, and is `order.id` the idempotency key? Then test `OrderService` with a fake port that records amount and order ID and returns a charge ID. Separately, test `StripeAdapter` against the SDK boundary for request mapping and decline translation. A composition test should prove production wiring selects the Stripe adapter and supplies its credential. Those tests settle whether the service can keep its contract while the provider detail stays at the edge.",
+      { h: "Check the cost of the abstraction" },
+      "The practical fix is to keep `OrderService` dependent on a small `PaymentPort` and construct `StripeAdapter` at the application entry point. The adapter maps the port's amount, order ID, and outcome into Stripe calls. If the old port was vague or leaked provider objects, tighten it around what the order path actually needs. Do not hide Stripe behind a pass-through interface that merely renames every SDK method.",
+      "A direct SDK call is not automatically wrong. If this is a Stripe-specific integration module, provider choice is already its responsibility. A one-off script may also be clearer without a port. Conversely, a fake that makes tests pass cannot prove production wiring or decline mapping. The principle is a review heuristic for an actual boundary, not a demand to introduce an interface for every import.",
+      { h: "Make the merge decision" },
+      "Request changes for the shown order-service hunk. Approve when the service keeps the established charge outcome through a provider-neutral contract, the Stripe adapter handles SDK translation, and tests cover both service behavior and production wiring. If the team deliberately changed the service into a Stripe-specific component, require its callers and contract to say so, plus tests for the new decline and retry behavior.",
+      "Review Assist can anchor the guided tour to the constructor and charge hunk. Its Intent Document can expose the agent's assumption about provider ownership and record what it verified. A green [coverage check](/blog/what-a-review-assist-check-means/) shows the changed lines were explained; the reviewer still needs the contract, wiring, and tests to decide whether the dependency belongs there."
+    ]
+  },
+  {
     slug: "how-to-review-interface-segregation-in-ai-written-code",
     date: "15 Nov 2026",
     modified: "15 Nov 2026",
