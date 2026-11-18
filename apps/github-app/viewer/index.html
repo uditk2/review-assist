@@ -1542,6 +1542,31 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    slug: "how-to-review-swallowed-search-errors-in-ai-written-code",
+    date: "18 Nov 2026",
+    modified: "18 Nov 2026",
+    title: "How to review a swallowed search error in AI-written code",
+    summary: "A catch block returns an empty search result when the index fails. Ask whether callers can tell no matches from an unavailable index.",
+    hero: "/blog/how-to-review-swallowed-search-errors-in-ai-written-code.png",
+    alt: "A zero-hit query and an unavailable search index both become an empty array after a catch block; the review asks whether the result is empty or failed.",
+    caption: "The same empty array can describe two different outcomes.",
+    body: [
+      "An empty result is a successful answer to a search. A failed search is not. When AI-written code catches an index error and returns `[]`, the reviewer needs to find out whether the caller can still tell those outcomes apart. This is one error-handling question, not a rule that every exception must reach the user.",
+      "Consider a hypothetical product search API. The existing handler lets an index error reach its error mapper, which returns a service-unavailable response. An agent adds a catch so the page keeps rendering during an index outage. This example is application code, not Review Assist code.",
+      { h: "Read the changed outcome in the diff" },
+      { code: "  async function searchProducts(query: string) {\n-   return index.search(query);\n+   try {\n+     return await index.search(query);\n+   } catch (error) {\n+     logger.warn({ error }, 'search failed');\n+     return [];\n+   }\n  }" },
+      "The log records the failure for operators, but the HTTP handler now receives `[]` for both zero matches and an unavailable index. If it returns `200` with an empty list, a client may show ‘No products found’ and cache that answer. Ask: **When the index is unavailable, what does the caller observe, and can it distinguish failure from a genuine empty result?**",
+      { h: "Find evidence for the intended contract" },
+      "Trace the return value through the HTTP handler, response mapper, and client empty state. Read the existing error contract and any availability requirement. Test a successful zero-hit query and an injected index failure at the handler boundary. Assert status, response body, cache headers, and visible client state for each. An assertion that `searchProducts` returns an array only proves the catch ran; it does not prove the user-facing behavior is honest.",
+      "If the product wants a degraded search experience, make the degraded state explicit. The handler could return a typed failure that maps to `503`, or a documented partial-result response if it has a trustworthy fallback index. The exact status and UI copy belong to the service contract. The decisive evidence is that the failure path does not masquerade as a confirmed zero-hit answer and that monitoring can still identify an outage.",
+      { h: "Check the false positive" },
+      "Returning `[]` can be correct at a boundary whose contract explicitly defines best-effort suggestions, such as optional autocomplete hints. A search page that already displays ‘Search temporarily unavailable’ from a separate failure flag may also be clear, provided the flag survives every caller path. A warning log alone is not that flag. Do not demand a thrown exception just because a catch exists; check the consumer's promise and the tested fallback behavior.",
+      { h: "Make the merge decision" },
+      "Request changes for the shown product-search hunk. Approve when an index outage produces a distinct, tested caller outcome, or when the team documents and tests a deliberate best-effort contract for this endpoint. The zero-hit and outage tests must exercise the HTTP response and client state, not only the helper.",
+      "Review Assist can anchor its guided tour to this catch hunk and surface the agent's reason for adding the fallback in the Intent Document. The [coverage check](/blog/what-a-review-assist-check-means/) can show that the hunk was explained. It cannot prove the search contract or the failure-injection test, so the reviewer still makes the merge call."
+    ]
+  },
+  {
     slug: "how-to-review-dependency-inversion-in-ai-written-code",
     date: "16 Nov 2026",
     modified: "16 Nov 2026",
