@@ -1542,6 +1542,31 @@ const ARTICLE_AUTHOR = { name: "Udit Khandelwal", url: "https://github.com/uditk
 
 const ARTICLES = [
   {
+    slug: "how-to-review-date-only-timezone-bugs-in-ai-written-code",
+    date: "19 Nov 2026",
+    modified: "19 Nov 2026",
+    title: "How to review a date-only timezone bug in AI-written code",
+    summary: "An AI-written formatter turns a date-only deadline into a local Date. Check whether the displayed day shifts for users west of UTC.",
+    hero: "/blog/how-to-review-date-only-timezone-bugs-in-ai-written-code.png",
+    alt: "A November 20 date-only value shifts to November 19 when parsed as an instant in a western timezone, while calendar-date handling keeps November 20.",
+    caption: "A calendar date should stay on the same day across supported timezones.",
+    body: [
+      "A date like `2026-11-20` names a calendar day. It does not name an instant. When AI-written code turns that string into a JavaScript `Date`, check whether a user's timezone can move the displayed deadline to the previous day.",
+      "Consider a hypothetical task API that stores a due date as `YYYY-MM-DD`. The UI used to render that string as a calendar date. An agent changes the formatter while adding a localized label. This is application code, not Review Assist code.",
+      { h: "Read the conversion in the diff" },
+      { code: "- const label = dueDate;\n+ const label = new Date(dueDate).toLocaleDateString(locale);" },
+      "JavaScript parses the date-only string as midnight UTC. In UTC-8, that instant is still November 19. The new formatter can therefore show Nov 19 for a task due Nov 20. Ask: **Is `dueDate` a calendar date or an instant, and does this conversion preserve its promised day for every supported timezone?**",
+      { h: "Find the evidence that settles it" },
+      "Trace the field from the API schema and storage through this formatter. If the contract says `YYYY-MM-DD` is a date-only value, test the exact string in UTC and a negative offset such as America/Los_Angeles. Assert the displayed calendar day, not merely that formatting returns a string. Cover a date near a daylight saving transition if the product supports those zones. A safe implementation can format year, month, and day as calendar components without first interpreting midnight UTC as a local instant.",
+      "If the field is actually an event timestamp, the contract should contain an offset or UTC instant and the product may intentionally display the user's local day. That is a different promise. Check the API type, existing UI copy, and examples before changing representation.",
+      { h: "Check the false positive" },
+      "`new Date(value)` is not itself a defect. It is appropriate for an instant such as `2026-11-20T00:00:00Z` when the UI promises local time. It can also be harmless for a date-only field if the code formats in UTC deliberately and every consumer expects that convention. The review finding depends on the field's meaning and observed output, not a ban on `Date`.",
+      { h: "Make the merge decision" },
+      "Request changes for the shown hunk if `dueDate` is a calendar date: a supported user can see the wrong day. Approve when the formatter preserves Nov 20 across supported zones and a boundary test proves it. If the team intends local-day display of an instant, approve only after the field contract and tests make that intent clear.",
+      "Review Assist can anchor the guided tour to the formatter hunk and show why the agent changed it in the Intent Document. Its coverage check can establish that the hunk was explained; it cannot establish the date contract or run the timezone test. The reviewer still makes that call.",
+    ]
+  },
+  {
     slug: "how-to-review-swallowed-search-errors-in-ai-written-code",
     date: "18 Nov 2026",
     modified: "18 Nov 2026",
